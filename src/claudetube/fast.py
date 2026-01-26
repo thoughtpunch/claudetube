@@ -309,6 +309,110 @@ def get_frames_at(
     return frames
 
 
+def get_hq_frames_at(
+    video_id_or_url: str,
+    start_time: float,
+    duration: float = 5.0,
+    interval: float = 1.0,
+    output_base: Path | None = None,
+    width: int = 1280,
+) -> list[Path]:
+    """
+    Extract HIGH QUALITY frames for a specific time range.
+
+    Use this when the low-quality drill-in frames aren't clear enough
+    (e.g., reading text, code, small UI elements).
+
+    Downloads best available quality video (larger file, slower).
+
+    Args:
+        video_id_or_url: Video ID or URL
+        start_time: Start time in seconds
+        duration: Duration to capture (default: 5s)
+        interval: Seconds between frames (default: 1s)
+        output_base: Cache directory (default: ~/.claude/video_cache)
+        width: Frame width (default: 1280 for HD)
+
+    Returns:
+        List of frame paths
+    """
+    t0 = time.time()
+
+    if output_base is None:
+        output_base = Path.home() / ".claude" / "video_cache"
+
+    video_id = extract_video_id(video_id_or_url)
+    output_dir = Path(output_base) / video_id
+    hq_dir = output_dir / "hq"
+    hq_dir.mkdir(parents=True, exist_ok=True)
+
+    state_file = output_dir / "state.json"
+    hq_video_path = output_dir / "video_hq.mp4"
+
+    # Get URL from state
+    if not state_file.exists():
+        _log("No state.json found - run process_video first", t0)
+        return []
+
+    state = json.loads(state_file.read_text())
+    url = state.get("url")
+    if not url:
+        _log("No URL in state.json", t0)
+        return []
+
+    # Download HQ video if needed
+    if not hq_video_path.exists():
+        _log("Downloading HIGH QUALITY video (this may take a while)...", t0)
+        cmd = [
+            _find_tool("yt-dlp"),
+            "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+            "--no-playlist",
+            "--no-warnings",
+            "--merge-output-format", "mp4",
+            "-o", str(hq_video_path),
+            url
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0 or not hq_video_path.exists():
+            _log(f"HQ download failed: {result.stderr[:200]}", t0)
+            return []
+        size_mb = hq_video_path.stat().st_size / 1024 / 1024
+        _log(f"Downloaded HQ video: {size_mb:.1f}MB", t0)
+
+    # Extract HQ frames
+    frames = []
+    current = start_time
+    end_time = start_time + duration
+
+    _log(f"Extracting HQ frames from {start_time}s to {end_time}s...", t0)
+
+    while current < end_time:
+        ts_str = f"{int(current//60):02d}-{int(current%60):02d}"
+        output = hq_dir / f"hq_{ts_str}.jpg"
+
+        cmd = [
+            "ffmpeg",
+            "-ss", str(current),
+            "-i", str(hq_video_path),
+            "-vframes", "1",
+            "-vf", f"scale={width}:-1",
+            "-q:v", "2",  # Higher quality JPEG
+            "-y",
+            str(output)
+        ]
+
+        result = subprocess.run(cmd, capture_output=True)
+        if result.returncode == 0 and output.exists():
+            frames.append(output)
+            _log(f"  HQ frame at {ts_str}", t0)
+
+        current += interval
+
+    # Keep HQ video for potential future use (user requested it)
+    _log(f"HQ drill-in complete: {len(frames)} frames (video kept at {hq_video_path})", t0)
+    return frames
+
+
 def _transcribe_faster_whisper(audio_path: Path, model_size: str, t0: float) -> dict | None:
     """Transcribe using faster-whisper (4x faster than OpenAI whisper)."""
     try:

@@ -10,6 +10,7 @@ Process YouTube videos for Claude Code:
 from claudetube.fast import (
     process_video,
     get_frames_at,
+    get_hq_frames_at,
     extract_video_id,
     VideoResult,
 )
@@ -18,6 +19,7 @@ __version__ = "0.1.0"
 __all__ = [
     "process_video",
     "get_frames_at",
+    "get_hq_frames_at",
     "extract_video_id",
     "VideoResult",
 ]
