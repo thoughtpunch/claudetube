@@ -6,168 +6,72 @@ allowed-tools: ["Bash", "Read"]
 
 # claudetube
 
-Analyze a YouTube video by reading its transcript and metadata, with the ability to "see" specific moments when visual context is needed.
+Process a YouTube video and answer questions about it.
 
-## Step 1: Parse Input
+## Input: $ARGUMENTS
 
-Extract the YouTube URL (first argument) and any question from: $ARGUMENTS
+## Step 1: Process the video
 
-Examples:
-- `https://youtube.com/watch?v=abc123` → summarize the video
-- `https://youtube.com/watch?v=abc123 how did they make the sprites?` → answer question
-- `https://youtube.com/watch?v=abc123 explain the technique at 2:30` → focus on timestamp
+Run this command and WAIT for it to complete (may take 30-60 seconds for new videos):
 
-## Step 2: Process Video
-
-!python3 -c "
+```bash
+python3 -c "
 import sys
 from pathlib import Path
 
-# Try pip-installed package first, fall back to plugin directory
-try:
-    from claudetube.fast import process_video
-except ImportError:
-    for p in [
-        Path.home() / '.claude/plugins/claudetube/src',
-        Path.home() / 'sites/claudetube/src',
-    ]:
-        if p.exists():
-            sys.path.insert(0, str(p))
-            break
-    from claudetube.fast import process_video
+for p in [Path.home() / 'sites/claudetube/src', Path.home() / '.claude/plugins/claudetube/src']:
+    if p.exists():
+        sys.path.insert(0, str(p))
+        break
 
+from claudetube.fast import process_video
 import json
 
 url = '$ARGUMENTS'.split()[0]
 result = process_video(url)
 
 if result.success:
-    print(json.dumps({
-        'success': True,
-        'video_id': result.video_id,
-        'transcript_path': str(result.transcript_srt) if result.transcript_srt else None,
-        'state_path': str(result.output_dir / 'state.json'),
-        'output_dir': str(result.output_dir),
-    }, indent=2))
+    print('=== CLAUDETUBE READY ===')
+    print(f'TRANSCRIPT: {result.transcript_srt}')
+    print(f'METADATA: {result.output_dir}/state.json')
+    print('=== NOW READ BOTH FILES ABOVE ===')
 else:
-    print(json.dumps({
-        'success': False,
-        'error': result.error
-    }, indent=2))
+    print(f'ERROR: {result.error}')
+    sys.exit(1)
 "
+```
 
-## Step 3: Read ALL Context
+## Step 2: Read the files
 
-You MUST read both files to fully understand the video:
+After the command completes successfully:
+1. Read the TRANSCRIPT file (the .srt path printed above)
+2. Read the METADATA file (state.json path printed above)
 
-1. **Read state.json** - Contains rich metadata:
-   - `title`, `description` - What the video is about
-   - `uploader`, `channel` - Who made it
-   - `duration`, `duration_string` - How long
-   - `categories`, `tags` - Topic classification
-   - `upload_date` - When published
-   - `view_count`, `like_count` - Popularity metrics
-   - `language` - Spoken language
-   - `thumbnail` - Video thumbnail URL
+## Step 3: Answer the question
 
-2. **Read the transcript SRT file** - The actual spoken content with timestamps
+Use the transcript AND metadata (title, description, tags, uploader, etc.) to answer: $ARGUMENTS
 
-Use ALL of this information when answering questions. The description and tags often contain context not mentioned in the transcript.
+## Step 4: If you need to SEE something
 
-## Step 4: Answer the Question
-
-Based on the metadata AND transcript:
-- If answerable from the available information → answer directly
-- If you need to SEE what was shown visually → proceed to Step 5
-
-## Step 5: Drill into Frames (only when needed)
-
-When visual context is required for a specific timestamp:
+Only if the question requires visual context (code on screen, UI elements, game footage):
 
 ```bash
 python3 -c "
 import sys
 from pathlib import Path
 
-try:
-    from claudetube.fast import get_frames_at
-except ImportError:
-    for p in [
-        Path.home() / '.claude/plugins/claudetube/src',
-        Path.home() / 'sites/claudetube/src',
-    ]:
-        if p.exists():
-            sys.path.insert(0, str(p))
-            break
-    from claudetube.fast import get_frames_at
+for p in [Path.home() / 'sites/claudetube/src', Path.home() / '.claude/plugins/claudetube/src']:
+    if p.exists():
+        sys.path.insert(0, str(p))
+        break
 
-import json
+from claudetube.fast import get_frames_at
 
-frames = get_frames_at(
-    'VIDEO_ID',           # Replace with actual video ID
-    start_time=SECONDS,   # e.g., 150 for 2:30
-    duration=10,
-    interval=2,
-    output_base=Path.home() / '.claude' / 'video_cache',
-)
-print(json.dumps({
-    'success': True,
-    'frames': [str(f) for f in frames]
-}, indent=2))
+frames = get_frames_at('VIDEO_ID', start_time=SECONDS, duration=10, interval=2)
+for f in frames: print(f)
 "
 ```
 
-Then READ those frame images to see what was displayed.
+Then READ those image files.
 
-### When to drill into frames:
-- "show me the UI" → need frames
-- "what code did they write?" → need frames
-- "what game was shown?" → need frames
-- "explain the concept discussed" → transcript enough
-- "what did they say about X?" → transcript enough
-
-## Step 6: High-Quality Frames (when standard frames aren't clear enough)
-
-If you need to read text, code, or see fine details that aren't clear in the standard drill-in frames, use the HIGH QUALITY extraction:
-
-```bash
-python3 -c "
-import sys
-from pathlib import Path
-
-try:
-    from claudetube.fast import get_hq_frames_at
-except ImportError:
-    for p in [
-        Path.home() / '.claude/plugins/claudetube/src',
-        Path.home() / 'sites/claudetube/src',
-    ]:
-        if p.exists():
-            sys.path.insert(0, str(p))
-            break
-    from claudetube.fast import get_hq_frames_at
-
-import json
-
-frames = get_hq_frames_at(
-    'VIDEO_ID',           # Replace with actual video ID
-    start_time=SECONDS,   # e.g., 150 for 2:30
-    duration=5,
-    interval=1,
-)
-print(json.dumps({
-    'success': True,
-    'frames': [str(f) for f in frames],
-    'note': 'These are HD frames - downloads best quality video'
-}, indent=2))
-"
-```
-
-**Note:** HQ extraction downloads the full-quality video which takes longer and uses more bandwidth. Only use when you need to read small text or see fine details.
-
-## Response Format
-
-1. Video context (title, creator, duration, category/tags if relevant)
-2. Direct answer using transcript AND metadata
-3. Relevant timestamps from transcript
-4. If you viewed frames, describe what you saw
+For HIGH QUALITY frames (reading code/text), use `get_hq_frames_at` instead.
