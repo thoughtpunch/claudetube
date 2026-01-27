@@ -8,12 +8,20 @@ Usage:
 """
 
 import argparse
+import logging
+import sys
 from pathlib import Path
 
 from claudetube.core import process_video
 
 
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(message)s",
+        stream=sys.stderr,
+    )
+
     parser = argparse.ArgumentParser(
         description="Let Claude watch YouTube videos",
         formatter_class=argparse.RawDescriptionHelpFormatter,

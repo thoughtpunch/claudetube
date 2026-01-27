@@ -6,6 +6,7 @@ frames on-demand for visual analysis.
 """
 
 import json
+import logging
 import re
 import shutil
 import subprocess
@@ -13,6 +14,8 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 QUALITY_TIERS = {
     "lowest": {
@@ -56,9 +59,9 @@ def next_quality(current: str) -> str | None:
 
 
 def _log(msg: str, start_time: float | None = None):
-    """Print timestamped log message."""
+    """Log timestamped message to stderr (via logging)."""
     elapsed = f"[{time.time() - start_time:.1f}s]" if start_time else "[START]"
-    print(f"{elapsed} {msg}", flush=True)
+    logger.info(f"{elapsed} {msg}")
 
 
 def _find_tool(name: str) -> str:
@@ -770,9 +773,7 @@ def _transcribe_faster_whisper(
             txt_lines.append(text)
 
             # Progress
-            print(
-                f"  [{start}] {text[:60]}{'...' if len(text) > 60 else ''}", flush=True
-            )
+            logger.info(f"  [{start}] {text[:60]}{'...' if len(text) > 60 else ''}")
 
         return {
             "srt": "\n".join(srt_lines),
