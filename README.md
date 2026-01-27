@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="https://github.com/thoughtpunch/claudetube/actions/workflows/ci.yml"><img src="https://github.com/thoughtpunch/claudetube/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://pypi.org/project/claudetube/"><img src="https://img.shields.io/pypi/v/claudetube.svg" alt="PyPI"></a>
-  <a href="https://pypi.org/project/claudetube/"><img src="https://img.shields.io/pypi/pyversions/claudetube.svg" alt="Python"></a>
+  <a href="https://pypi.org/project/claudetube/"><img src="https://img.shields.io/pypi/v/claudetube.svg?cacheSeconds=3600" alt="PyPI"></a>
+  <a href="https://pypi.org/project/claudetube/"><img src="https://img.shields.io/pypi/pyversions/claudetube.svg?cacheSeconds=3600" alt="Python"></a>
   <a href="https://github.com/thoughtpunch/claudetube/blob/main/LICENSE"><img src="https://img.shields.io/github/license/thoughtpunch/claudetube.svg" alt="License"></a>
   <a href="https://github.com/thoughtpunch/claudetube/stargazers"><img src="https://img.shields.io/github/stars/thoughtpunch/claudetube.svg?style=social" alt="Stars"></a>
 </p>
