@@ -1,8 +1,24 @@
-# claudetube
+<p align="center">
+  <img src="logo.png" alt="claudetube" width="500">
+</p>
 
-**Let Claude watch YouTube videos.**
+<h1 align="center">claudetube</h1>
 
-claudetube downloads YouTube videos, transcribes them with faster-whisper, and lets Claude "see" specific moments on-demand. Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) but works as a standalone Python library too.
+<p align="center">
+  <strong>Let AI watch and understand online videos.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/thoughtpunch/claudetube/actions/workflows/ci.yml"><img src="https://github.com/thoughtpunch/claudetube/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pypi.org/project/claudetube/"><img src="https://img.shields.io/pypi/v/claudetube.svg" alt="PyPI"></a>
+  <a href="https://pypi.org/project/claudetube/"><img src="https://img.shields.io/pypi/pyversions/claudetube.svg" alt="Python"></a>
+  <a href="https://github.com/thoughtpunch/claudetube/blob/main/LICENSE"><img src="https://img.shields.io/github/license/thoughtpunch/claudetube.svg" alt="License"></a>
+  <a href="https://github.com/thoughtpunch/claudetube/stargazers"><img src="https://img.shields.io/github/stars/thoughtpunch/claudetube.svg?style=social" alt="Stars"></a>
+</p>
+
+---
+
+claudetube downloads online videos, transcribes them with [faster-whisper](https://github.com/SYSTRAN/faster-whisper), and lets AI "see" specific moments by extracting frames on-demand. Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) but works as a standalone Python library with any AI tool.
 
 ## Quick Start
 
@@ -21,21 +37,27 @@ claudetube downloads YouTube videos, transcribes them with faster-whisper, and l
 ### Install
 
 ```bash
-git clone https://github.com/dmarx/claudetube
+git clone https://github.com/thoughtpunch/claudetube
 cd claudetube
 ./install.sh
 ```
 
-This does three things:
+Or via pip (once published):
+
+```bash
+pip install claudetube
+```
+
+The installer does three things:
 1. Creates a Python venv at `~/.claudetube/venv/`
 2. Installs the `claudetube` package + dependencies (yt-dlp, faster-whisper)
 3. Copies slash commands to `~/.claude/commands/` (global to all Claude Code sessions)
 
 Restart Claude Code after installing.
 
-### Can I use this from any Claude Code session?
+### Works from any Claude Code session
 
-**Yes.** The installer puts slash commands in `~/.claude/commands/`, which is the global commands directory. Every Claude Code instance on your machine will have `/yt` available.
+The installer puts slash commands in `~/.claude/commands/`, which is the global commands directory. Every Claude Code instance on your machine will have `/yt` available -- no per-project setup needed.
 
 ### Why not a pre-built binary?
 
@@ -53,7 +75,7 @@ Claude will:
 3. If needed, extract frames to "see" specific moments
 4. Answer your question
 
-### Other Commands
+### Commands
 
 | Command | Purpose |
 |---------|---------|
@@ -96,16 +118,41 @@ frames = get_frames_at("VIDEO_ID", start_time=120, duration=10)
     └── hq/            # High-quality frames (1280p)
 ```
 
+## Architecture
+
+claudetube uses a **provider-based architecture**. Video downloading is handled through `yt-dlp`, which currently supports YouTube and [1000+ other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). The transcription and frame extraction pipeline is provider-agnostic -- it works with any video source that yt-dlp supports, and the architecture is designed to accommodate additional providers in the future.
+
 ## Development
 
 ```bash
-git clone https://github.com/dmarx/claudetube
+git clone https://github.com/thoughtpunch/claudetube
 cd claudetube
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest
 ```
 
+### Linting
+
+```bash
+black src/ tests/
+isort --profile black src/ tests/
+flake8 src/ tests/
+```
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request.
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Run tests and linting before committing
+4. Open a pull request against `main`
+
+## Legal
+
+This project is **not affiliated with, endorsed by, or associated with YouTube, Google, or Alphabet Inc.** "YouTube" is a trademark of Google LLC. This software is an independent, open-source tool that interacts with publicly available video content through third-party libraries ([yt-dlp](https://github.com/yt-dlp/yt-dlp)). Users are solely responsible for ensuring their use of this software complies with all applicable terms of service and laws.
+
 ## License
 
-MIT
+[MIT](LICENSE) -- free to use, modify, and distribute.
