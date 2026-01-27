@@ -43,9 +43,14 @@ frames = get_frames_at(
     start_time=seconds,
     duration=duration,
     interval=2,
-    output_base=Path.home() / '.claude' / 'video_cache'
+    output_base=Path.home() / '.claude' / 'video_cache',
+    quality='lowest',
 )
-print(f'Extracted {len(frames)} frames at {timestamp}:')
+print(f'QUALITY: lowest')
+print(f'VIDEO_ID: {video_id}')
+print(f'TIMESTAMP: {timestamp} ({seconds}s)')
+print(f'DURATION: {duration}s')
+print(f'Extracted {len(frames)} frames:')
 for f in frames: print(f)
 PYTHON
 ```
@@ -54,4 +59,33 @@ PYTHON
 
 READ each image file printed above to see the video content.
 
-For higher quality (code/text), use `/yt:hq` instead.
+## Auto-Escalation
+
+After viewing the frames, if the content is **blurry, unreadable, or too low quality** to answer the user's question, automatically re-extract at the next quality tier. Always go up **one tier at a time**:
+
+`lowest` → `low` → `medium` → `high` → `highest`
+
+Use this code to escalate (replace CURRENT_QUALITY and NEXT_QUALITY):
+
+```bash
+~/.claudetube/venv/bin/python3 << 'PYTHON'
+from pathlib import Path
+from claudetube.core import get_frames_at
+
+frames = get_frames_at(
+    'VIDEO_ID',
+    start_time=SECONDS,
+    duration=DURATION,
+    interval=2,
+    output_base=Path.home() / '.claude' / 'video_cache',
+    quality='NEXT_QUALITY',
+)
+print(f'QUALITY: NEXT_QUALITY')
+print(f'Extracted {len(frames)} frames:')
+for f in frames: print(f)
+PYTHON
+```
+
+Then READ the new frames. Repeat escalation if still not clear enough.
+
+For the highest quality (code/text), use `/yt:hq` instead.

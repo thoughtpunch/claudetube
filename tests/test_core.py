@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from claudetube.core import (
+    QUALITY_LADDER,
+    QUALITY_TIERS,
     VideoResult,
     _find_tool,
     _format_srt_time,
@@ -17,6 +19,7 @@ from claudetube.core import (
     extract_video_id,
     get_frames_at,
     get_hq_frames_at,
+    next_quality,
     process_video,
 )
 
@@ -382,7 +385,7 @@ class TestGetFramesAt:
         """Should extract frames at the specified interval."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        (video_dir / "video.mp4").write_bytes(b"fake video")
+        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
 
         def create_frame(*args, **kwargs):
             cmd = args[0]
@@ -407,7 +410,7 @@ class TestGetFramesAt:
         """Frame filenames should contain timestamp info."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        (video_dir / "video.mp4").write_bytes(b"fake video")
+        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
 
         def create_frame(*args, **kwargs):
             cmd = args[0]
@@ -441,7 +444,7 @@ class TestGetFramesAt:
         """Frames that fail to extract should be skipped."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        (video_dir / "video.mp4").write_bytes(b"fake video")
+        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
 
         mock_run.return_value = MagicMock(returncode=1)  # ffmpeg fails
 
@@ -594,3 +597,309 @@ class TestIntegration:
         assert result.transcript_srt.exists()
         assert result.transcript_txt.exists()
         assert (result.output_dir / "state.json").exists()
+
+
+class TestQualityTiers:
+    """Tests for quality tier system."""
+
+    def test_all_tiers_have_required_keys(self):
+        required = {"format", "sort", "width", "jpeg_q"}
+        for name, tier in QUALITY_TIERS.items():
+            assert required.issubset(tier.keys()), f"Tier '{name}' missing keys"
+
+    def test_ladder_order_matches_ascending_widths(self):
+        widths = [QUALITY_TIERS[q]["width"] for q in QUALITY_LADDER]
+        assert widths == sorted(widths), "QUALITY_LADDER widths should be ascending"
+
+    def test_lowest_matches_original_hardcoded_defaults(self):
+        tier = QUALITY_TIERS["lowest"]
+        assert tier["format"] == "160+139/160+140/worst[height<=360]/worst"
+        assert tier["sort"] == "+size,+br"
+        assert tier["width"] == 480
+        assert tier["jpeg_q"] == 5
+
+    def test_highest_matches_hq_defaults(self):
+        tier = QUALITY_TIERS["highest"]
+        assert "height<=1080" in tier["format"]
+        assert tier["width"] == 1280
+        assert tier["jpeg_q"] == 2
+
+    def test_all_ladder_entries_exist_in_tiers(self):
+        for name in QUALITY_LADDER:
+            assert name in QUALITY_TIERS
+
+    def test_next_quality_returns_correct_next(self):
+        assert next_quality("lowest") == "low"
+        assert next_quality("low") == "medium"
+        assert next_quality("medium") == "high"
+        assert next_quality("high") == "highest"
+
+    def test_next_quality_returns_none_at_highest(self):
+        assert next_quality("highest") is None
+
+    def test_next_quality_raises_on_invalid(self):
+        with pytest.raises(ValueError):
+            next_quality("ultra")
+
+    def test_ladder_has_five_entries(self):
+        assert len(QUALITY_LADDER) == 5
+
+
+class TestGetFramesAtQuality:
+    """Tests for get_frames_at with quality parameter."""
+
+    @patch("subprocess.run")
+    def test_default_quality_uses_lowest(self, mock_run, tmp_path):
+        """Default quality should use lowest tier settings."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
+
+        def create_frame(*args, **kwargs):
+            cmd = args[0]
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = create_frame
+
+        frames = get_frames_at(
+            "test12345678", start_time=0, duration=1, interval=1, output_base=tmp_path
+        )
+
+        assert len(frames) == 1
+        assert "drill_lowest" in str(frames[0].parent)
+
+    @patch("subprocess.run")
+    def test_medium_quality_uses_correct_format(self, mock_run, tmp_path):
+        """Medium quality should use 480p format selector."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        call_count = [0]
+
+        def handle_run(*args, **kwargs):
+            cmd = args[0]
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # yt-dlp download call
+                video_path = Path(cmd[-2])  # -o argument
+                video_path.write_bytes(b"fake video")
+                assert "height<=480" in cmd[2]
+                return MagicMock(returncode=0)
+            else:
+                # ffmpeg frame extraction
+                output_path = Path(cmd[-1])
+                output_path.write_bytes(b"fake frame")
+                return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        frames = get_frames_at(
+            "test12345678",
+            start_time=0,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+            quality="medium",
+        )
+
+        assert len(frames) == 1
+        assert "drill_medium" in str(frames[0].parent)
+
+    @patch("subprocess.run")
+    def test_different_tiers_produce_isolated_dirs(self, mock_run, tmp_path):
+        """Each quality tier should use its own subdirectory."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+
+        def create_frame(*args, **kwargs):
+            cmd = args[0]
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = create_frame
+
+        for q in ["lowest", "low"]:
+            (video_dir / f"video_{q}.mp4").write_bytes(b"fake video")
+            get_frames_at(
+                "test12345678",
+                start_time=0,
+                duration=1,
+                interval=1,
+                output_base=tmp_path,
+                quality=q,
+            )
+
+        assert (video_dir / "drill_lowest").exists()
+        assert (video_dir / "drill_low").exists()
+
+    @patch("subprocess.run")
+    def test_explicit_width_overrides_tier(self, mock_run, tmp_path):
+        """Explicit width parameter should override tier default."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
+
+        captured_cmds = []
+
+        def create_frame(*args, **kwargs):
+            cmd = args[0]
+            captured_cmds.append(cmd)
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = create_frame
+
+        get_frames_at(
+            "test12345678",
+            start_time=0,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+            width=320,
+            quality="lowest",
+        )
+
+        # Check ffmpeg was called with width=320
+        ffmpeg_cmd = captured_cmds[0]
+        vf_idx = ffmpeg_cmd.index("-vf")
+        assert "scale=320:-1" in ffmpeg_cmd[vf_idx + 1]
+
+    @patch("subprocess.run")
+    def test_high_quality_keeps_video(self, mock_run, tmp_path):
+        """high/highest tiers should NOT delete the video file."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        video_path = video_dir / "video_high.mp4"
+        video_path.write_bytes(b"fake video")
+
+        def create_frame(*args, **kwargs):
+            cmd = args[0]
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = create_frame
+
+        get_frames_at(
+            "test12345678",
+            start_time=0,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+            quality="high",
+        )
+
+        assert video_path.exists(), "high quality should keep video file"
+
+    @patch("subprocess.run")
+    def test_lowest_quality_deletes_video(self, mock_run, tmp_path):
+        """lowest tier should delete the video file after extraction."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        video_path = video_dir / "video_lowest.mp4"
+        video_path.write_bytes(b"fake video")
+
+        def create_frame(*args, **kwargs):
+            cmd = args[0]
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = create_frame
+
+        get_frames_at(
+            "test12345678",
+            start_time=0,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+            quality="lowest",
+        )
+
+        assert not video_path.exists(), "lowest quality should delete video file"
+
+    @patch("subprocess.run")
+    def test_quality_tracked_in_state_json(self, mock_run, tmp_path):
+        """Quality extraction should be tracked in state.json."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        def create_frame(*args, **kwargs):
+            cmd = args[0]
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = create_frame
+
+        get_frames_at(
+            "test12345678",
+            start_time=60,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+            quality="lowest",
+        )
+
+        state = json.loads((video_dir / "state.json").read_text())
+        assert "quality_extractions" in state
+        assert "lowest" in state["quality_extractions"]
+        assert state["quality_extractions"]["lowest"]["start_time"] == 60
+
+    def test_invalid_quality_raises_error(self, tmp_path):
+        """Invalid quality value should raise ValueError."""
+        with pytest.raises(ValueError, match="Invalid quality"):
+            get_frames_at(
+                "test12345678",
+                start_time=0,
+                output_base=tmp_path,
+                quality="ultra_hd",
+            )
+
+    @patch("subprocess.run")
+    def test_redownloads_video_for_new_quality(self, mock_run, tmp_path):
+        """Should re-download video when it doesn't exist for a new quality tier."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+        # No video_medium.mp4 exists -- should trigger download
+
+        call_count = [0]
+
+        def handle_run(*args, **kwargs):
+            cmd = args[0]
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # yt-dlp download
+                video_path = video_dir / "video_medium.mp4"
+                video_path.write_bytes(b"fake video")
+                return MagicMock(returncode=0)
+            else:
+                # ffmpeg
+                output_path = Path(cmd[-1])
+                output_path.write_bytes(b"fake frame")
+                return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        frames = get_frames_at(
+            "test12345678",
+            start_time=0,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+            quality="medium",
+        )
+
+        assert len(frames) == 1
+        assert call_count[0] >= 2  # at least one yt-dlp + one ffmpeg call
