@@ -15,7 +15,7 @@ from claudetube.core import (
     process_video,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     "process_video",
     "get_frames_at",
