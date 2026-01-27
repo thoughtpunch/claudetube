@@ -11,6 +11,7 @@ from claudetube.core import (
     QUALITY_LADDER,
     QUALITY_TIERS,
     VideoResult,
+    _fetch_subtitles,
     _find_tool,
     _format_srt_time,
     _get_metadata,
@@ -919,3 +920,222 @@ class TestGetFramesAtQuality:
 
         assert len(frames) == 1
         assert call_count[0] >= 2  # at least one yt-dlp + one ffmpeg call
+
+
+class TestFetchSubtitles:
+    """Tests for subtitle fetching."""
+
+    @patch("subprocess.run")
+    def test_returns_srt_and_txt_when_subs_found(self, mock_run, tmp_path):
+        """Should return parsed SRT and plain text when subtitles exist."""
+        srt_content = (
+            "1\n00:00:00,000 --> 00:00:05,000\nHello world\n\n"
+            "2\n00:00:05,000 --> 00:00:10,000\nSecond line\n"
+        )
+
+        def write_sub(*args, **kwargs):
+            (tmp_path / "test123.en.srt").write_text(srt_content)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = write_sub
+
+        result = _fetch_subtitles("https://youtube.com/watch?v=test123", tmp_path, 0)
+
+        assert result is not None
+        assert "Hello world" in result["txt"]
+        assert "Second line" in result["txt"]
+        assert result["source"] == "uploaded"
+
+    @patch("subprocess.run")
+    def test_returns_auto_generated_source(self, mock_run, tmp_path):
+        """Auto-generated subs should be tagged as such."""
+        srt_content = "1\n00:00:00,000 --> 00:00:05,000\nAuto text\n"
+
+        def write_sub(*args, **kwargs):
+            (tmp_path / "test123.auto.en.srt").write_text(srt_content)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = write_sub
+
+        result = _fetch_subtitles("https://youtube.com/watch?v=test123", tmp_path, 0)
+
+        assert result is not None
+        assert result["source"] == "auto-generated"
+
+    @patch("subprocess.run")
+    def test_returns_none_when_no_subs(self, mock_run, tmp_path):
+        """Should return None when no subtitle files are produced."""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        result = _fetch_subtitles("https://youtube.com/watch?v=test123", tmp_path, 0)
+
+        assert result is None
+
+    @patch("subprocess.run")
+    def test_strips_html_tags(self, mock_run, tmp_path):
+        """HTML tags in auto-subs should be stripped."""
+        srt_content = (
+            "1\n00:00:00,000 --> 00:00:05,000\n"
+            "<font color='#ffffff'>Hello</font> <b>world</b>\n"
+        )
+
+        def write_sub(*args, **kwargs):
+            (tmp_path / "test123.auto.en.srt").write_text(srt_content)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = write_sub
+
+        result = _fetch_subtitles("https://youtube.com/watch?v=test123", tmp_path, 0)
+
+        assert "<font" not in result["txt"]
+        assert "<b>" not in result["txt"]
+        assert "Hello" in result["txt"]
+
+    @patch("subprocess.run")
+    def test_returns_none_on_empty_subs(self, mock_run, tmp_path):
+        """Empty subtitle file should return None."""
+        srt_content = "1\n00:00:00,000 --> 00:00:05,000\n\n"
+
+        def write_sub(*args, **kwargs):
+            (tmp_path / "test123.en.srt").write_text(srt_content)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = write_sub
+
+        result = _fetch_subtitles("https://youtube.com/watch?v=test123", tmp_path, 0)
+
+        assert result is None
+
+    @patch("subprocess.run")
+    def test_handles_timeout(self, mock_run, tmp_path):
+        """Timeout during subtitle fetch should return None."""
+        mock_run.side_effect = subprocess.TimeoutExpired("cmd", 30)
+
+        result = _fetch_subtitles("https://youtube.com/watch?v=test123", tmp_path, 0)
+
+        assert result is None
+
+    @patch("subprocess.run")
+    def test_cleans_up_sub_files(self, mock_run, tmp_path):
+        """Downloaded subtitle files should be cleaned up."""
+        srt_content = "1\n00:00:00,000 --> 00:00:05,000\nHello\n"
+
+        def write_sub(*args, **kwargs):
+            (tmp_path / "test123.en.srt").write_text(srt_content)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = write_sub
+
+        _fetch_subtitles("https://youtube.com/watch?v=test123", tmp_path, 0)
+
+        # The intermediate sub file should be cleaned up
+        assert not (tmp_path / "test123.en.srt").exists()
+
+
+class TestSubtitleFirstPipeline:
+    """Tests for subtitle-first process_video pipeline."""
+
+    @patch("claudetube.core._fetch_subtitles")
+    @patch("claudetube.core._get_metadata")
+    def test_uses_subs_when_available(self, mock_meta, mock_subs, tmp_path):
+        """process_video should use subtitles and skip whisper when subs found."""
+        mock_meta.return_value = {
+            "title": "Test",
+            "duration": 120,
+            "duration_string": "2:00",
+        }
+        mock_subs.return_value = {
+            "srt": "1\n00:00:00,000 --> 00:00:05,000\nHello\n",
+            "txt": "Hello",
+            "source": "uploaded",
+        }
+
+        result = process_video("test12345678", output_base=tmp_path)
+
+        assert result.success is True
+        assert result.transcript_srt is not None
+        assert result.transcript_srt.exists()
+        assert result.transcript_txt.exists()
+        assert result.transcript_txt.read_text() == "Hello"
+        state = json.loads((result.output_dir / "state.json").read_text())
+        assert state["transcript_source"] == "uploaded"
+        assert state["transcript_complete"] is True
+
+    @patch("claudetube.core._transcribe_faster_whisper")
+    @patch("claudetube.core._fetch_subtitles")
+    @patch("claudetube.core._get_metadata")
+    @patch("subprocess.run")
+    def test_falls_back_to_whisper_when_no_subs(
+        self, mock_run, mock_meta, mock_subs, mock_whisper, tmp_path
+    ):
+        """Should fall back to whisper when no subtitles available."""
+        mock_meta.return_value = {
+            "title": "Test",
+            "duration": 120,
+            "duration_string": "2:00",
+        }
+        mock_subs.return_value = None
+        mock_whisper.return_value = {
+            "srt": "1\n00:00:00,000 --> 00:00:05,000\nWhispered\n",
+            "txt": "Whispered",
+        }
+
+        # Mock yt-dlp audio download to create audio.mp3
+        def handle_run(cmd, *args, **kwargs):
+            if isinstance(cmd, list) and "yt-dlp" in cmd[0]:
+                # Find -o argument and create the file
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).write_bytes(b"fake audio")
+                        break
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        result = process_video("test12345678", output_base=tmp_path)
+
+        assert result.success is True
+        mock_subs.assert_called_once()
+        mock_whisper.assert_called_once()
+        state = json.loads((result.output_dir / "state.json").read_text())
+        assert state["transcript_source"] == "whisper"
+
+    @patch("claudetube.core._fetch_subtitles")
+    @patch("claudetube.core._get_metadata")
+    def test_subtitle_source_tracked_in_state(self, mock_meta, mock_subs, tmp_path):
+        """state.json should track whether transcript came from subs or whisper."""
+        mock_meta.return_value = {
+            "title": "Test",
+            "duration": 60,
+            "duration_string": "1:00",
+        }
+        mock_subs.return_value = {
+            "srt": "1\n00:00:00,000 --> 00:00:05,000\nAuto\n",
+            "txt": "Auto",
+            "source": "auto-generated",
+        }
+
+        result = process_video("test12345678", output_base=tmp_path)
+
+        state = json.loads((result.output_dir / "state.json").read_text())
+        assert state["transcript_source"] == "auto-generated"
+
+    @patch("claudetube.core._fetch_subtitles")
+    @patch("claudetube.core._get_metadata")
+    def test_no_video_downloaded_when_subs_found(self, mock_meta, mock_subs, tmp_path):
+        """When subs are found, no video or audio file should be downloaded."""
+        mock_meta.return_value = {
+            "title": "Test",
+            "duration": 60,
+            "duration_string": "1:00",
+        }
+        mock_subs.return_value = {
+            "srt": "1\n00:00:00,000 --> 00:00:05,000\nSub\n",
+            "txt": "Sub",
+            "source": "uploaded",
+        }
+
+        result = process_video("test12345678", output_base=tmp_path)
+
+        assert not (result.output_dir / "video.mp4").exists()
+        assert not (result.output_dir / "audio.mp3").exists()

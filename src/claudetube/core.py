@@ -169,7 +169,6 @@ def process_video(
             )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    video_path = output_dir / "video.mp4"
     audio_path = output_dir / "audio.mp3"
 
     # STEP 1: Fetch metadata (fast, ~2s)
@@ -202,64 +201,73 @@ def process_video(
     state_file.write_text(json.dumps(state, indent=2))
     _log(f"Metadata: '{state['title']}' ({state['duration_string']})", t0)
 
-    # STEP 2: Download video - smallest possible (~5-10s)
-    if not video_path.exists():
-        _log("Downloading video (smallest)...", t0)
-        cmd = [
-            _find_tool("yt-dlp"),
-            "-S",
-            "+res,+size,+br,+fps",
-            "--no-playlist",
-            "--no-warnings",
-            "--merge-output-format",
-            "mp4",
-            "-o",
-            str(video_path),
-            url,
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0 or not video_path.exists():
-            _log(f"Download failed: {result.stderr[:100]}", t0)
-            return VideoResult(
-                False, video_id, output_dir, error="Download failed", metadata=state
-            )
-        size_mb = video_path.stat().st_size / 1024 / 1024
-        _log(f"Downloaded: {size_mb:.1f}MB", t0)
-
-    # STEP 3: Extract audio (~2s)
-    if not audio_path.exists():
-        _log("Extracting audio...", t0)
-        cmd = [
-            "ffmpeg",
-            "-i",
-            str(video_path),
-            "-vn",
-            "-acodec",
-            "mp3",
-            "-ab",
-            "64k",
-            "-y",
-            str(audio_path),
-        ]
-        subprocess.run(cmd, capture_output=True)
-        _log("Audio extracted", t0)
-
-    # STEP 4: Transcribe (~30-60s for tiny model)
     srt_path = output_dir / "audio.srt"
     txt_path = output_dir / "audio.txt"
 
+    # STEP 2: Try subtitles first (fast, ~2-3s)
+    sub_result = _fetch_subtitles(url, output_dir, t0)
+    if sub_result:
+        srt_path.write_text(sub_result["srt"])
+        txt_path.write_text(sub_result["txt"])
+        state["transcript_complete"] = True
+        state["transcript_source"] = sub_result["source"]
+        state_file.write_text(json.dumps(state, indent=2))
+        _log(
+            f"DONE via subtitles ({sub_result['source']}) in {time.time() - t0:.1f}s",
+            t0,
+        )
+        return VideoResult(
+            success=True,
+            video_id=video_id,
+            output_dir=output_dir,
+            transcript_srt=srt_path,
+            transcript_txt=txt_path,
+            metadata=state,
+        )
+
+    # STEP 3: No subtitles available — download audio for whisper
+    _log("No subtitles available, falling back to whisper...", t0)
+    if not audio_path.exists():
+        _log("Downloading audio...", t0)
+        cmd = [
+            _find_tool("yt-dlp"),
+            "-f",
+            "ba",
+            "-x",
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            "64K",
+            "--no-playlist",
+            "--no-warnings",
+            "-o",
+            str(audio_path),
+            url,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0 or not audio_path.exists():
+            _log(f"Audio download failed: {result.stderr[:100]}", t0)
+            return VideoResult(
+                False,
+                video_id,
+                output_dir,
+                error="Audio download failed",
+                metadata=state,
+            )
+        size_mb = audio_path.stat().st_size / 1024 / 1024
+        _log(f"Audio downloaded: {size_mb:.1f}MB", t0)
+
+    # STEP 4: Transcribe with whisper (~30-60s for tiny model)
     if not srt_path.exists():
         _log(f"Transcribing with faster-whisper ({whisper_model})...", t0)
         transcript_text = _transcribe_faster_whisper(audio_path, whisper_model, t0)
 
         if transcript_text:
-            # Write SRT and TXT
             txt_path.write_text(transcript_text["txt"])
             srt_path.write_text(transcript_text["srt"])
             _log("Transcription complete", t0)
         else:
             _log("Transcription failed, trying fallback...", t0)
-            # Fallback to regular whisper
             cmd = [
                 "whisper",
                 str(audio_path),
@@ -275,18 +283,37 @@ def process_video(
             subprocess.run(cmd, capture_output=True)
             _log("Fallback transcription complete", t0)
 
-    # STEP 5: Optional frames
+    # STEP 5: Optional frames (downloads video only if needed)
     frames = []
     if extract_frames:
-        frames = _extract_frames(video_path, output_dir / "frames", frame_interval, t0)
-
-    # Cleanup video to save space
-    if video_path.exists():
-        video_path.unlink()
-        _log("Cleaned up video file", t0)
+        video_path = output_dir / "video.mp4"
+        if not video_path.exists():
+            _log("Downloading video for frames...", t0)
+            cmd = [
+                _find_tool("yt-dlp"),
+                "-f",
+                "160+139/160+140/worst[height<=360]/worst",
+                "-S",
+                "+size,+br",
+                "--no-playlist",
+                "--no-warnings",
+                "--merge-output-format",
+                "mp4",
+                "-o",
+                str(video_path),
+                url,
+            ]
+            subprocess.run(cmd, capture_output=True, text=True)
+        if video_path.exists():
+            frames = _extract_frames(
+                video_path, output_dir / "frames", frame_interval, t0
+            )
+            video_path.unlink()
+            _log("Cleaned up video file", t0)
 
     # Update state
     state["transcript_complete"] = True
+    state["transcript_source"] = "whisper"
     state["whisper_model"] = whisper_model
     if frames:
         state["frames_count"] = len(frames)
@@ -547,6 +574,84 @@ def get_hq_frames_at(
         t0,
     )
     return frames
+
+
+def _fetch_subtitles(url: str, output_dir: Path, t0: float) -> dict | None:
+    """Try to fetch subtitles from the video source (faster than whisper).
+
+    Attempts uploaded subs first, then auto-generated subs.
+    Returns {"srt": ..., "txt": ..., "source": ...} or None.
+    """
+    _log("Checking for subtitles...", t0)
+    cmd = [
+        _find_tool("yt-dlp"),
+        "--write-subs",
+        "--write-auto-subs",
+        "--sub-langs",
+        "en.*,en",
+        "--sub-format",
+        "srt/vtt/best",
+        "--convert-subs",
+        "srt",
+        "--skip-download",
+        "--no-playlist",
+        "--no-warnings",
+        "-o",
+        str(output_dir / "%(id)s.%(ext)s"),
+        url,
+    ]
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        _log(f"Subtitle fetch failed: {e}", t0)
+        return None
+
+    # Look for subtitle files (yt-dlp names them {id}.{lang}.srt)
+    sub_files = sorted(output_dir.glob("*.srt"))
+    # Exclude our own audio.srt if it exists from a previous run
+    sub_files = [f for f in sub_files if f.name != "audio.srt"]
+    if not sub_files:
+        _log("No subtitles found", t0)
+        return None
+
+    sub_file = sub_files[0]
+    _log(f"Found subtitle: {sub_file.name}", t0)
+    raw = sub_file.read_text(errors="replace")
+
+    # Determine source type from filename
+    source = "auto-generated" if ".auto." in sub_file.name else "uploaded"
+
+    # Clean up: strip HTML tags from auto-generated subs
+    raw = re.sub(r"<[^>]+>", "", raw)
+
+    # Parse SRT to extract plain text
+    txt_lines = []
+    for line in raw.splitlines():
+        line = line.strip()
+        # Skip sequence numbers, timestamps, empty lines
+        if not line or re.match(r"^\d+$", line) or "-->" in line:
+            continue
+        if line not in txt_lines[-1:]:  # deduplicate consecutive lines
+            txt_lines.append(line)
+
+    if not txt_lines:
+        _log("Subtitle file was empty after parsing", t0)
+        # Clean up downloaded sub files
+        for f in output_dir.glob("*.srt"):
+            if f.name != "audio.srt":
+                f.unlink()
+        return None
+
+    # Clean up downloaded sub files (we'll write our own audio.srt/txt)
+    for f in sub_files:
+        f.unlink()
+
+    _log(f"Subtitles ready ({source}, {len(txt_lines)} lines)", t0)
+    return {
+        "srt": raw,
+        "txt": "\n".join(txt_lines),
+        "source": source,
+    }
 
 
 def _transcribe_faster_whisper(
