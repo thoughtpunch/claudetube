@@ -606,7 +606,7 @@ class TestQualityTiers:
     """Tests for quality tier system."""
 
     def test_all_tiers_have_required_keys(self):
-        required = {"sort", "width", "jpeg_q"}
+        required = {"sort", "width", "jpeg_q", "concurrent_fragments"}
         for name, tier in QUALITY_TIERS.items():
             assert required.issubset(tier.keys()), f"Tier '{name}' missing keys"
 
@@ -1470,3 +1470,135 @@ class TestThumbnailDownload:
 
         state = json.loads((result.output_dir / "state.json").read_text())
         assert state.get("has_thumbnail") is True
+
+
+class TestConcurrentFragments:
+    """Tests for -N concurrent fragment downloads."""
+
+    def test_lowest_uses_one_fragment(self):
+        assert QUALITY_TIERS["lowest"]["concurrent_fragments"] == 1
+
+    def test_low_uses_two_fragments(self):
+        assert QUALITY_TIERS["low"]["concurrent_fragments"] == 2
+
+    def test_medium_uses_four_fragments(self):
+        assert QUALITY_TIERS["medium"]["concurrent_fragments"] == 4
+
+    def test_highest_uses_four_fragments(self):
+        assert QUALITY_TIERS["highest"]["concurrent_fragments"] == 4
+
+    @patch("subprocess.run")
+    def test_n_flag_in_ytdlp_command(self, mock_run, tmp_path):
+        """yt-dlp command should include -N with tier's fragment count."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        captured_cmds = []
+
+        def handle_run(*args, **kwargs):
+            cmd = args[0]
+            captured_cmds.append(cmd)
+            if "yt-dlp" in str(cmd[0]):
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).write_bytes(b"fake video")
+                        break
+                return MagicMock(returncode=0)
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        get_frames_at(
+            "test12345678",
+            start_time=0,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+            quality="high",
+        )
+
+        ytdlp_cmd = captured_cmds[0]
+        assert "-N" in ytdlp_cmd
+        n_idx = ytdlp_cmd.index("-N")
+        assert ytdlp_cmd[n_idx + 1] == "4"
+
+    @patch("subprocess.run")
+    def test_lowest_n_flag_is_one(self, mock_run, tmp_path):
+        """Lowest quality should use -N 1."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        captured_cmds = []
+
+        def handle_run(*args, **kwargs):
+            cmd = args[0]
+            captured_cmds.append(cmd)
+            if "yt-dlp" in str(cmd[0]):
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).write_bytes(b"fake video")
+                        break
+                return MagicMock(returncode=0)
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        get_frames_at(
+            "test12345678",
+            start_time=0,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+            quality="lowest",
+        )
+
+        ytdlp_cmd = captured_cmds[0]
+        assert "-N" in ytdlp_cmd
+        n_idx = ytdlp_cmd.index("-N")
+        assert ytdlp_cmd[n_idx + 1] == "1"
+
+    @patch("subprocess.run")
+    def test_hq_uses_n_flag(self, mock_run, tmp_path):
+        """get_hq_frames_at should use -N 4."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        captured_cmds = []
+
+        def handle_run(*args, **kwargs):
+            cmd = args[0]
+            captured_cmds.append(cmd)
+            if "yt-dlp" in str(cmd[0]):
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).write_bytes(b"fake segment")
+                        break
+                return MagicMock(returncode=0)
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        get_hq_frames_at(
+            "test12345678",
+            start_time=0,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+        )
+
+        ytdlp_cmd = captured_cmds[0]
+        assert "-N" in ytdlp_cmd
+        n_idx = ytdlp_cmd.index("-N")
+        assert ytdlp_cmd[n_idx + 1] == "4"
