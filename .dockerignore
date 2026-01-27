@@ -1,0 +1,15 @@
+.git
+.github
+__pycache__
+*.pyc
+*.egg-info
+dist
+build
+.venv
+venv
+.env
+*.mp3
+*.mp4
+*.jpg
+*.srt
+video_cache
