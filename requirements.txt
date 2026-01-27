@@ -1,11 +1,10 @@
-# Core dependencies
+# Core
 yt-dlp>=2024.0.0
-Pillow>=10.0.0
-imagehash>=4.3.0
-
-# Fast transcription (4x faster than openai-whisper)
 faster-whisper>=1.0.0
 
 # Development
 pytest>=8.0.0
+black>=24.0.0
+flake8>=7.0.0
+isort>=5.13.0
 build>=1.0.0

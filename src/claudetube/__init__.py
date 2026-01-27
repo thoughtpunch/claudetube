@@ -7,12 +7,12 @@ Process YouTube videos for Claude Code:
 3. Extract frames on-demand when visual context is needed
 """
 
-from claudetube.fast import (
-    process_video,
+from claudetube.core import (
+    VideoResult,
+    extract_video_id,
     get_frames_at,
     get_hq_frames_at,
-    extract_video_id,
-    VideoResult,
+    process_video,
 )
 
 __version__ = "0.1.0"

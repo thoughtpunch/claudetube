@@ -2,78 +2,88 @@
 
 **Let Claude watch YouTube videos.**
 
-claudetube downloads YouTube videos, transcribes them with faster-whisper, and lets Claude "see" specific moments on-demand. Built for Claude Code but works with any AI.
-
-## How It Works
-
-1. **Download** - Fetches lowest quality video (144p) for speed
-2. **Transcribe** - Uses faster-whisper with batched inference (~28s for 7min video)
-3. **Cache** - Stores everything by video ID for instant re-access
-4. **Drill-in** - Extract frames for specific timestamps when visual context is needed
+claudetube downloads YouTube videos, transcribes them with faster-whisper, and lets Claude "see" specific moments on-demand. Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) but works as a standalone Python library too.
 
 ## Quick Start
 
+### Prerequisites
+
+- **Python 3.10+**
+- **ffmpeg** (system package)
+  ```bash
+  # macOS
+  brew install ffmpeg
+
+  # Ubuntu/Debian
+  sudo apt install ffmpeg
+  ```
+
+### Install
+
 ```bash
-# Install
-pip install claudetube
-
-# Or from source
-git clone https://github.com/yourusername/claudetube
+git clone https://github.com/dmarx/claudetube
 cd claudetube
-pip install -e .
-
-# Process a video
-claudetube "https://youtube.com/watch?v=VIDEO_ID"
+./install.sh
 ```
+
+This does three things:
+1. Creates a Python venv at `~/.claudetube/venv/`
+2. Installs the `claudetube` package + dependencies (yt-dlp, faster-whisper)
+3. Copies slash commands to `~/.claude/commands/` (global to all Claude Code sessions)
+
+Restart Claude Code after installing.
+
+### Can I use this from any Claude Code session?
+
+**Yes.** The installer puts slash commands in `~/.claude/commands/`, which is the global commands directory. Every Claude Code instance on your machine will have `/yt` available.
+
+### Why not a pre-built binary?
+
+claudetube depends on faster-whisper (C++ transcription engine) and ffmpeg (system media tool). These have platform-specific native code that can't be bundled into a single static binary. The install script handles all of this automatically.
 
 ## Usage with Claude Code
 
-Use the `/watch_youtube` slash command:
-
 ```
-/watch_youtube https://youtube.com/watch?v=abc123 how did they make the sprites?
+/yt https://youtube.com/watch?v=abc123 how did they make the sprites?
 ```
 
 Claude will:
-1. Process the video (or use cache)
-2. Read the transcript to understand content
+1. Download and transcribe the video (~60s first time, cached after)
+2. Read the transcript
 3. If needed, extract frames to "see" specific moments
 4. Answer your question
+
+### Other Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/yt <url> [question]` | Analyze a video |
+| `/yt:see <id> <timestamp>` | Quick frames (general visuals) |
+| `/yt:hq <id> <timestamp>` | HQ frames (code, text, diagrams) |
+| `/yt:transcript <id>` | Read cached transcript |
+| `/yt:list` | List all cached videos |
 
 ## Python API
 
 ```python
 from claudetube import process_video, get_frames_at
 
-# Process video (transcript only - fast)
+# Transcribe a video
 result = process_video("https://youtube.com/watch?v=VIDEO_ID")
 print(result.transcript_srt.read_text())
 
-# Drill into specific timestamp for frames
-frames = get_frames_at(
-    "VIDEO_ID",
-    start_time=120,  # 2:00
-    duration=10,     # 10 seconds
-)
-# frames is a list of Path objects to JPG files
+# Extract frames at a specific timestamp
+frames = get_frames_at("VIDEO_ID", start_time=120, duration=10)
 ```
 
-## Performance
+## How It Works
 
-For a 7-minute video:
+1. **Download** -- Fetches lowest quality video (144p) for speed
+2. **Transcribe** -- Uses faster-whisper with batched inference
+3. **Cache** -- Stores everything at `~/.claude/video_cache/{VIDEO_ID}/`
+4. **Drill-in** -- Extract frames on-demand when visual context is needed
 
-| Step | Time |
-|------|------|
-| Metadata fetch | ~4s |
-| Download (144p, 6MB) | ~20-25s |
-| Audio extraction | ~5s |
-| Transcription (faster-whisper, batched) | ~28s |
-| **First run total** | **~60s** |
-| **Cached (subsequent)** | **~0.4s** |
-
-## Cache Structure
-
-Videos are cached at `~/.claude/video_cache/{VIDEO_ID}/`:
+### Cache Structure
 
 ```
 ~/.claude/video_cache/
@@ -82,32 +92,19 @@ Videos are cached at `~/.claude/video_cache/{VIDEO_ID}/`:
     ├── audio.mp3      # Extracted audio
     ├── audio.srt      # Timestamped transcript
     ├── audio.txt      # Plain text transcript
-    └── drill/         # On-demand frames
+    ├── drill/         # Quick frames (480p)
+    └── hq/            # High-quality frames (1280p)
 ```
 
-## state.json
+## Development
 
-Rich metadata from YouTube:
-
-```json
-{
-  "video_id": "dYP2V_nK8o0",
-  "title": "How To Make An ISOMETRIC Game",
-  "duration_string": "6:57",
-  "uploader": "Tamara Makes Games",
-  "description": "3 ways to make an isometric game...",
-  "categories": ["Gaming"],
-  "tags": ["unity", "isometric"],
-  "transcript_complete": true
-}
+```bash
+git clone https://github.com/dmarx/claudetube
+cd claudetube
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
 ```
-
-## Requirements
-
-- Python 3.10+
-- ffmpeg (system)
-- yt-dlp (pip, included)
-- faster-whisper (pip, included)
 
 ## License
 

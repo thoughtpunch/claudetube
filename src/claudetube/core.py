@@ -1,13 +1,14 @@
 """
-Fast video processing for Claude Code.
+Core video processing for claudetube.
 
-Priority: Get transcript FAST. Frames are optional/on-demand.
+Downloads YouTube videos, transcribes with faster-whisper, and extracts
+frames on-demand for visual analysis.
 """
 
 import json
+import re
 import shutil
 import subprocess
-import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -31,20 +32,37 @@ def _find_tool(name: str) -> str:
 def extract_video_id(url: str) -> str:
     """Extract YouTube video ID from URL."""
     patterns = [
-        r'(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})',
-        r'(?:embed/)([a-zA-Z0-9_-]{11})',
-        r'^([a-zA-Z0-9_-]{11})$',
+        r"(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})",
+        r"(?:embed/)([a-zA-Z0-9_-]{11})",
+        r"^([a-zA-Z0-9_-]{11})$",
     ]
     for pattern in patterns:
         match = re.search(pattern, url)
         if match:
             return match.group(1)
-    return url.replace('/', '_').replace(':', '_')[:20]
+    return url.replace("/", "_").replace(":", "_")[:20]
+
+
+def extract_playlist_id(url: str) -> str | None:
+    """Extract YouTube playlist ID from URL (list= parameter)."""
+    match = re.search(r"[?&]list=([a-zA-Z0-9_-]+)", url)
+    return match.group(1) if match else None
+
+
+def extract_url_context(url: str) -> dict:
+    """Extract video ID, playlist ID, and other context from URL."""
+    return {
+        "video_id": extract_video_id(url),
+        "playlist_id": extract_playlist_id(url),
+        "original_url": url,
+        "clean_url": re.sub(r"[&?]list=[^&]+", "", url),  # URL without playlist
+    }
 
 
 @dataclass
 class VideoResult:
     """Result of video processing."""
+
     success: bool
     video_id: str
     output_dir: Path
@@ -82,7 +100,11 @@ def process_video(
     if output_base is None:
         output_base = Path.home() / ".claude" / "video_cache"
 
-    video_id = extract_video_id(url)
+    # Extract context from URL (video_id, playlist_id, etc.)
+    url_context = extract_url_context(url)
+    video_id = url_context["video_id"]
+    playlist_id = url_context["playlist_id"]
+
     output_dir = Path(output_base) / video_id
     state_file = output_dir / "state.json"
 
@@ -95,9 +117,19 @@ def process_video(
                 success=True,
                 video_id=video_id,
                 output_dir=output_dir,
-                transcript_srt=output_dir / "audio.srt" if (output_dir / "audio.srt").exists() else None,
-                transcript_txt=output_dir / "audio.txt" if (output_dir / "audio.txt").exists() else None,
-                frames=sorted(output_dir.glob("frames/*.jpg")) if extract_frames else [],
+                transcript_srt=(
+                    output_dir / "audio.srt"
+                    if (output_dir / "audio.srt").exists()
+                    else None
+                ),
+                transcript_txt=(
+                    output_dir / "audio.txt"
+                    if (output_dir / "audio.txt").exists()
+                    else None
+                ),
+                frames=(
+                    sorted(output_dir.glob("frames/*.jpg")) if extract_frames else []
+                ),
                 metadata=state,
             )
 
@@ -109,11 +141,14 @@ def process_video(
     _log("Fetching video metadata...", t0)
     meta = _get_metadata(url)
     if not meta:
-        return VideoResult(False, video_id, output_dir, error="Failed to fetch metadata")
+        return VideoResult(
+            False, video_id, output_dir, error="Failed to fetch metadata"
+        )
 
     state = {
         "video_id": video_id,
         "url": url,
+        "playlist_id": playlist_id,  # For future playlist-aware features / YouTube API
         "title": meta.get("title"),
         "duration": meta.get("duration"),
         "duration_string": meta.get("duration_string"),
@@ -137,18 +172,24 @@ def process_video(
         _log("Downloading video (144p)...", t0)
         cmd = [
             _find_tool("yt-dlp"),
-            "-f", "160+139/160+140/worst[height<=360]/worst",
-            "-S", "+size,+br",
+            "-f",
+            "160+139/160+140/worst[height<=360]/worst",
+            "-S",
+            "+size,+br",
             "--no-playlist",
             "--no-warnings",
-            "--merge-output-format", "mp4",
-            "-o", str(video_path),
-            url
+            "--merge-output-format",
+            "mp4",
+            "-o",
+            str(video_path),
+            url,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0 or not video_path.exists():
             _log(f"Download failed: {result.stderr[:100]}", t0)
-            return VideoResult(False, video_id, output_dir, error="Download failed", metadata=state)
+            return VideoResult(
+                False, video_id, output_dir, error="Download failed", metadata=state
+            )
         size_mb = video_path.stat().st_size / 1024 / 1024
         _log(f"Downloaded: {size_mb:.1f}MB", t0)
 
@@ -156,9 +197,16 @@ def process_video(
     if not audio_path.exists():
         _log("Extracting audio...", t0)
         cmd = [
-            "ffmpeg", "-i", str(video_path),
-            "-vn", "-acodec", "mp3", "-ab", "64k",
-            "-y", str(audio_path)
+            "ffmpeg",
+            "-i",
+            str(video_path),
+            "-vn",
+            "-acodec",
+            "mp3",
+            "-ab",
+            "64k",
+            "-y",
+            str(audio_path),
         ]
         subprocess.run(cmd, capture_output=True)
         _log("Audio extracted", t0)
@@ -179,8 +227,18 @@ def process_video(
         else:
             _log("Transcription failed, trying fallback...", t0)
             # Fallback to regular whisper
-            cmd = ["whisper", str(audio_path), "--model", whisper_model,
-                   "--language", "en", "--output_format", "all", "--output_dir", str(output_dir)]
+            cmd = [
+                "whisper",
+                str(audio_path),
+                "--model",
+                whisper_model,
+                "--language",
+                "en",
+                "--output_format",
+                "all",
+                "--output_dir",
+                str(output_dir),
+            ]
             subprocess.run(cmd, capture_output=True)
             _log("Fallback transcription complete", t0)
 
@@ -258,13 +316,17 @@ def get_frames_at(
             _log(f"Re-downloading video for drill-in at {start_time}s...", t0)
             cmd = [
                 _find_tool("yt-dlp"),
-                "-f", "160+139/160+140/worst[height<=360]/worst",
-                "-S", "+size,+br",
+                "-f",
+                "160+139/160+140/worst[height<=360]/worst",
+                "-S",
+                "+size,+br",
                 "--no-playlist",
                 "--no-warnings",
-                "--merge-output-format", "mp4",
-                "-o", str(video_path),
-                url
+                "--merge-output-format",
+                "mp4",
+                "-o",
+                str(video_path),
+                url,
             ]
             subprocess.run(cmd, capture_output=True)
 
@@ -280,18 +342,23 @@ def get_frames_at(
     _log(f"Extracting frames from {start_time}s to {end_time}s...", t0)
 
     while current < end_time:
-        ts_str = f"{int(current//60):02d}-{int(current%60):02d}"
+        ts_str = f"{int(current // 60):02d}-{int(current % 60):02d}"
         output = drill_dir / f"drill_{ts_str}.jpg"
 
         cmd = [
             "ffmpeg",
-            "-ss", str(current),
-            "-i", str(video_path),
-            "-vframes", "1",
-            "-vf", f"scale={width}:-1",
-            "-q:v", "5",
+            "-ss",
+            str(current),
+            "-i",
+            str(video_path),
+            "-vframes",
+            "1",
+            "-vf",
+            f"scale={width}:-1",
+            "-q:v",
+            "5",
             "-y",
-            str(output)
+            str(output),
         ]
 
         result = subprocess.run(cmd, capture_output=True)
@@ -365,12 +432,15 @@ def get_hq_frames_at(
         _log("Downloading HIGH QUALITY video (this may take a while)...", t0)
         cmd = [
             _find_tool("yt-dlp"),
-            "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+            "-f",
+            "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
             "--no-playlist",
             "--no-warnings",
-            "--merge-output-format", "mp4",
-            "-o", str(hq_video_path),
-            url
+            "--merge-output-format",
+            "mp4",
+            "-o",
+            str(hq_video_path),
+            url,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0 or not hq_video_path.exists():
@@ -387,18 +457,23 @@ def get_hq_frames_at(
     _log(f"Extracting HQ frames from {start_time}s to {end_time}s...", t0)
 
     while current < end_time:
-        ts_str = f"{int(current//60):02d}-{int(current%60):02d}"
+        ts_str = f"{int(current // 60):02d}-{int(current % 60):02d}"
         output = hq_dir / f"hq_{ts_str}.jpg"
 
         cmd = [
             "ffmpeg",
-            "-ss", str(current),
-            "-i", str(hq_video_path),
-            "-vframes", "1",
-            "-vf", f"scale={width}:-1",
-            "-q:v", "2",  # Higher quality JPEG
+            "-ss",
+            str(current),
+            "-i",
+            str(hq_video_path),
+            "-vframes",
+            "1",
+            "-vf",
+            f"scale={width}:-1",
+            "-q:v",
+            "2",  # Higher quality JPEG
             "-y",
-            str(output)
+            str(output),
         ]
 
         result = subprocess.run(cmd, capture_output=True)
@@ -409,15 +484,21 @@ def get_hq_frames_at(
         current += interval
 
     # Keep HQ video for potential future use (user requested it)
-    _log(f"HQ drill-in complete: {len(frames)} frames (video kept at {hq_video_path})", t0)
+    _log(
+        f"HQ drill-in complete: {len(frames)} frames (video kept at {hq_video_path})",
+        t0,
+    )
     return frames
 
 
-def _transcribe_faster_whisper(audio_path: Path, model_size: str, t0: float) -> dict | None:
+def _transcribe_faster_whisper(
+    audio_path: Path, model_size: str, t0: float
+) -> dict | None:
     """Transcribe using faster-whisper (4x faster than OpenAI whisper)."""
     try:
-        from faster_whisper import WhisperModel
         import os
+
+        from faster_whisper import WhisperModel
 
         # Use all available CPU threads
         cpu_threads = os.cpu_count() or 4
@@ -434,6 +515,7 @@ def _transcribe_faster_whisper(audio_path: Path, model_size: str, t0: float) -> 
         _log("  Transcribing (batched)...", t0)
         # Batched transcription is faster on multi-core CPUs
         from faster_whisper import BatchedInferencePipeline
+
         batched_model = BatchedInferencePipeline(model=model)
         segments, info = batched_model.transcribe(
             str(audio_path),
@@ -453,7 +535,9 @@ def _transcribe_faster_whisper(audio_path: Path, model_size: str, t0: float) -> 
             txt_lines.append(text)
 
             # Progress
-            print(f"  [{start}] {text[:60]}{'...' if len(text) > 60 else ''}", flush=True)
+            print(
+                f"  [{start}] {text[:60]}{'...' if len(text) > 60 else ''}", flush=True
+            )
 
         return {
             "srt": "\n".join(srt_lines),
@@ -479,15 +563,11 @@ def _format_srt_time(seconds: float) -> str:
 
 def _get_metadata(url: str) -> dict:
     """Fetch video metadata without downloading."""
-    cmd = [
-        _find_tool("yt-dlp"),
-        "--dump-json",
-        "--no-download",
-        "--no-warnings",
-        url
-    ]
+    cmd = [_find_tool("yt-dlp"), "--dump-json", "--no-download", "--no-warnings", url]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=True, timeout=30
+        )
         return json.loads(result.stdout)
     except Exception:
         return {}
@@ -508,11 +588,16 @@ def _extract_frames(
     _log(f"Extracting frames every {interval}s...", t0)
 
     cmd = [
-        "ffmpeg", "-i", str(video_path),
-        "-vf", f"fps=1/{interval},scale=480:-1",
-        "-q:v", "8",
-        "-vsync", "vfr",
-        str(frames_dir / "frame_%03d.jpg")
+        "ffmpeg",
+        "-i",
+        str(video_path),
+        "-vf",
+        f"fps=1/{interval},scale=480:-1",
+        "-q:v",
+        "8",
+        "-vsync",
+        "vfr",
+        str(frames_dir / "frame_%03d.jpg"),
     ]
     subprocess.run(cmd, capture_output=True)
 
@@ -520,38 +605,10 @@ def _extract_frames(
     frames = sorted(frames_dir.glob("frame_*.jpg"))
     for i, f in enumerate(frames):
         ts = i * interval
-        ts_str = f"{int(ts//60):02d}-{int(ts%60):02d}"
+        ts_str = f"{int(ts // 60):02d}-{int(ts % 60):02d}"
         new_path = frames_dir / f"frame_{ts_str}.jpg"
         f.rename(new_path)
 
     frames = sorted(frames_dir.glob("frame_*.jpg"))
     _log(f"Extracted {len(frames)} frames", t0)
     return frames
-
-
-# CLI
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Fast video processing for Claude")
-    parser.add_argument("url", help="YouTube URL")
-    parser.add_argument("--frames", action="store_true", help="Extract frames")
-    parser.add_argument("--model", default="tiny", help="Whisper model")
-    parser.add_argument("--interval", type=int, default=30, help="Frame interval")
-    args = parser.parse_args()
-
-    result = process_video(
-        args.url,
-        whisper_model=args.model,
-        extract_frames=args.frames,
-        frame_interval=args.interval,
-    )
-
-    if result.success:
-        print(f"\n=== RESULT ===")
-        print(f"Video ID: {result.video_id}")
-        print(f"Title: {result.metadata.get('title')}")
-        print(f"Transcript: {result.transcript_srt}")
-        if result.frames:
-            print(f"Frames: {len(result.frames)}")
-    else:
-        print(f"ERROR: {result.error}")

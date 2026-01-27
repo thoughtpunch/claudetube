@@ -24,13 +24,15 @@ classifiers = [
 ]
 dependencies = [
     "yt-dlp",
-    "Pillow",
-    "imagehash",
+    "faster-whisper>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "black",
+    "flake8",
+    "isort",
     "build",
 ]
 
@@ -43,3 +45,11 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
