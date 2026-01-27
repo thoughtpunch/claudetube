@@ -375,8 +375,13 @@ def get_frames_at(
     drill_dir = output_dir / f"drill_{quality}"
     drill_dir.mkdir(parents=True, exist_ok=True)
 
-    # Check if we need to re-download video
-    video_path = output_dir / f"video_{quality}.mp4"
+    # Download only the needed section (+ 2s buffer for keyframes)
+    section_start = max(0, start_time - 2)
+    section_end = start_time + duration + 2
+    section_spec = f"*{section_start}-{section_end}"
+
+    seg_name = f"segment_{quality}_{int(start_time)}_{int(start_time + duration)}.mp4"
+    video_path = output_dir / seg_name
     state_file = output_dir / "state.json"
 
     if not video_path.exists() and state_file.exists():
@@ -384,13 +389,17 @@ def get_frames_at(
         url = state.get("url")
         if url:
             _log(
-                f"Re-downloading video ({quality}) for drill-in at {start_time}s...",
+                f"Downloading {quality} segment"
+                f" ({section_start}s-{section_end}s)...",
                 t0,
             )
             cmd = [
                 _find_tool("yt-dlp"),
                 "-S",
                 tier["sort"],
+                "--download-sections",
+                section_spec,
+                "--force-keyframes-at-cuts",
                 "--no-playlist",
                 "--no-warnings",
                 "--merge-output-format",
@@ -406,9 +415,12 @@ def get_frames_at(
         return []
 
     # Extract frames for the time range
+    # Since we downloaded a section starting at section_start,
+    # ffmpeg timestamps are relative to the section start
     frames = []
     current = start_time
     end_time = start_time + duration
+    seek_offset = section_start  # adjust for section-relative timestamps
 
     _log(f"Extracting {quality} frames from {start_time}s to {end_time}s...", t0)
 
@@ -419,7 +431,7 @@ def get_frames_at(
         cmd = [
             "ffmpeg",
             "-ss",
-            str(current),
+            str(current - seek_offset),
             "-i",
             str(video_path),
             "-vframes",
@@ -439,10 +451,10 @@ def get_frames_at(
 
         current += interval
 
-    # Clean up video for lower tiers; keep for high/highest
-    if quality not in ("high", "highest") and video_path.exists():
+    # Always clean up segment files (they're cheap to re-download)
+    if video_path.exists():
         video_path.unlink()
-        _log(f"Cleaned up {quality} video file", t0)
+        _log(f"Cleaned up {quality} segment file", t0)
 
     # Track extraction in state.json
     if state_file.exists():
@@ -499,7 +511,6 @@ def get_hq_frames_at(
     hq_dir.mkdir(parents=True, exist_ok=True)
 
     state_file = output_dir / "state.json"
-    hq_video_path = output_dir / "video_hq.mp4"
 
     # Get URL from state
     if not state_file.exists():
@@ -512,13 +523,26 @@ def get_hq_frames_at(
         _log("No URL in state.json", t0)
         return []
 
-    # Download HQ video if needed
+    # Download only the needed section (+ 2s buffer for keyframes)
+    section_start = max(0, start_time - 2)
+    section_end = start_time + duration + 2
+    section_spec = f"*{section_start}-{section_end}"
+
+    seg_name = f"segment_hq_{int(start_time)}_{int(start_time + duration)}.mp4"
+    hq_video_path = output_dir / seg_name
+
     if not hq_video_path.exists():
-        _log("Downloading HIGH QUALITY video (this may take a while)...", t0)
+        _log(
+            f"Downloading HQ segment ({section_start}s-{section_end}s)...",
+            t0,
+        )
         cmd = [
             _find_tool("yt-dlp"),
             "-S",
             "res:1080",
+            "--download-sections",
+            section_spec,
+            "--force-keyframes-at-cuts",
             "--no-playlist",
             "--no-warnings",
             "--merge-output-format",
@@ -529,15 +553,16 @@ def get_hq_frames_at(
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0 or not hq_video_path.exists():
-            _log(f"HQ download failed: {result.stderr[:200]}", t0)
+            _log(f"HQ segment download failed: {result.stderr[:200]}", t0)
             return []
         size_mb = hq_video_path.stat().st_size / 1024 / 1024
-        _log(f"Downloaded HQ video: {size_mb:.1f}MB", t0)
+        _log(f"Downloaded HQ segment: {size_mb:.1f}MB", t0)
 
-    # Extract HQ frames
+    # Extract HQ frames (timestamps relative to section start)
     frames = []
     current = start_time
     end_time = start_time + duration
+    seek_offset = section_start
 
     _log(f"Extracting HQ frames from {start_time}s to {end_time}s...", t0)
 
@@ -548,7 +573,7 @@ def get_hq_frames_at(
         cmd = [
             "ffmpeg",
             "-ss",
-            str(current),
+            str(current - seek_offset),
             "-i",
             str(hq_video_path),
             "-vframes",
@@ -568,11 +593,11 @@ def get_hq_frames_at(
 
         current += interval
 
-    # Keep HQ video for potential future use (user requested it)
-    _log(
-        f"HQ drill-in complete: {len(frames)} frames (video kept at {hq_video_path})",
-        t0,
-    )
+    # Clean up segment file
+    if hq_video_path.exists():
+        hq_video_path.unlink()
+
+    _log(f"HQ drill-in complete: {len(frames)} frames", t0)
     return frames
 
 

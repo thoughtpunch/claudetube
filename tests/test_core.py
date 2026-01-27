@@ -386,7 +386,8 @@ class TestGetFramesAt:
         """Should extract frames at the specified interval."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
+        # Segment file matches: segment_lowest_{start}_{start+duration}.mp4
+        (video_dir / "segment_lowest_0_3.mp4").write_bytes(b"fake video")
 
         def create_frame(*args, **kwargs):
             cmd = args[0]
@@ -411,7 +412,7 @@ class TestGetFramesAt:
         """Frame filenames should contain timestamp info."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
+        (video_dir / "segment_lowest_90_92.mp4").write_bytes(b"fake video")
 
         def create_frame(*args, **kwargs):
             cmd = args[0]
@@ -445,7 +446,7 @@ class TestGetFramesAt:
         """Frames that fail to extract should be skipped."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
+        (video_dir / "segment_lowest_0_3.mp4").write_bytes(b"fake video")
 
         mock_run.return_value = MagicMock(returncode=1)  # ffmpeg fails
 
@@ -473,7 +474,8 @@ class TestGetHqFramesAt:
 
         state = {"url": "https://youtube.com/watch?v=test12345678"}
         (video_dir / "state.json").write_text(json.dumps(state))
-        (video_dir / "video_hq.mp4").write_bytes(b"fake hq video")
+        # Segment: segment_hq_{start}_{start+duration}.mp4
+        (video_dir / "segment_hq_0_2.mp4").write_bytes(b"fake hq video")
 
         def create_frame(*args, **kwargs):
             cmd = args[0]
@@ -663,7 +665,7 @@ class TestGetFramesAtQuality:
         """Default quality should use lowest tier settings."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
+        (video_dir / "segment_lowest_0_1.mp4").write_bytes(b"fake video")
 
         def create_frame(*args, **kwargs):
             cmd = args[0]
@@ -741,7 +743,7 @@ class TestGetFramesAtQuality:
         mock_run.side_effect = create_frame
 
         for q in ["lowest", "low"]:
-            (video_dir / f"video_{q}.mp4").write_bytes(b"fake video")
+            (video_dir / f"segment_{q}_0_1.mp4").write_bytes(b"fake video")
             get_frames_at(
                 "test12345678",
                 start_time=0,
@@ -759,7 +761,7 @@ class TestGetFramesAtQuality:
         """Explicit width parameter should override tier default."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
+        (video_dir / "segment_lowest_0_1.mp4").write_bytes(b"fake video")
 
         captured_cmds = []
 
@@ -788,11 +790,11 @@ class TestGetFramesAtQuality:
         assert "scale=320:-1" in ffmpeg_cmd[vf_idx + 1]
 
     @patch("subprocess.run")
-    def test_high_quality_keeps_video(self, mock_run, tmp_path):
-        """high/highest tiers should NOT delete the video file."""
+    def test_segment_always_cleaned_up(self, mock_run, tmp_path):
+        """Segment files should always be cleaned up after extraction."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        video_path = video_dir / "video_high.mp4"
+        video_path = video_dir / "segment_high_0_1.mp4"
         video_path.write_bytes(b"fake video")
 
         def create_frame(*args, **kwargs):
@@ -812,14 +814,14 @@ class TestGetFramesAtQuality:
             quality="high",
         )
 
-        assert video_path.exists(), "high quality should keep video file"
+        assert not video_path.exists(), "segment should be cleaned up"
 
     @patch("subprocess.run")
-    def test_lowest_quality_deletes_video(self, mock_run, tmp_path):
-        """lowest tier should delete the video file after extraction."""
+    def test_lowest_segment_cleaned_up(self, mock_run, tmp_path):
+        """lowest tier segment should be cleaned up after extraction."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        video_path = video_dir / "video_lowest.mp4"
+        video_path = video_dir / "segment_lowest_0_1.mp4"
         video_path.write_bytes(b"fake video")
 
         def create_frame(*args, **kwargs):
@@ -839,14 +841,14 @@ class TestGetFramesAtQuality:
             quality="lowest",
         )
 
-        assert not video_path.exists(), "lowest quality should delete video file"
+        assert not video_path.exists(), "segment should be cleaned up"
 
     @patch("subprocess.run")
     def test_quality_tracked_in_state_json(self, mock_run, tmp_path):
         """Quality extraction should be tracked in state.json."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
-        (video_dir / "video_lowest.mp4").write_bytes(b"fake video")
+        (video_dir / "segment_lowest_60_61.mp4").write_bytes(b"fake video")
         state = {"url": "https://youtube.com/watch?v=test12345678"}
         (video_dir / "state.json").write_text(json.dumps(state))
 
@@ -883,13 +885,12 @@ class TestGetFramesAtQuality:
             )
 
     @patch("subprocess.run")
-    def test_redownloads_video_for_new_quality(self, mock_run, tmp_path):
-        """Should re-download video when it doesn't exist for a new quality tier."""
+    def test_redownloads_segment_for_new_quality(self, mock_run, tmp_path):
+        """Should download segment when it doesn't exist for a new quality tier."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
         state = {"url": "https://youtube.com/watch?v=test12345678"}
         (video_dir / "state.json").write_text(json.dumps(state))
-        # No video_medium.mp4 exists -- should trigger download
 
         call_count = [0]
 
@@ -897,8 +898,8 @@ class TestGetFramesAtQuality:
             cmd = args[0]
             call_count[0] += 1
             if call_count[0] == 1:
-                # yt-dlp download
-                video_path = video_dir / "video_medium.mp4"
+                # yt-dlp download — create segment file
+                video_path = video_dir / "segment_medium_0_1.mp4"
                 video_path.write_bytes(b"fake video")
                 return MagicMock(returncode=0)
             else:
@@ -1139,3 +1140,203 @@ class TestSubtitleFirstPipeline:
 
         assert not (result.output_dir / "video.mp4").exists()
         assert not (result.output_dir / "audio.mp3").exists()
+
+
+class TestDownloadSections:
+    """Tests for --download-sections partial video download."""
+
+    @patch("subprocess.run")
+    def test_download_sections_flag_in_command(self, mock_run, tmp_path):
+        """yt-dlp command should include --download-sections with time range."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        captured_cmds = []
+
+        def handle_run(*args, **kwargs):
+            cmd = args[0]
+            captured_cmds.append(cmd)
+            # Create segment file if yt-dlp call
+            if "yt-dlp" in str(cmd[0]):
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).write_bytes(b"fake segment")
+                        break
+                return MagicMock(returncode=0)
+            # Create frame if ffmpeg call
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        get_frames_at(
+            "test12345678",
+            start_time=60,
+            duration=5,
+            interval=5,
+            output_base=tmp_path,
+            quality="lowest",
+        )
+
+        # First call should be yt-dlp with --download-sections
+        ytdlp_cmd = captured_cmds[0]
+        assert "--download-sections" in ytdlp_cmd
+        # Section should be ~58-67 (60-2 to 60+5+2)
+        sections_idx = ytdlp_cmd.index("--download-sections")
+        section_arg = ytdlp_cmd[sections_idx + 1]
+        assert section_arg.startswith("*")
+        assert "--force-keyframes-at-cuts" in ytdlp_cmd
+
+    @patch("subprocess.run")
+    def test_buffer_does_not_go_negative(self, mock_run, tmp_path):
+        """Buffer padding should clamp to 0 for early timestamps."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        captured_cmds = []
+
+        def handle_run(*args, **kwargs):
+            cmd = args[0]
+            captured_cmds.append(cmd)
+            if "yt-dlp" in str(cmd[0]):
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).write_bytes(b"fake segment")
+                        break
+                return MagicMock(returncode=0)
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        get_frames_at(
+            "test12345678",
+            start_time=1,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+        )
+
+        ytdlp_cmd = captured_cmds[0]
+        sections_idx = ytdlp_cmd.index("--download-sections")
+        section_arg = ytdlp_cmd[sections_idx + 1]
+        # start=1, buffer=2 -> max(0, 1-2) = 0
+        assert section_arg.startswith("*0")
+
+    @patch("subprocess.run")
+    def test_segment_file_naming(self, mock_run, tmp_path):
+        """Segment files should include quality, start, and end in name."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        captured_cmds = []
+
+        def handle_run(*args, **kwargs):
+            cmd = args[0]
+            captured_cmds.append(cmd)
+            if "yt-dlp" in str(cmd[0]):
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).write_bytes(b"fake segment")
+                        break
+                return MagicMock(returncode=0)
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        get_frames_at(
+            "test12345678",
+            start_time=30,
+            duration=10,
+            interval=10,
+            output_base=tmp_path,
+            quality="medium",
+        )
+
+        # Check segment file name in yt-dlp -o argument
+        ytdlp_cmd = captured_cmds[0]
+        o_idx = ytdlp_cmd.index("-o")
+        output_name = Path(ytdlp_cmd[o_idx + 1]).name
+        assert "segment_medium_30_40" in output_name
+
+    @patch("subprocess.run")
+    def test_segment_cleaned_up_after_extraction(self, mock_run, tmp_path):
+        """Segment files should always be deleted after frame extraction."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        def handle_run(*args, **kwargs):
+            cmd = args[0]
+            if "yt-dlp" in str(cmd[0]):
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).write_bytes(b"fake segment")
+                        break
+                return MagicMock(returncode=0)
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        get_frames_at(
+            "test12345678",
+            start_time=0,
+            duration=1,
+            interval=1,
+            output_base=tmp_path,
+            quality="highest",
+        )
+
+        # No segment files should remain
+        segments = list(video_dir.glob("segment_*.mp4"))
+        assert len(segments) == 0
+
+    @patch("subprocess.run")
+    def test_hq_uses_download_sections(self, mock_run, tmp_path):
+        """get_hq_frames_at should also use --download-sections."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"url": "https://youtube.com/watch?v=test12345678"}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        captured_cmds = []
+
+        def handle_run(*args, **kwargs):
+            cmd = args[0]
+            captured_cmds.append(cmd)
+            if "yt-dlp" in str(cmd[0]):
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).write_bytes(b"fake segment")
+                        break
+                return MagicMock(returncode=0)
+            output_path = Path(cmd[-1])
+            output_path.write_bytes(b"fake frame")
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        get_hq_frames_at(
+            "test12345678",
+            start_time=120,
+            duration=5,
+            interval=5,
+            output_base=tmp_path,
+        )
+
+        ytdlp_cmd = captured_cmds[0]
+        assert "--download-sections" in ytdlp_cmd
+        assert "--force-keyframes-at-cuts" in ytdlp_cmd
