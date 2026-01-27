@@ -16,32 +16,27 @@ from pathlib import Path
 
 QUALITY_TIERS = {
     "lowest": {
-        "format": "160+139/160+140/worst[height<=360]/worst",
-        "sort": "+size,+br",
+        "sort": "+res,+size,+br,+fps",
         "width": 480,
         "jpeg_q": 5,
     },
     "low": {
-        "format": "worst[height<=360]/worst",
-        "sort": "+size,+br",
+        "sort": "res:360,+size,+br",
         "width": 640,
         "jpeg_q": 4,
     },
     "medium": {
-        "format": "bestvideo[height<=480]+bestaudio/best[height<=480]/worst",
-        "sort": None,
+        "sort": "res:480",
         "width": 854,
         "jpeg_q": 3,
     },
     "high": {
-        "format": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-        "sort": None,
+        "sort": "res:720",
         "width": 1280,
         "jpeg_q": 2,
     },
     "highest": {
-        "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-        "sort": None,
+        "sort": "res:1080",
         "width": 1280,
         "jpeg_q": 2,
     },
@@ -209,13 +204,11 @@ def process_video(
 
     # STEP 2: Download video - smallest possible (~5-10s)
     if not video_path.exists():
-        _log("Downloading video (144p)...", t0)
+        _log("Downloading video (smallest)...", t0)
         cmd = [
             _find_tool("yt-dlp"),
-            "-f",
-            "160+139/160+140/worst[height<=360]/worst",
             "-S",
-            "+size,+br",
+            "+res,+size,+br,+fps",
             "--no-playlist",
             "--no-warnings",
             "--merge-output-format",
@@ -369,22 +362,16 @@ def get_frames_at(
             )
             cmd = [
                 _find_tool("yt-dlp"),
-                "-f",
-                tier["format"],
+                "-S",
+                tier["sort"],
+                "--no-playlist",
+                "--no-warnings",
+                "--merge-output-format",
+                "mp4",
+                "-o",
+                str(video_path),
+                url,
             ]
-            if tier["sort"]:
-                cmd.extend(["-S", tier["sort"]])
-            cmd.extend(
-                [
-                    "--no-playlist",
-                    "--no-warnings",
-                    "--merge-output-format",
-                    "mp4",
-                    "-o",
-                    str(video_path),
-                    url,
-                ]
-            )
             subprocess.run(cmd, capture_output=True)
 
     if not video_path.exists():
@@ -503,8 +490,8 @@ def get_hq_frames_at(
         _log("Downloading HIGH QUALITY video (this may take a while)...", t0)
         cmd = [
             _find_tool("yt-dlp"),
-            "-f",
-            "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+            "-S",
+            "res:1080",
             "--no-playlist",
             "--no-warnings",
             "--merge-output-format",
