@@ -8,18 +8,24 @@ Process YouTube videos for Claude Code:
 """
 
 from claudetube.core import (
+    QUALITY_LADDER,
+    QUALITY_TIERS,
     VideoResult,
     extract_video_id,
     get_frames_at,
     get_hq_frames_at,
+    next_quality,
     process_video,
 )
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 __all__ = [
     "process_video",
     "get_frames_at",
     "get_hq_frames_at",
     "extract_video_id",
     "VideoResult",
+    "QUALITY_TIERS",
+    "QUALITY_LADDER",
+    "next_quality",
 ]

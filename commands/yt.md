@@ -97,6 +97,8 @@ After extracting frames, **READ the image files** to see them.
 - Asks about code, UI, visuals, or anything shown on screen
 - Wants to understand something visual the speaker is demonstrating
 
+**Quality auto-escalation:** Quick frames start at the lowest quality for speed. If frames are blurry or unreadable, re-extract at the next tier up (`lowest` → `low` → `medium` → `high` → `highest`), one step at a time. Pass the `quality` parameter to `get_frames_at()`.
+
 **Use HQ frames when:**
 - Reading code or text on screen
 - Examining diagrams, charts, or detailed visuals

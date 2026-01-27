@@ -14,6 +14,46 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+QUALITY_TIERS = {
+    "lowest": {
+        "format": "160+139/160+140/worst[height<=360]/worst",
+        "sort": "+size,+br",
+        "width": 480,
+        "jpeg_q": 5,
+    },
+    "low": {
+        "format": "worst[height<=360]/worst",
+        "sort": "+size,+br",
+        "width": 640,
+        "jpeg_q": 4,
+    },
+    "medium": {
+        "format": "bestvideo[height<=480]+bestaudio/best[height<=480]/worst",
+        "sort": None,
+        "width": 854,
+        "jpeg_q": 3,
+    },
+    "high": {
+        "format": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+        "sort": None,
+        "width": 1280,
+        "jpeg_q": 2,
+    },
+    "highest": {
+        "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+        "sort": None,
+        "width": 1280,
+        "jpeg_q": 2,
+    },
+}
+QUALITY_LADDER = ["lowest", "low", "medium", "high", "highest"]
+
+
+def next_quality(current: str) -> str | None:
+    """Return the next quality tier, or None if already at highest."""
+    idx = QUALITY_LADDER.index(current)
+    return QUALITY_LADDER[idx + 1] if idx + 1 < len(QUALITY_LADDER) else None
+
 
 def _log(msg: str, start_time: float | None = None):
     """Print timestamped log message."""
@@ -279,7 +319,8 @@ def get_frames_at(
     duration: float = 5.0,
     interval: float = 1.0,
     output_base: Path = Path("./video_cache"),
-    width: int = 480,
+    width: int | None = None,
+    quality: str = "lowest",
 ) -> list[Path]:
     """
     Extract frames for a specific time range (drill-in feature).
@@ -292,42 +333,58 @@ def get_frames_at(
         duration: Duration to capture (default: 5s)
         interval: Seconds between frames (default: 1s)
         output_base: Cache directory
-        width: Frame width
+        width: Frame width (overrides tier default if set)
+        quality: Quality tier (lowest/low/medium/high/highest)
 
     Returns:
         List of frame paths
     """
     t0 = time.time()
 
+    # Validate quality
+    if quality not in QUALITY_TIERS:
+        raise ValueError(
+            f"Invalid quality '{quality}'. Must be one of: {', '.join(QUALITY_LADDER)}"
+        )
+    tier = QUALITY_TIERS[quality]
+    effective_width = width or tier["width"]
+
     # Get video ID
     video_id = extract_video_id(video_id_or_url)
     output_dir = Path(output_base) / video_id
-    drill_dir = output_dir / "drill"
+    drill_dir = output_dir / f"drill_{quality}"
     drill_dir.mkdir(parents=True, exist_ok=True)
 
     # Check if we need to re-download video
-    video_path = output_dir / "video.mp4"
+    video_path = output_dir / f"video_{quality}.mp4"
     state_file = output_dir / "state.json"
 
     if not video_path.exists() and state_file.exists():
         state = json.loads(state_file.read_text())
         url = state.get("url")
         if url:
-            _log(f"Re-downloading video for drill-in at {start_time}s...", t0)
+            _log(
+                f"Re-downloading video ({quality}) for drill-in at {start_time}s...",
+                t0,
+            )
             cmd = [
                 _find_tool("yt-dlp"),
                 "-f",
-                "160+139/160+140/worst[height<=360]/worst",
-                "-S",
-                "+size,+br",
-                "--no-playlist",
-                "--no-warnings",
-                "--merge-output-format",
-                "mp4",
-                "-o",
-                str(video_path),
-                url,
+                tier["format"],
             ]
+            if tier["sort"]:
+                cmd.extend(["-S", tier["sort"]])
+            cmd.extend(
+                [
+                    "--no-playlist",
+                    "--no-warnings",
+                    "--merge-output-format",
+                    "mp4",
+                    "-o",
+                    str(video_path),
+                    url,
+                ]
+            )
             subprocess.run(cmd, capture_output=True)
 
     if not video_path.exists():
@@ -339,7 +396,7 @@ def get_frames_at(
     current = start_time
     end_time = start_time + duration
 
-    _log(f"Extracting frames from {start_time}s to {end_time}s...", t0)
+    _log(f"Extracting {quality} frames from {start_time}s to {end_time}s...", t0)
 
     while current < end_time:
         ts_str = f"{int(current // 60):02d}-{int(current % 60):02d}"
@@ -354,9 +411,9 @@ def get_frames_at(
             "-vframes",
             "1",
             "-vf",
-            f"scale={width}:-1",
+            f"scale={effective_width}:-1",
             "-q:v",
-            "5",
+            str(tier["jpeg_q"]),
             "-y",
             str(output),
         ]
@@ -368,11 +425,25 @@ def get_frames_at(
 
         current += interval
 
-    # Clean up video again
-    if video_path.exists():
+    # Clean up video for lower tiers; keep for high/highest
+    if quality not in ("high", "highest") and video_path.exists():
         video_path.unlink()
+        _log(f"Cleaned up {quality} video file", t0)
 
-    _log(f"Drill-in complete: {len(frames)} frames", t0)
+    # Track extraction in state.json
+    if state_file.exists():
+        state = json.loads(state_file.read_text())
+        extractions = state.get("quality_extractions", {})
+        extractions[quality] = {
+            "start_time": start_time,
+            "duration": duration,
+            "frames": len(frames),
+            "width": effective_width,
+        }
+        state["quality_extractions"] = extractions
+        state_file.write_text(json.dumps(state, indent=2))
+
+    _log(f"Drill-in complete ({quality}): {len(frames)} frames", t0)
     return frames
 
 
