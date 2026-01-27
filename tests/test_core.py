@@ -1340,3 +1340,133 @@ class TestDownloadSections:
         ytdlp_cmd = captured_cmds[0]
         assert "--download-sections" in ytdlp_cmd
         assert "--force-keyframes-at-cuts" in ytdlp_cmd
+
+
+class TestThumbnailDownload:
+    """Tests for automatic thumbnail download."""
+
+    @patch("claudetube.core._fetch_subtitles")
+    @patch("claudetube.core._get_metadata")
+    @patch("subprocess.run")
+    def test_thumbnail_downloaded_during_process(
+        self, mock_run, mock_meta, mock_subs, tmp_path
+    ):
+        """process_video should download thumbnail during processing."""
+        mock_meta.return_value = {
+            "title": "Test",
+            "duration": 60,
+            "duration_string": "1:00",
+        }
+        mock_subs.return_value = {
+            "srt": "1\n00:00:00,000 --> 00:00:05,000\nHello\n",
+            "txt": "Hello",
+            "source": "uploaded",
+        }
+
+        def handle_run(cmd, *args, **kwargs):
+            if isinstance(cmd, list):
+                if "--write-thumbnail" in cmd:
+                    for i, arg in enumerate(cmd):
+                        if arg == "-o" and i + 1 < len(cmd):
+                            thumb_path = Path(cmd[i + 1]).with_suffix(".jpg")
+                            thumb_path.parent.mkdir(parents=True, exist_ok=True)
+                            thumb_path.write_bytes(b"fake thumbnail")
+                            break
+                    return MagicMock(returncode=0)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        result = process_video("test12345678", output_base=tmp_path)
+
+        assert result.thumbnail is not None
+        assert result.thumbnail.exists()
+        assert result.thumbnail.name == "thumbnail.jpg"
+
+    @patch("claudetube.core._fetch_subtitles")
+    @patch("claudetube.core._get_metadata")
+    @patch("subprocess.run")
+    def test_thumbnail_failure_non_fatal(
+        self, mock_run, mock_meta, mock_subs, tmp_path
+    ):
+        """Thumbnail download failure should not break the pipeline."""
+        mock_meta.return_value = {
+            "title": "Test",
+            "duration": 60,
+            "duration_string": "1:00",
+        }
+        mock_subs.return_value = {
+            "srt": "1\n00:00:00,000 --> 00:00:05,000\nHello\n",
+            "txt": "Hello",
+            "source": "uploaded",
+        }
+
+        def handle_run(cmd, *args, **kwargs):
+            if isinstance(cmd, list) and "--write-thumbnail" in cmd:
+                raise subprocess.TimeoutExpired("cmd", 15)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        result = process_video("test12345678", output_base=tmp_path)
+
+        assert result.success is True
+        assert result.thumbnail is None
+
+    def test_cache_hit_includes_thumbnail(self, tmp_path):
+        """Cache hit should return thumbnail path if it exists."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        (video_dir / "thumbnail.jpg").write_bytes(b"fake thumb")
+        state = {"transcript_complete": True}
+        (video_dir / "state.json").write_text(json.dumps(state))
+        (video_dir / "audio.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n")
+        (video_dir / "audio.txt").write_text("hi")
+
+        result = process_video("test12345678", output_base=tmp_path)
+
+        assert result.thumbnail is not None
+        assert result.thumbnail.name == "thumbnail.jpg"
+
+    def test_cache_hit_no_thumbnail(self, tmp_path):
+        """Cache hit without thumbnail should return None."""
+        video_dir = tmp_path / "test12345678"
+        video_dir.mkdir()
+        state = {"transcript_complete": True}
+        (video_dir / "state.json").write_text(json.dumps(state))
+
+        result = process_video("test12345678", output_base=tmp_path)
+
+        assert result.thumbnail is None
+
+    @patch("claudetube.core._fetch_subtitles")
+    @patch("claudetube.core._get_metadata")
+    @patch("subprocess.run")
+    def test_thumbnail_tracked_in_state(self, mock_run, mock_meta, mock_subs, tmp_path):
+        """state.json should track thumbnail existence."""
+        mock_meta.return_value = {
+            "title": "Test",
+            "duration": 60,
+            "duration_string": "1:00",
+        }
+        mock_subs.return_value = {
+            "srt": "1\n00:00:00,000 --> 00:00:05,000\nHello\n",
+            "txt": "Hello",
+            "source": "uploaded",
+        }
+
+        def handle_run(cmd, *args, **kwargs):
+            if isinstance(cmd, list) and "--write-thumbnail" in cmd:
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).with_suffix(".jpg").write_bytes(b"thumb")
+                        break
+                return MagicMock(returncode=0)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = handle_run
+
+        result = process_video("test12345678", output_base=tmp_path)
+
+        state = json.loads((result.output_dir / "state.json").read_text())
+        assert state.get("has_thumbnail") is True

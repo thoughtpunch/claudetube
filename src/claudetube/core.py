@@ -103,6 +103,7 @@ class VideoResult:
     output_dir: Path
     transcript_srt: Path | None = None
     transcript_txt: Path | None = None
+    thumbnail: Path | None = None
     frames: list[Path] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
     error: str | None = None
@@ -148,6 +149,7 @@ def process_video(
         state = json.loads(state_file.read_text())
         if state.get("transcript_complete"):
             _log(f"Cache hit for {video_id}", t0)
+            thumb = output_dir / "thumbnail.jpg"
             return VideoResult(
                 success=True,
                 video_id=video_id,
@@ -162,6 +164,7 @@ def process_video(
                     if (output_dir / "audio.txt").exists()
                     else None
                 ),
+                thumbnail=thumb if thumb.exists() else None,
                 frames=(
                     sorted(output_dir.glob("frames/*.jpg")) if extract_frames else []
                 ),
@@ -201,6 +204,39 @@ def process_video(
     state_file.write_text(json.dumps(state, indent=2))
     _log(f"Metadata: '{state['title']}' ({state['duration_string']})", t0)
 
+    # STEP 1b: Download thumbnail (fast, no extra cost)
+    thumbnail_path = output_dir / "thumbnail.jpg"
+    if not thumbnail_path.exists():
+        _log("Downloading thumbnail...", t0)
+        cmd = [
+            _find_tool("yt-dlp"),
+            "--write-thumbnail",
+            "--convert-thumbnails",
+            "jpg",
+            "--skip-download",
+            "--no-playlist",
+            "--no-warnings",
+            "-o",
+            str(output_dir / "thumbnail"),
+            url,
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            # yt-dlp may add extension; find the file
+            for ext in ["jpg", "webp", "png"]:
+                candidate = output_dir / f"thumbnail.{ext}"
+                if candidate.exists() and ext != "jpg":
+                    candidate.rename(thumbnail_path)
+                    break
+            if thumbnail_path.exists():
+                state["has_thumbnail"] = True
+                state_file.write_text(json.dumps(state, indent=2))
+                _log("Thumbnail saved", t0)
+            else:
+                _log("No thumbnail available", t0)
+        except Exception:
+            _log("Thumbnail download failed (non-fatal)", t0)
+
     srt_path = output_dir / "audio.srt"
     txt_path = output_dir / "audio.txt"
 
@@ -222,6 +258,7 @@ def process_video(
             output_dir=output_dir,
             transcript_srt=srt_path,
             transcript_txt=txt_path,
+            thumbnail=thumbnail_path if thumbnail_path.exists() else None,
             metadata=state,
         )
 
@@ -328,6 +365,7 @@ def process_video(
         output_dir=output_dir,
         transcript_srt=srt_path if srt_path.exists() else None,
         transcript_txt=txt_path if txt_path.exists() else None,
+        thumbnail=thumbnail_path if thumbnail_path.exists() else None,
         frames=frames,
         metadata=state,
     )
