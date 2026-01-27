@@ -30,10 +30,7 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path.home() / ".claude" / "video_cache"
 TRANSCRIPT_INLINE_CAP = 50_000
 
-mcp = FastMCP(
-    "claudetube",
-    version="0.3.0",
-)
+mcp = FastMCP("claudetube")
 
 
 @mcp.tool()

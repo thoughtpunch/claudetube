@@ -1,7 +1,9 @@
 """Tests for claudetube."""
 
+import io
 import json
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +17,7 @@ from claudetube.core import (
     _find_tool,
     _format_srt_time,
     _get_metadata,
+    _log,
     extract_playlist_id,
     extract_url_context,
     extract_video_id,
@@ -23,6 +26,22 @@ from claudetube.core import (
     next_quality,
     process_video,
 )
+
+
+class TestLogDoesNotWriteStdout:
+    """Ensure _log() never writes to stdout (MCP stdio safety)."""
+
+    def test_log_does_not_write_to_stdout(self):
+        """_log() must not produce any stdout output."""
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            _log("test message")
+            _log("test with time", start_time=0.0)
+        finally:
+            sys.stdout = old_stdout
+        assert captured.getvalue() == "", "_log() wrote to stdout"
 
 
 class TestExtractVideoId:
