@@ -773,9 +773,7 @@ def _transcribe_faster_whisper(
             txt_lines.append(text)
 
             # Progress
-            logger.info(
-                f"  [{start}] {text[:60]}{'...' if len(text) > 60 else ''}"
-            )
+            logger.info(f"  [{start}] {text[:60]}{'...' if len(text) > 60 else ''}")
 
         return {
             "srt": "\n".join(srt_lines),
