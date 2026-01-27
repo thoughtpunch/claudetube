@@ -604,26 +604,35 @@ class TestQualityTiers:
     """Tests for quality tier system."""
 
     def test_all_tiers_have_required_keys(self):
-        required = {"format", "sort", "width", "jpeg_q"}
+        required = {"sort", "width", "jpeg_q"}
         for name, tier in QUALITY_TIERS.items():
             assert required.issubset(tier.keys()), f"Tier '{name}' missing keys"
+
+    def test_no_tier_has_format_key(self):
+        """Tiers use -S sorting, not -f format selectors."""
+        for name, tier in QUALITY_TIERS.items():
+            assert "format" not in tier, f"Tier '{name}' should not have 'format' key"
 
     def test_ladder_order_matches_ascending_widths(self):
         widths = [QUALITY_TIERS[q]["width"] for q in QUALITY_LADDER]
         assert widths == sorted(widths), "QUALITY_LADDER widths should be ascending"
 
-    def test_lowest_matches_original_hardcoded_defaults(self):
+    def test_lowest_uses_ascending_sort(self):
         tier = QUALITY_TIERS["lowest"]
-        assert tier["format"] == "160+139/160+140/worst[height<=360]/worst"
-        assert tier["sort"] == "+size,+br"
+        assert tier["sort"].startswith("+"), "lowest should sort ascending (smallest)"
         assert tier["width"] == 480
         assert tier["jpeg_q"] == 5
 
-    def test_highest_matches_hq_defaults(self):
+    def test_highest_uses_res_cap(self):
         tier = QUALITY_TIERS["highest"]
-        assert "height<=1080" in tier["format"]
+        assert "res:1080" in tier["sort"]
         assert tier["width"] == 1280
         assert tier["jpeg_q"] == 2
+
+    def test_all_tiers_have_sort_string(self):
+        for name, tier in QUALITY_TIERS.items():
+            assert isinstance(tier["sort"], str), f"Tier '{name}' sort must be string"
+            assert len(tier["sort"]) > 0
 
     def test_all_ladder_entries_exist_in_tiers(self):
         for name in QUALITY_LADDER:
@@ -672,23 +681,24 @@ class TestGetFramesAtQuality:
         assert "drill_lowest" in str(frames[0].parent)
 
     @patch("subprocess.run")
-    def test_medium_quality_uses_correct_format(self, mock_run, tmp_path):
-        """Medium quality should use 480p format selector."""
+    def test_medium_quality_uses_sort_flag(self, mock_run, tmp_path):
+        """Medium quality should use -S res:480 sort selector."""
         video_dir = tmp_path / "test12345678"
         video_dir.mkdir()
         state = {"url": "https://youtube.com/watch?v=test12345678"}
         (video_dir / "state.json").write_text(json.dumps(state))
 
-        call_count = [0]
+        captured_cmds = []
 
         def handle_run(*args, **kwargs):
             cmd = args[0]
-            call_count[0] += 1
-            if call_count[0] == 1:
+            captured_cmds.append(cmd)
+            if "yt-dlp" in str(cmd[0]):
                 # yt-dlp download call
-                video_path = Path(cmd[-2])  # -o argument
-                video_path.write_bytes(b"fake video")
-                assert "height<=480" in cmd[2]
+                for i, arg in enumerate(cmd):
+                    if arg == "-o" and i + 1 < len(cmd):
+                        Path(cmd[i + 1]).write_bytes(b"fake video")
+                        break
                 return MagicMock(returncode=0)
             else:
                 # ffmpeg frame extraction
@@ -709,6 +719,12 @@ class TestGetFramesAtQuality:
 
         assert len(frames) == 1
         assert "drill_medium" in str(frames[0].parent)
+        # Verify -S flag used instead of -f
+        ytdlp_cmd = captured_cmds[0]
+        assert "-S" in ytdlp_cmd
+        s_idx = ytdlp_cmd.index("-S")
+        assert ytdlp_cmd[s_idx + 1] == "res:480"
+        assert "-f" not in ytdlp_cmd
 
     @patch("subprocess.run")
     def test_different_tiers_produce_isolated_dirs(self, mock_run, tmp_path):
