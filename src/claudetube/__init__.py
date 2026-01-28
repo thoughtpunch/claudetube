@@ -15,6 +15,7 @@ from claudetube.core import (
     get_hq_frames_at,
     next_quality,
     process_video,
+    transcribe_video,
 )
 from claudetube.urls import (
     VideoURL,
@@ -29,6 +30,7 @@ __version__ = "0.3.0"
 __all__ = [
     # Core functions
     "process_video",
+    "transcribe_video",
     "get_frames_at",
     "get_hq_frames_at",
     "VideoResult",

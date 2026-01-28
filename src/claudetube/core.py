@@ -383,6 +383,161 @@ def process_video(
     )
 
 
+def transcribe_video(
+    video_id_or_url: str,
+    whisper_model: str = "small",
+    force: bool = False,
+    output_base: Path | None = None,
+) -> dict:
+    """
+    Transcribe a video's audio using Whisper.
+
+    Cache-first: returns existing transcript immediately unless force=True.
+    If no transcript exists, downloads audio (if needed) and runs Whisper.
+
+    Args:
+        video_id_or_url: Video ID or URL
+        whisper_model: tiny|base|small|medium|large
+        force: Re-transcribe even if cached transcript exists
+        output_base: Cache directory (default: ~/.claude/video_cache)
+
+    Returns:
+        Dict with success, video_id, transcript paths, source, message
+    """
+    t0 = time.time()
+
+    if output_base is None:
+        output_base = Path.home() / ".claude" / "video_cache"
+
+    video_id = extract_video_id(video_id_or_url)
+    output_dir = output_base / video_id
+    state_file = output_dir / "state.json"
+    srt_path = output_dir / "audio.srt"
+    txt_path = output_dir / "audio.txt"
+    audio_path = output_dir / "audio.mp3"
+
+    # Cache check: return existing transcript if available and not forced
+    if not force and srt_path.exists() and txt_path.exists():
+        _log(f"Returning cached transcript for {video_id}", t0)
+        return {
+            "success": True,
+            "video_id": video_id,
+            "transcript_srt": str(srt_path),
+            "transcript_txt": str(txt_path),
+            "source": "cached",
+            "whisper_model": None,
+            "message": "Returned cached transcript.",
+        }
+
+    # Need to run Whisper — ensure we have audio
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not audio_path.exists():
+        # Need the URL to download audio
+        if state_file.exists():
+            state = json.loads(state_file.read_text())
+            url = state.get("url")
+        else:
+            # Treat input as URL
+            url = video_id_or_url if "://" in video_id_or_url else None
+
+        if not url:
+            return {
+                "success": False,
+                "video_id": video_id,
+                "transcript_srt": None,
+                "transcript_txt": None,
+                "source": None,
+                "whisper_model": None,
+                "message": "No audio file and no URL available. Process the video first.",
+            }
+
+        _log("Downloading audio for transcription...", t0)
+        cmd = [
+            _find_tool("yt-dlp"),
+            "-f", "ba",
+            "-x",
+            "--audio-format", "mp3",
+            "--audio-quality", "64K",
+            "--no-playlist",
+            "--no-warnings",
+            "-o", str(audio_path),
+            url,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        # Fallback: extract audio from smallest video
+        if result.returncode != 0 or not audio_path.exists():
+            _log("No audio-only format, extracting from video...", t0)
+            cmd = [
+                _find_tool("yt-dlp"),
+                "-S", "+size,+br",
+                "-x",
+                "--audio-format", "mp3",
+                "--audio-quality", "64K",
+                "--no-playlist",
+                "--no-warnings",
+                "-o", str(audio_path),
+                url,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0 or not audio_path.exists():
+            return {
+                "success": False,
+                "video_id": video_id,
+                "transcript_srt": None,
+                "transcript_txt": None,
+                "source": None,
+                "whisper_model": None,
+                "message": f"Audio download failed: {result.stderr[:200]}",
+            }
+
+    # Run Whisper transcription
+    _log(f"Transcribing with Whisper ({whisper_model})...", t0)
+    transcript = _transcribe_faster_whisper(audio_path, whisper_model, t0)
+
+    if not transcript:
+        return {
+            "success": False,
+            "video_id": video_id,
+            "transcript_srt": None,
+            "transcript_txt": None,
+            "source": None,
+            "whisper_model": whisper_model,
+            "message": "Whisper transcription failed.",
+        }
+
+    srt_path.write_text(transcript["srt"])
+    txt_path.write_text(transcript["txt"])
+
+    # Update state.json
+    if state_file.exists():
+        state = json.loads(state_file.read_text())
+    else:
+        state = {"video_id": video_id}
+    state["transcript_complete"] = True
+    state["transcript_source"] = "whisper"
+    state["whisper_model"] = whisper_model
+    state_file.write_text(json.dumps(state, indent=2))
+
+    _log(f"Transcription complete in {time.time() - t0:.1f}s", t0)
+
+    return {
+        "success": True,
+        "video_id": video_id,
+        "transcript_srt": str(srt_path),
+        "transcript_txt": str(txt_path),
+        "source": "whisper",
+        "whisper_model": whisper_model,
+        "message": (
+            f"Transcribed with Whisper ({whisper_model}). "
+            "Audio transcription is slower than subtitle extraction."
+        ),
+    }
+
+
 def get_frames_at(
     video_id_or_url: str,
     start_time: float,

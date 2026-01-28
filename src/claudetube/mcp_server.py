@@ -17,6 +17,7 @@ from claudetube.core import (
     get_frames_at,
     get_hq_frames_at,
     process_video,
+    transcribe_video as _transcribe_video,
 )
 
 # All logging goes to stderr so stdout stays clean for JSON-RPC
@@ -157,6 +158,62 @@ async def get_hq_frames(
         {
             "frame_count": len(frames),
             "frame_paths": [str(f) for f in frames],
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def transcribe_video(
+    video_id_or_url: str,
+    whisper_model: str = "small",
+    force: bool = False,
+) -> str:
+    """Transcribe a video's audio using Whisper.
+
+    Returns cached transcript immediately if available, otherwise runs
+    Whisper transcription. Use force=True to re-transcribe with a
+    different model.
+
+    Args:
+        video_id_or_url: Video ID or URL.
+        whisper_model: Whisper model size (tiny/base/small/medium/large).
+        force: Re-transcribe even if a cached transcript exists.
+    """
+    result = await asyncio.to_thread(
+        _transcribe_video,
+        video_id_or_url,
+        whisper_model=whisper_model,
+        force=force,
+        output_base=CACHE_DIR,
+    )
+
+    if not result["success"]:
+        return json.dumps({"error": result["message"]})
+
+    # Read transcript text for inline return
+    transcript_text = ""
+    txt_path = result.get("transcript_txt")
+    if txt_path:
+        path = Path(txt_path)
+        if path.exists():
+            full = path.read_text()
+            transcript_text = full[:TRANSCRIPT_INLINE_CAP]
+            if len(full) > TRANSCRIPT_INLINE_CAP:
+                transcript_text += (
+                    f"\n\n[Transcript truncated at {TRANSCRIPT_INLINE_CAP} chars. "
+                    f"Use get_transcript for the full text.]"
+                )
+
+    return json.dumps(
+        {
+            "video_id": result["video_id"],
+            "source": result["source"],
+            "whisper_model": result["whisper_model"],
+            "message": result["message"],
+            "transcript": transcript_text,
+            "transcript_srt_path": result["transcript_srt"],
+            "transcript_txt_path": result["transcript_txt"],
         },
         indent=2,
     )

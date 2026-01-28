@@ -61,6 +61,15 @@ duration: How many seconds to capture (default: 5)
 interval: Seconds between frames (default: 1)
 ```
 
+### `transcribe_video`
+Transcribe a video's audio using Whisper. Returns cached transcript instantly if available, otherwise runs Whisper. Use `force=True` to re-transcribe with a different model.
+
+```
+video_id_or_url: Video ID or URL
+whisper_model: small (default), tiny, base, medium, large
+force: Re-transcribe even if cached (default: false)
+```
+
 ### `get_transcript`
 Get full transcript for a cached video (no 50k char limit).
 
