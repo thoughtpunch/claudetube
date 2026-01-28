@@ -15,7 +15,13 @@ Parse the arguments:
 - **timestamp**: Time to look at (e.g., `5:30` or `330` seconds)
 - **duration**: Optional, seconds to capture (default: 10)
 
-## Extract HQ Frames
+## Step 1: Check Cache First
+
+Before invoking Python, verify the video is cached:
+- Check if `~/.claude/video_cache/{VIDEO_ID}/state.json` exists
+- If NOT cached, tell the user to run `/yt <url>` first and stop
+
+## Step 2: Extract HQ Frames (Only if Cached)
 
 ```bash
 ~/.claudetube/venv/bin/python3 << 'PYTHON'

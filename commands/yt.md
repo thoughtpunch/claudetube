@@ -13,9 +13,27 @@ You can now analyze YouTube videos. This tool:
 
 ## Input: $ARGUMENTS
 
-## Step 1: Process the Video
+## Step 1: Check Cache First (Fast Path)
 
-Extract the video URL and fetch transcript + metadata:
+Extract the video ID from the URL and check if it's already cached:
+
+**Video ID patterns:**
+- `youtube.com/watch?v=VIDEO_ID` → extract VIDEO_ID from `v=` parameter
+- `youtu.be/VIDEO_ID` → extract VIDEO_ID after `/`
+- `youtube.com/embed/VIDEO_ID` → extract VIDEO_ID after `/embed/`
+
+**Cache location:** `~/.claude/video_cache/{VIDEO_ID}/`
+
+**If `~/.claude/video_cache/{VIDEO_ID}/state.json` exists:**
+- Skip Python entirely
+- Read the cached files directly:
+  - `~/.claude/video_cache/{VIDEO_ID}/state.json` (metadata)
+  - `~/.claude/video_cache/{VIDEO_ID}/audio.srt` (transcript)
+- Jump to Step 3
+
+**If NOT cached**, proceed to Step 2.
+
+## Step 2: Process the Video (Only if Not Cached)
 
 ```bash
 ~/.claudetube/venv/bin/python3 << 'PYTHON'
@@ -40,9 +58,7 @@ else:
 PYTHON
 ```
 
-## Step 2: Read the Files
-
-Read BOTH the transcript (.srt) and metadata (state.json) files printed above.
+Then read the files printed above.
 
 ## Step 3: Answer the Question
 
