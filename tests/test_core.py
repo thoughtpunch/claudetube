@@ -575,31 +575,32 @@ class TestGetMetadata:
         assert result["uploader"] == "U"
         assert result["tags"] == ["a"]
 
-    # Negative cases
+    # Negative cases - now return {"_error": "message"} instead of {}
     @patch("subprocess.run")
-    def test_returns_empty_dict_on_failure(self, mock_run):
+    def test_returns_error_dict_on_failure(self, mock_run):
         mock_run.side_effect = Exception("Network error")
 
         result = _get_metadata("https://youtube.com/watch?v=test")
 
-        assert result == {}
-        assert isinstance(result, dict)
+        assert "_error" in result
+        assert "Network error" in result["_error"]
 
     @patch("subprocess.run")
-    def test_returns_empty_dict_on_timeout(self, mock_run):
+    def test_returns_error_dict_on_timeout(self, mock_run):
         mock_run.side_effect = subprocess.TimeoutExpired("cmd", 30)
 
         result = _get_metadata("https://youtube.com/watch?v=test")
 
-        assert result == {}
+        assert "_error" in result
+        assert "Timeout" in result["_error"]
 
     @patch("subprocess.run")
-    def test_returns_empty_dict_on_bad_json(self, mock_run):
+    def test_returns_error_dict_on_bad_json(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="not json")
 
         result = _get_metadata("https://youtube.com/watch?v=test")
 
-        assert result == {}
+        assert "_error" in result
 
 
 class TestIntegration:

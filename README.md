@@ -20,6 +20,8 @@
 
 claudetube downloads online videos, transcribes them with [faster-whisper](https://github.com/SYSTRAN/faster-whisper), and lets AI "see" specific moments by extracting frames on-demand. Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) but works as a standalone Python library with any AI tool.
 
+**Supports 1,500+ video sites** via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) including YouTube, Vimeo, Dailymotion, Twitch, TikTok, Twitter/X, Instagram, Reddit, and many more.
+
 ## Quick Start
 
 ### Prerequisites
@@ -67,6 +69,8 @@ claudetube depends on faster-whisper (C++ transcription engine) and ffmpeg (syst
 
 ```
 /yt https://youtube.com/watch?v=abc123 how did they make the sprites?
+/yt https://vimeo.com/123456789 summarize the key points
+/yt https://twitter.com/user/status/123 what is this video about?
 ```
 
 Claude will:

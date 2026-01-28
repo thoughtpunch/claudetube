@@ -72,34 +72,14 @@ def _find_tool(name: str) -> str:
     return shutil.which(name) or name
 
 
-def extract_video_id(url: str) -> str:
-    """Extract YouTube video ID from URL."""
-    patterns = [
-        r"(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})",
-        r"(?:embed/)([a-zA-Z0-9_-]{11})",
-        r"^([a-zA-Z0-9_-]{11})$",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    return url.replace("/", "_").replace(":", "_")[:20]
-
-
-def extract_playlist_id(url: str) -> str | None:
-    """Extract YouTube playlist ID from URL (list= parameter)."""
-    match = re.search(r"[?&]list=([a-zA-Z0-9_-]+)", url)
-    return match.group(1) if match else None
-
-
-def extract_url_context(url: str) -> dict:
-    """Extract video ID, playlist ID, and other context from URL."""
-    return {
-        "video_id": extract_video_id(url),
-        "playlist_id": extract_playlist_id(url),
-        "original_url": url,
-        "clean_url": re.sub(r"[&?]list=[^&]+", "", url),  # URL without playlist
-    }
+# URL parsing functions are now in urls.py - re-export for backwards compatibility
+from claudetube.urls import (
+    VideoURL,
+    extract_playlist_id,
+    extract_url_context,
+    extract_video_id,
+    get_provider_for_url,
+)
 
 
 @dataclass
@@ -185,9 +165,10 @@ def process_video(
     # STEP 1: Fetch metadata (fast, ~2s)
     _log("Fetching video metadata...", t0)
     meta = _get_metadata(url)
-    if not meta:
+    if not meta or "_error" in meta:
+        error_msg = meta.get("_error", "Failed to fetch metadata") if meta else "Failed to fetch metadata"
         return VideoResult(
-            False, video_id, output_dir, error="Failed to fetch metadata"
+            False, video_id, output_dir, error=error_msg
         )
 
     state = {
@@ -274,6 +255,7 @@ def process_video(
     _log("No subtitles available, falling back to whisper...", t0)
     if not audio_path.exists():
         _log("Downloading audio...", t0)
+        # Try audio-only first (fastest for YouTube, etc.)
         cmd = [
             _find_tool("yt-dlp"),
             "-f",
@@ -290,13 +272,35 @@ def process_video(
             url,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
+
+        # If ba (best audio) fails, fall back to smallest video + extract audio
+        # Many sites (Rumble, BitChute, Odysee, etc.) don't have audio-only streams
         if result.returncode != 0 or not audio_path.exists():
-            _log(f"Audio download failed: {result.stderr[:100]}", t0)
+            _log("No audio-only format, extracting from video...", t0)
+            cmd = [
+                _find_tool("yt-dlp"),
+                "-S",
+                "+size,+br",  # smallest file first
+                "-x",
+                "--audio-format",
+                "mp3",
+                "--audio-quality",
+                "64K",
+                "--no-playlist",
+                "--no-warnings",
+                "-o",
+                str(audio_path),
+                url,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0 or not audio_path.exists():
+            _log(f"Audio download failed: {result.stderr[:200]}", t0)
             return VideoResult(
                 False,
                 video_id,
                 output_dir,
-                error="Audio download failed",
+                error=f"Audio download failed: {result.stderr[:200]}",
                 metadata=state,
             )
         size_mb = audio_path.stat().st_size / 1024 / 1024
@@ -798,15 +802,27 @@ def _format_srt_time(seconds: float) -> str:
 
 
 def _get_metadata(url: str) -> dict:
-    """Fetch video metadata without downloading."""
-    cmd = [_find_tool("yt-dlp"), "--dump-json", "--no-download", "--no-warnings", url]
+    """Fetch video metadata without downloading.
+
+    Returns dict with metadata on success, or {"_error": "message"} on failure.
+    """
+    cmd = [_find_tool("yt-dlp"), "--dump-json", "--no-download", url]
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, check=True, timeout=30
         )
         return json.loads(result.stdout)
-    except Exception:
-        return {}
+    except subprocess.CalledProcessError as e:
+        # Extract useful error from stderr
+        error_msg = e.stderr.strip() if e.stderr else "Unknown error"
+        # Clean up yt-dlp error format
+        if "ERROR:" in error_msg:
+            error_msg = error_msg.split("ERROR:")[-1].strip()
+        return {"_error": error_msg[:500]}
+    except subprocess.TimeoutExpired:
+        return {"_error": "Timeout fetching metadata (30s)"}
+    except Exception as e:
+        return {"_error": str(e)[:200]}
 
 
 def _extract_frames(
