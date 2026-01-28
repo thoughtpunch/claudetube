@@ -3,7 +3,7 @@ End-to-end integration test for claudetube across multiple sites.
 
 Modes:
   --metadata-only  Fast test: URL parsing + metadata fetch only (~2-5s per video)
-  --full           Full pipeline: metadata + transcript + frames (slow, minutes per video)
+  --full           Full pipeline: metadata + transcript + frames (slow)
   (default)        Same as --metadata-only
 
 Runs the full pipeline for each URL:
@@ -22,7 +22,6 @@ Usage:
 """
 
 import json
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -30,14 +29,13 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from claudetube.core import (
-    _find_tool,
+from claudetube.core import (  # noqa: E402
     _get_metadata,
     get_frames_at,
     get_hq_frames_at,
     process_video,
 )
-from claudetube.urls import VideoURL, extract_video_id
+from claudetube.urls import VideoURL, extract_video_id  # noqa: E402
 
 TEST_CACHE = Path(__file__).parent / "_integration_cache"
 RESULTS_FILE = Path(__file__).parent / "integration_results.json"
@@ -87,15 +85,21 @@ def run_metadata_test(url: str, site: str) -> dict:
                 "title": meta.get("title", "?")[:80],
                 "duration": meta.get("duration"),
                 "uploader": meta.get("uploader", meta.get("channel", "?"))[:40],
-                "has_subtitles": bool(meta.get("subtitles") or meta.get("automatic_captions")),
+                "has_subtitles": bool(
+                    meta.get("subtitles") or meta.get("automatic_captions")
+                ),
                 "has_audio_only": any(
-                    f.get("vcodec") == "none" or f.get("acodec") != "none" and not f.get("vcodec")
+                    f.get("vcodec") == "none"
+                    or f.get("acodec") != "none"
+                    and not f.get("vcodec")
                     for f in meta.get("formats", [])
                     if f.get("acodec") != "none"
                 ),
             }
         else:
-            error_msg = meta.get("_error", "Unknown error") if meta else "No metadata returned"
+            error_msg = (
+                meta.get("_error", "Unknown error") if meta else "No metadata returned"
+            )
             result["steps"]["get_metadata"] = {
                 "status": "FAIL",
                 "elapsed": round(elapsed, 1),

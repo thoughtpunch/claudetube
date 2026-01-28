@@ -20,7 +20,13 @@ VIDEO_PROVIDERS = [
     {
         "rank": 1,
         "name": "YouTube",
-        "domains": ["youtube.com", "youtu.be", "m.youtube.com", "www.youtube.com", "music.youtube.com"],
+        "domains": [
+            "youtube.com",
+            "youtu.be",
+            "m.youtube.com",
+            "www.youtube.com",
+            "music.youtube.com",
+        ],
         "pattern": r"(?:youtube\.com/(?:watch\?v=|embed/|v/|shorts/|live/)|youtu\.be/)(?P<video_id>[a-zA-Z0-9_-]{11})",
     },
     {
@@ -68,7 +74,13 @@ VIDEO_PROVIDERS = [
     {
         "rank": 9,
         "name": "Twitter/X",
-        "domains": ["twitter.com", "x.com", "www.twitter.com", "www.x.com", "mobile.twitter.com"],
+        "domains": [
+            "twitter.com",
+            "x.com",
+            "www.twitter.com",
+            "www.x.com",
+            "mobile.twitter.com",
+        ],
         "pattern": r"(?:twitter|x)\.com/[^/]+/status/(?P<video_id>\d+)",
     },
     {
@@ -314,7 +326,11 @@ VIDEO_PROVIDERS = [
     {
         "rank": 50,
         "name": "Peertube",
-        "domains": ["peertube.tv", "tube.tchncs.de", "video.ploud.fr"],  # Common instances
+        "domains": [
+            "peertube.tv",
+            "tube.tchncs.de",
+            "video.ploud.fr",
+        ],  # Common instances
         "pattern": r"(?:peertube\.[^/]+|tube\.[^/]+|video\.[^/]+)/(?:videos/watch|w)/(?P<video_id>[a-f0-9-]{36})",
     },
     {
@@ -458,8 +474,8 @@ _VIDEO_ID_PRIORITY = [
     "player_video_id",
     "story_id",
     "owner_id",  # VK uses owner_id + video_id combo
-    "channel",   # Some sites use channel as identifier
-    "user",      # Fallback to user if nothing else
+    "channel",  # Some sites use channel as identifier
+    "user",  # Fallback to user if nothing else
 ]
 
 
@@ -469,7 +485,10 @@ class VideoURL(BaseModel):
     url: str = Field(..., description="Original URL (normalized)")
     video_id: str = Field(..., description="Extracted video ID for caching/lookup")
     provider: str | None = Field(None, description="Detected provider name")
-    provider_data: dict = Field(default_factory=dict, description="Extra extracted fields (channel, clip_id, etc.)")
+    provider_data: dict = Field(
+        default_factory=dict,
+        description="Extra extracted fields (channel, clip_id, etc.)",
+    )
 
     # Class-level compiled patterns for performance
     _compiled_patterns: ClassVar[dict[str, re.Pattern]] = {}
@@ -502,7 +521,9 @@ class VideoURL(BaseModel):
             # Use site-specific pattern
             pattern_key = provider["name"]
             if pattern_key not in self._compiled_patterns:
-                self._compiled_patterns[pattern_key] = re.compile(provider["pattern"], re.IGNORECASE)
+                self._compiled_patterns[pattern_key] = re.compile(
+                    provider["pattern"], re.IGNORECASE
+                )
 
             pattern = self._compiled_patterns[pattern_key]
             match = pattern.search(self.url)
@@ -520,7 +541,9 @@ class VideoURL(BaseModel):
                     self.video_id = vid
                     self.provider = provider["name"]
                     # Store all extracted groups as provider_data
-                    self.provider_data = {k: v for k, v in groups.items() if v is not None}
+                    self.provider_data = {
+                        k: v for k, v in groups.items() if v is not None
+                    }
                     return self
 
         # Fallback: generic extraction
@@ -541,10 +564,30 @@ class VideoURL(BaseModel):
         # Look for ID-like path segments (prefer short alphanumeric)
         candidates = []
         skip_segments = {
-            "video", "videos", "watch", "embed", "shorts", "reel",
-            "p", "status", "clips", "details", "channel", "user",
-            "playlist", "live", "stories", "comments", "r", "w",
-            "share", "post", "posts", "gag", "view", "media",
+            "video",
+            "videos",
+            "watch",
+            "embed",
+            "shorts",
+            "reel",
+            "p",
+            "status",
+            "clips",
+            "details",
+            "channel",
+            "user",
+            "playlist",
+            "live",
+            "stories",
+            "comments",
+            "r",
+            "w",
+            "share",
+            "post",
+            "posts",
+            "gag",
+            "view",
+            "media",
         }
 
         for part in path_parts:
@@ -556,7 +599,13 @@ class VideoURL(BaseModel):
             if part.startswith("@"):
                 continue
             # Skip file extensions
-            if "." in part and part.rsplit(".", 1)[-1] in ["html", "php", "aspx", "mp4", "gifv"]:
+            if "." in part and part.rsplit(".", 1)[-1] in [
+                "html",
+                "php",
+                "aspx",
+                "mp4",
+                "gifv",
+            ]:
                 part = part.rsplit(".", 1)[0]
                 # For patterns like "v4p5yd5-title-here", extract the ID prefix
                 if "-" in part:

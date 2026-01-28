@@ -73,7 +73,7 @@ def _find_tool(name: str) -> str:
 
 
 # URL parsing functions are now in urls.py - re-export for backwards compatibility
-from claudetube.urls import (
+from claudetube.urls import (  # noqa: E402, F401
     VideoURL,
     extract_playlist_id,
     extract_url_context,
@@ -166,10 +166,12 @@ def process_video(
     _log("Fetching video metadata...", t0)
     meta = _get_metadata(url)
     if not meta or "_error" in meta:
-        error_msg = meta.get("_error", "Failed to fetch metadata") if meta else "Failed to fetch metadata"
-        return VideoResult(
-            False, video_id, output_dir, error=error_msg
+        error_msg = (
+            meta.get("_error", "Failed to fetch metadata")
+            if meta
+            else "Failed to fetch metadata"
         )
+        return VideoResult(False, video_id, output_dir, error=error_msg)
 
     state = {
         "video_id": video_id,
@@ -450,19 +452,25 @@ def transcribe_video(
                 "transcript_txt": None,
                 "source": None,
                 "whisper_model": None,
-                "message": "No audio file and no URL available. Process the video first.",
+                "message": (
+                    "No audio file and no URL available." " Process the video first."
+                ),
             }
 
         _log("Downloading audio for transcription...", t0)
         cmd = [
             _find_tool("yt-dlp"),
-            "-f", "ba",
+            "-f",
+            "ba",
             "-x",
-            "--audio-format", "mp3",
-            "--audio-quality", "64K",
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            "64K",
             "--no-playlist",
             "--no-warnings",
-            "-o", str(audio_path),
+            "-o",
+            str(audio_path),
             url,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -472,13 +480,17 @@ def transcribe_video(
             _log("No audio-only format, extracting from video...", t0)
             cmd = [
                 _find_tool("yt-dlp"),
-                "-S", "+size,+br",
+                "-S",
+                "+size,+br",
                 "-x",
-                "--audio-format", "mp3",
-                "--audio-quality", "64K",
+                "--audio-format",
+                "mp3",
+                "--audio-quality",
+                "64K",
                 "--no-playlist",
                 "--no-warnings",
-                "-o", str(audio_path),
+                "-o",
+                str(audio_path),
                 url,
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -888,6 +900,29 @@ def _fetch_subtitles(url: str, output_dir: Path, t0: float) -> dict | None:
     }
 
 
+def _collect_segments(segments) -> dict:
+    """Collect transcription segments into SRT and TXT format."""
+    srt_lines = []
+    txt_lines = []
+    last_end = 0.0
+    for i, seg in enumerate(segments, 1):
+        start = _format_srt_time(seg.start)
+        end = _format_srt_time(seg.end)
+        text = seg.text.strip()
+        last_end = seg.end
+
+        srt_lines.append(f"{i}\n{start} --> {end}\n{text}\n")
+        txt_lines.append(text)
+
+        logger.info(f"  [{start}] {text[:60]}{'...' if len(text) > 60 else ''}")
+
+    return {
+        "srt": "\n".join(srt_lines),
+        "txt": "\n".join(txt_lines),
+        "last_end": last_end,
+    }
+
+
 def _transcribe_faster_whisper(
     audio_path: Path, model_size: str, t0: float
 ) -> dict | None:
@@ -910,7 +945,7 @@ def _transcribe_faster_whisper(
         )
 
         _log("  Transcribing (batched)...", t0)
-        # Batched transcription is faster on multi-core CPUs
+        # Try batched transcription first (faster on multi-core CPUs)
         from faster_whisper import BatchedInferencePipeline
 
         batched_model = BatchedInferencePipeline(model=model)
@@ -920,24 +955,26 @@ def _transcribe_faster_whisper(
             batch_size=16,  # Process 16 segments in parallel
         )
 
-        # Build SRT and TXT
-        srt_lines = []
-        txt_lines = []
-        for i, seg in enumerate(segments, 1):
-            start = _format_srt_time(seg.start)
-            end = _format_srt_time(seg.end)
-            text = seg.text.strip()
+        result = _collect_segments(segments)
 
-            srt_lines.append(f"{i}\n{start} --> {end}\n{text}\n")
-            txt_lines.append(text)
+        # Batched pipeline can silently drop segments for some audio files
+        # (e.g. music with singing). If the transcription covers less than
+        # 25% of the audio duration, fall back to non-batched transcription.
+        audio_duration = info.duration or 0
+        last_end = result["last_end"]
+        if audio_duration > 30 and last_end < audio_duration * 0.25:
+            _log(
+                f"  Batched result only covered {last_end:.0f}s of"
+                f" {audio_duration:.0f}s, retrying without batching...",
+                t0,
+            )
+            segments, info = model.transcribe(
+                str(audio_path),
+                language="en",
+            )
+            result = _collect_segments(segments)
 
-            # Progress
-            logger.info(f"  [{start}] {text[:60]}{'...' if len(text) > 60 else ''}")
-
-        return {
-            "srt": "\n".join(srt_lines),
-            "txt": "\n".join(txt_lines),
-        }
+        return {"srt": result["srt"], "txt": result["txt"]}
 
     except ImportError:
         _log("  faster-whisper not available", t0)

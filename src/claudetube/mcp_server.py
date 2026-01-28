@@ -17,8 +17,8 @@ from claudetube.core import (
     get_frames_at,
     get_hq_frames_at,
     process_video,
-    transcribe_video as _transcribe_video,
 )
+from claudetube.core import transcribe_video as _transcribe_video
 
 # All logging goes to stderr so stdout stays clean for JSON-RPC
 logging.basicConfig(
