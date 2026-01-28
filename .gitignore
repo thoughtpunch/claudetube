@@ -29,6 +29,8 @@ wheels/
 .coverage
 htmlcov/
 .tox/
+tests/_integration_cache/
+tests/integration_results.json
 
 # IDE
 .idea/
