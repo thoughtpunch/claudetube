@@ -86,17 +86,22 @@ Claude will:
 | `/yt <url> [question]` | Analyze a video |
 | `/yt:see <id> <timestamp>` | Quick frames (general visuals) |
 | `/yt:hq <id> <timestamp>` | HQ frames (code, text, diagrams) |
+| `/yt:transcribe <id> [model]` | Transcribe with Whisper (or return cached) |
 | `/yt:transcript <id>` | Read cached transcript |
 | `/yt:list` | List all cached videos |
 
 ## Python API
 
 ```python
-from claudetube import process_video, get_frames_at
+from claudetube import process_video, transcribe_video, get_frames_at
 
 # Transcribe a video
 result = process_video("https://youtube.com/watch?v=VIDEO_ID")
 print(result.transcript_srt.read_text())
+
+# Standalone Whisper transcription (cache-first, no full processing)
+result = transcribe_video("VIDEO_ID", whisper_model="small")
+print(result["source"])  # "cached" or "whisper"
 
 # Extract frames at a specific timestamp
 frames = get_frames_at("VIDEO_ID", start_time=120, duration=10)
