@@ -17,6 +17,28 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
+def _run_ytdlp(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    """Run a yt-dlp command, retrying with YouTube mweb client on 403 errors.
+
+    YouTube's SABR streaming rollout causes 403 Forbidden errors with the
+    default web client for some videos. The mweb (mobile web) client still
+    provides direct download URLs as a fallback.
+    See: https://github.com/yt-dlp/yt-dlp/issues/12482
+    """
+    result = subprocess.run(cmd, **kwargs)
+    if result.returncode != 0:
+        stderr = result.stderr or ""
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        if "403" in stderr:
+            logger.info("  Retrying with YouTube mweb client (403 workaround)...")
+            mweb_args = ["--extractor-args", "youtube:player_client=mweb"]
+            cmd_retry = [cmd[0]] + mweb_args + cmd[1:]
+            result = subprocess.run(cmd_retry, **kwargs)
+    return result
+
+
 QUALITY_TIERS = {
     "lowest": {
         "sort": "+res,+size,+br,+fps",
@@ -273,7 +295,7 @@ def process_video(
             str(audio_path),
             url,
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = _run_ytdlp(cmd, capture_output=True, text=True)
 
         # If ba (best audio) fails, fall back to smallest video + extract audio
         # Many sites (Rumble, BitChute, Odysee, etc.) don't have audio-only streams
@@ -294,7 +316,7 @@ def process_video(
                 str(audio_path),
                 url,
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = _run_ytdlp(cmd, capture_output=True, text=True)
 
         if result.returncode != 0 or not audio_path.exists():
             _log(f"Audio download failed: {result.stderr[:200]}", t0)
@@ -354,7 +376,7 @@ def process_video(
                 str(video_path),
                 url,
             ]
-            subprocess.run(cmd, capture_output=True, text=True)
+            _run_ytdlp(cmd, capture_output=True, text=True)
         if video_path.exists():
             frames = _extract_frames(
                 video_path, output_dir / "frames", frame_interval, t0
@@ -473,7 +495,7 @@ def transcribe_video(
             str(audio_path),
             url,
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = _run_ytdlp(cmd, capture_output=True, text=True)
 
         # Fallback: extract audio from smallest video
         if result.returncode != 0 or not audio_path.exists():
@@ -493,7 +515,7 @@ def transcribe_video(
                 str(audio_path),
                 url,
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = _run_ytdlp(cmd, capture_output=True, text=True)
 
         if result.returncode != 0 or not audio_path.exists():
             return {
@@ -627,7 +649,7 @@ def get_frames_at(
                 str(video_path),
                 url,
             ]
-            subprocess.run(cmd, capture_output=True)
+            _run_ytdlp(cmd, capture_output=True)
 
     if not video_path.exists():
         _log("No video available for drill-in", t0)
@@ -772,7 +794,7 @@ def get_hq_frames_at(
             str(hq_video_path),
             url,
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = _run_ytdlp(cmd, capture_output=True, text=True)
         if result.returncode != 0 or not hq_video_path.exists():
             _log(f"HQ segment download failed: {result.stderr[:200]}", t0)
             return []
