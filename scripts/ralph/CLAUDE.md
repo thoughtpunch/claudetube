@@ -46,7 +46,7 @@ src/claudetube/
 7. **Add completion comment** (see format below)
 8. **Close**: `bd close <task-id> --reason "Done"`
 9. **Sync**: `bd sync`
-10. **STOP** — Let the loop assign the next task
+10. **STOP** — Just stop. Do NOT output any signal. The loop handles the next task.
 
 ---
 
@@ -84,10 +84,29 @@ src/claudetube/
 
 ---
 
-## Stop Signals
+## After Completing a Task
 
-- `<promise>COMPLETE</promise>` — No more tasks available
-- `<ralph>STUCK</ralph>` — Blocked after 3+ attempts, need human help
+**IMPORTANT**: After you finish a task and close it, just STOP. Do not output anything else.
+The loop will automatically pick up the next task.
+
+**DO NOT output `<promise>COMPLETE</promise>` after finishing a task.**
+That signal has a special meaning (see below).
+
+---
+
+## Stop Signals (RARE - Use Only When Appropriate)
+
+These signals tell the loop to EXIT. Only use them in these specific situations:
+
+### `<promise>COMPLETE</promise>`
+**ONLY use when**: You run `bd ready` and it returns NO tasks (empty list).
+This means the entire project backlog is done.
+
+**DO NOT use**: After completing a single task. The loop handles task rotation.
+
+### `<ralph>STUCK</ralph>`
+**ONLY use when**: You've tried 3+ times to complete a task and cannot proceed.
+Examples: Missing dependencies, unclear requirements, blocked by external factors.
 
 ---
 
