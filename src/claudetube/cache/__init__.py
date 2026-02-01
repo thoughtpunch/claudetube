@@ -3,7 +3,12 @@ Cache management for claudetube.
 """
 
 from claudetube.cache.manager import CacheManager
-from claudetube.cache.storage import load_state, save_state
+from claudetube.cache.storage import (
+    cache_local_file,
+    check_cached_source,
+    load_state,
+    save_state,
+)
 from claudetube.cache.scenes import (
     SceneBoundary,
     ScenesData,
@@ -24,6 +29,8 @@ from claudetube.cache.scenes import (
 
 __all__ = [
     "CacheManager",
+    "cache_local_file",
+    "check_cached_source",
     "load_state",
     "save_state",
     # Scene cache utilities

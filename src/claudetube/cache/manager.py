@@ -7,7 +7,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from claudetube.cache.storage import load_state, save_state
+from claudetube.cache.storage import (
+    cache_local_file,
+    check_cached_source,
+    load_state,
+    save_state,
+)
 from claudetube.cache import scenes as scene_cache
 from claudetube.config.defaults import CACHE_DIR
 from claudetube.models.state import VideoState
@@ -106,6 +111,50 @@ class CacheManager:
             shutil.rmtree(cache_dir)
             return True
         return False
+
+    # Local file methods
+
+    def cache_local_file(
+        self,
+        video_id: str,
+        source: Path,
+        copy: bool = False,
+    ) -> tuple[Path, str]:
+        """Cache a local file by symlink (default) or copy.
+
+        Args:
+            video_id: Video ID for cache directory
+            source: Absolute path to the source file
+            copy: If True, copy the file; if False (default), create symlink
+
+        Returns:
+            Tuple of (dest_path, cache_mode) where cache_mode is "symlink" or "copy"
+        """
+        cache_dir = self.ensure_cache_dir(video_id)
+        return cache_local_file(source, cache_dir, copy=copy)
+
+    def get_source_path(self, video_id: str) -> Path | None:
+        """Get path to the cached source file for a local video.
+
+        Returns None if video is not cached or is not a local file.
+        """
+        state = self.get_state(video_id)
+        if not state or state.source_type != "local" or not state.cached_file:
+            return None
+        return self.get_cache_dir(video_id) / state.cached_file
+
+    def check_source_valid(self, video_id: str) -> tuple[bool, str | None]:
+        """Check if the cached source file is valid.
+
+        For symlinks, checks if the target still exists.
+
+        Returns:
+            Tuple of (is_valid, warning_message) where warning_message is None if valid
+        """
+        state = self.get_state(video_id)
+        if not state or state.source_type != "local":
+            return True, None  # Not a local file, nothing to check
+        return check_cached_source(self.get_cache_dir(video_id), state.cached_file)
 
     # Scene-related methods
 
