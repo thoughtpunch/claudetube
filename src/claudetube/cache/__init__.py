@@ -2,6 +2,22 @@
 Cache management for claudetube.
 """
 
+from claudetube.cache.entities import (
+    ConceptMention,
+    ObjectAppearance,
+    TrackedConcept,
+    TrackedObject,
+    get_concepts_json_path,
+    get_entities_dir,
+    get_objects_json_path,
+    load_concepts,
+    load_objects,
+    save_concepts,
+    save_objects,
+    track_concepts_from_scenes,
+    track_entities,
+    track_objects_from_scenes,
+)
 from claudetube.cache.manager import CacheManager
 from claudetube.cache.memory import (
     Observation,
@@ -62,4 +78,19 @@ __all__ = [
     "VideoMemory",
     "get_memory_dir",
     "has_memory",
+    # Entity tracking utilities
+    "ConceptMention",
+    "ObjectAppearance",
+    "TrackedConcept",
+    "TrackedObject",
+    "get_concepts_json_path",
+    "get_entities_dir",
+    "get_objects_json_path",
+    "load_concepts",
+    "load_objects",
+    "save_concepts",
+    "save_objects",
+    "track_concepts_from_scenes",
+    "track_entities",
+    "track_objects_from_scenes",
 ]
