@@ -1,0 +1,16 @@
+# Ralph Progress - claudetube
+
+## Codebase Notes
+
+- Most logic lives in `core.py` (single file, ~35KB)
+- MCP tools defined in `mcp_server.py`
+- Cache: `~/.claude/video_cache/{video_id}/`
+- Uses yt-dlp for downloads, Whisper for transcription, ffmpeg for frames
+
+---
+
+## Iteration Log
+
+(Append completed tasks here)
+
+---
