@@ -2,15 +2,28 @@
 
 ## Codebase Notes
 
-- Most logic lives in `core.py` (single file, ~35KB)
-- MCP tools defined in `mcp_server.py`
-- Cache: `~/.claude/video_cache/{video_id}/`
-- Uses yt-dlp for downloads, Whisper for transcription, ffmpeg for frames
+Architecture (refactored v0.4.0):
+```
+src/claudetube/
+├── models/          # Data models (VideoResult, VideoURL, VideoFile, VideoState)
+├── config/          # Configuration (quality tiers, providers, defaults)
+├── tools/           # External tool wrappers (yt_dlp, ffmpeg, whisper)
+├── cache/           # Cache management (manager, scenes, storage)
+├── operations/      # High-level ops (download, transcribe, extract_frames, playlist)
+├── analysis/        # Analysis modules (linguistic, pause, vocabulary, visual)
+├── parsing/         # URL parsing utilities
+├── utils/           # Shared utilities (logging, formatting, system)
+├── mcp_server.py    # MCP tool definitions
+└── cli.py           # Command line interface
+```
+
+Cache location: `~/.claude/video_cache/{video_id}/`
+Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 
 ---
 
 ## Iteration Log
 
-(Append completed tasks here)
+(Entries appended by ralph-beads.sh when running)
 
 ---
