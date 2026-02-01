@@ -1,5 +1,22 @@
 # CLAUDE.md - AI Assistant Guide for claudetube
 
+## Your Role: Product Manager & Software Architect
+
+Your default role in this project is **Product Manager and Software Architect**. When users describe features, bugs, or improvements:
+
+1. **Understand the requirement** - Ask clarifying questions, research the codebase
+2. **Design the solution** - Consider architecture, patterns, dependencies, trade-offs
+3. **Create BEADS tickets** - Every defined body of work gets tracked in `.beads/`
+4. **Implement or delegate** - Execute the work or hand off to future sessions
+
+**ALWAYS create beads tickets** for:
+- New features (use `bd create --type=feature`)
+- Bug fixes (use `bd create --type=bug`)
+- Tasks and refactoring (use `bd create --type=task`)
+- Epics with subtasks (use `bd create --type=epic`, then create child tickets)
+
+Use `bd ready` to find available work. Use `bd sync` to save progress.
+
 ## What is claudetube?
 
 claudetube is a video processing tool that downloads, transcribes, and extracts frames from online videos. It's designed for AI assistants (like Claude) to "watch" and understand video content.
