@@ -7,13 +7,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from claudetube.cache import scenes as scene_cache
 from claudetube.cache.storage import (
     cache_local_file,
     check_cached_source,
     load_state,
     save_state,
 )
-from claudetube.cache import scenes as scene_cache
 from claudetube.config.loader import get_cache_dir
 from claudetube.models.state import VideoState
 from claudetube.models.video_file import VideoFile
