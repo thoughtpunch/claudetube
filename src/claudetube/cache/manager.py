@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from claudetube.cache import memory as memory_cache
 from claudetube.cache import scenes as scene_cache
 from claudetube.cache.storage import (
     cache_local_file,
@@ -199,3 +200,25 @@ class CacheManager:
     ) -> dict[int, scene_cache.SceneStatus]:
         """Get processing status for all scenes."""
         return scene_cache.get_all_scene_statuses(self.get_cache_dir(video_id))
+
+    # Memory-related methods
+
+    def get_memory_dir(self, video_id: str) -> Path:
+        """Get memory directory for a video (creates if needed)."""
+        return memory_cache.get_memory_dir(self.get_cache_dir(video_id))
+
+    def has_memory(self, video_id: str) -> bool:
+        """Check if memory data exists for this video."""
+        return memory_cache.has_memory(self.get_cache_dir(video_id))
+
+    def get_video_memory(self, video_id: str) -> memory_cache.VideoMemory:
+        """Get VideoMemory instance for a video.
+
+        Args:
+            video_id: Video identifier
+
+        Returns:
+            VideoMemory instance for managing observations and Q&A
+        """
+        cache_dir = self.ensure_cache_dir(video_id)
+        return memory_cache.VideoMemory(video_id, cache_dir)

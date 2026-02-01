@@ -3,16 +3,18 @@ Cache management for claudetube.
 """
 
 from claudetube.cache.manager import CacheManager
-from claudetube.cache.storage import (
-    cache_local_file,
-    check_cached_source,
-    load_state,
-    save_state,
+from claudetube.cache.memory import (
+    Observation,
+    QAPair,
+    VideoMemory,
+    get_memory_dir,
+    has_memory,
 )
 from claudetube.cache.scenes import (
     SceneBoundary,
     ScenesData,
     SceneStatus,
+    get_all_scene_statuses,
     get_keyframes_dir,
     get_scene_dir,
     get_scene_status,
@@ -24,7 +26,12 @@ from claudetube.cache.scenes import (
     list_scene_keyframes,
     load_scenes_data,
     save_scenes_data,
-    get_all_scene_statuses,
+)
+from claudetube.cache.storage import (
+    cache_local_file,
+    check_cached_source,
+    load_state,
+    save_state,
 )
 
 __all__ = [
@@ -49,4 +56,10 @@ __all__ = [
     "load_scenes_data",
     "save_scenes_data",
     "get_all_scene_statuses",
+    # Memory utilities
+    "Observation",
+    "QAPair",
+    "VideoMemory",
+    "get_memory_dir",
+    "has_memory",
 ]
