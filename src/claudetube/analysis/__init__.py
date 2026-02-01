@@ -4,6 +4,10 @@ Analysis module for claudetube.
 Provides boundary detection and transcript analysis utilities.
 """
 
+from claudetube.analysis.alignment import (
+    align_transcript_to_scenes,
+    align_transcript_to_scenes_simple,
+)
 from claudetube.analysis.linguistic import (
     Boundary,
     detect_linguistic_boundaries,
@@ -28,6 +32,8 @@ from claudetube.analysis.vocabulary import (
 
 __all__ = [
     "Boundary",
+    "align_transcript_to_scenes",
+    "align_transcript_to_scenes_simple",
     "detect_boundaries_cheap",
     "detect_linguistic_boundaries",
     "detect_pause_boundaries",

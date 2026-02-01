@@ -18,6 +18,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from claudetube.analysis.alignment import align_transcript_to_scenes
 from claudetube.analysis.unified import (
     detect_boundaries_cheap,
     merge_nearby_boundaries,
@@ -248,7 +249,14 @@ def segment_video_smart(
     segments = boundaries_to_segments(all_boundaries, duration)
     logger.info(f"Created {len(segments)} segments using {method} method")
 
-    # Step 8: Save to cache
+    # Step 8: Align transcript to scenes
+    if transcript_segments:
+        logger.info("Aligning transcript segments to scenes")
+        segments = align_transcript_to_scenes(transcript_segments, segments)
+        aligned_count = sum(1 for s in segments if s.transcript)
+        logger.info(f"Aligned transcript to {aligned_count}/{len(segments)} scenes")
+
+    # Step 9: Save to cache
     scenes_data = ScenesData(
         video_id=video_id,
         method=method,

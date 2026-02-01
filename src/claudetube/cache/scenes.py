@@ -41,7 +41,9 @@ class SceneBoundary:
     start_time: float  # seconds
     end_time: float  # seconds
     title: str | None = None  # Optional scene title/description
-    transcript_segment: str | None = None  # Transcript text for this scene
+    transcript_segment: str | None = None  # DEPRECATED: Use transcript_text instead
+    transcript: list[dict] = field(default_factory=list)  # Individual segments with timestamps
+    transcript_text: str = ""  # Joined transcript text for this scene
 
     def duration(self) -> float:
         """Get scene duration in seconds."""
@@ -49,13 +51,20 @@ class SceneBoundary:
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
-        return {
+        result = {
             "scene_id": self.scene_id,
             "start_time": self.start_time,
             "end_time": self.end_time,
             "title": self.title,
-            "transcript_segment": self.transcript_segment,
         }
+        # Include transcript data if present
+        if self.transcript:
+            result["transcript"] = self.transcript
+            result["transcript_text"] = self.transcript_text
+        # Backwards compat: also include transcript_segment if set
+        if self.transcript_segment:
+            result["transcript_segment"] = self.transcript_segment
+        return result
 
     @classmethod
     def from_dict(cls, data: dict) -> "SceneBoundary":
@@ -66,6 +75,8 @@ class SceneBoundary:
             end_time=data["end_time"],
             title=data.get("title"),
             transcript_segment=data.get("transcript_segment"),
+            transcript=data.get("transcript", []),
+            transcript_text=data.get("transcript_text", ""),
         )
 
 

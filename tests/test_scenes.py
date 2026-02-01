@@ -56,7 +56,8 @@ class TestSceneBoundary:
         assert d["start_time"] == 60.0
         assert d["end_time"] == 120.0
         assert d["title"] == "Main Content"
-        assert d["transcript_segment"] is None
+        # transcript_segment is omitted when not set (sparse output)
+        assert "transcript_segment" not in d
 
     def test_from_dict(self):
         d = {
