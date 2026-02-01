@@ -22,6 +22,16 @@ claudetube downloads online videos, transcribes them with [faster-whisper](https
 
 **Supports 1,500+ video sites** via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) including YouTube, Vimeo, Dailymotion, Twitch, TikTok, Twitter/X, Instagram, Reddit, and many more.
 
+## Why This Exists
+
+I (Dan) built claudetube because I was using Claude to help me make a game, and I kept finding YouTube tutorials that explained exactly what I needed. The problem? I couldn't just *show* Claude the video.
+
+Every other YouTube MCP tool just dumps the transcript and calls it a day. But when a tutorial says "look at this code here" or "notice how the sprite moves", the transcript alone is useless. I needed Claude to actually *see* what I was seeing -- to look at the code on screen, read the diagrams, understand the visual context.
+
+Unlike other tools, claudetube doesn't just fetch transcripts. It lets AI work with video content the same way modern LLMs can browse the web -- fetching what's needed, when it's needed, with full visual context. The transcript is just the starting point. The real power is on-demand frame extraction that lets Claude read code, analyze diagrams, and understand what the speaker is actually showing.
+
+**[Read more about the vision](documentation/vision/problem-space.md)**
+
 ## Quick Start
 
 ### Prerequisites
@@ -144,10 +154,18 @@ pytest
 ### Linting
 
 ```bash
-black src/ tests/
-isort --profile black src/ tests/
-flake8 src/ tests/
+ruff check src/ tests/
+ruff format src/ tests/
 ```
+
+## Documentation
+
+Full documentation is available in the [documentation/](documentation/) folder:
+
+- **[Getting Started](documentation/getting-started/)** - Installation, quick start, MCP setup
+- **[Core Concepts](documentation/concepts/)** - Video understanding, transcripts, frames, scenes
+- **[Architecture](documentation/architecture/)** - Modules, data flow, tool wrappers
+- **[Vision](documentation/vision/)** - The problem space, roadmap, what makes claudetube different
 
 ## Contributing
 
