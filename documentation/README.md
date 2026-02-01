@@ -17,6 +17,7 @@
 - [Scenes](concepts/scenes.md) - Semantic segmentation
 
 ### Architecture
+- [**Principles**](architecture/principles.md) - **Cheap first, expensive last** (start here)
 - [Module Overview](architecture/modules.md) - Code organization
 - [Data Flow](architecture/data-flow.md) - How data moves through the system
 - [Cache Structure](architecture/cache.md) - What gets stored and why

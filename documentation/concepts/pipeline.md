@@ -2,6 +2,32 @@
 
 > From URL to understanding: how claudetube processes video.
 
+## Core Principle: Cheap First, Expensive Last
+
+Every stage checks cache first and uses the cheapest available method:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ALWAYS: Check cache first (instant if already processed)   │
+└─────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│  PREFER: Use yt-dlp built-ins (subtitles, chapters, etc.)   │
+└─────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│  FALLBACK: Local processing (ffprobe, transcript analysis)  │
+└─────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│  LAST RESORT: Expensive compute (Whisper, visual analysis)  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Never do work that's already been done. Never use expensive methods when cheap ones suffice.**
+
+See: [Architecture Principles](../architecture/principles.md)
+
 ## Overview
 
 ```

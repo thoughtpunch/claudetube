@@ -4,6 +4,24 @@
 
 claudetube is a video processing tool that downloads, transcribes, and extracts frames from online videos. It's designed for AI assistants (like Claude) to "watch" and understand video content.
 
+## Architecture Principle: Cheap First, Expensive Last
+
+claudetube is optimized for **speed and minimal compute**. Every operation follows this hierarchy:
+
+```
+1. CACHE     → Already processed? Return immediately.
+2. YT-DLP    → Free metadata from source (chapters, subtitles).
+3. LOCAL     → Fast local processing (ffprobe, transcript analysis).
+4. COMPUTE   → Expensive operations (Whisper, visual analysis) ONLY as last resort.
+```
+
+**Examples:**
+- Transcription: YouTube subtitles (free) → Whisper (expensive)
+- Scenes: YouTube chapters (free) → Transcript analysis (fast) → Visual detection (expensive)
+- Frames: Check cache first → Extract on demand
+
+**Never re-process what's already cached.**
+
 ## Supported Sites
 
 **claudetube supports 1,500+ video sites** through yt-dlp, not just YouTube. This includes:
