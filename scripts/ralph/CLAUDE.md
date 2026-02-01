@@ -33,44 +33,137 @@ src/claudetube/
 - `tools/whisper.py` - faster-whisper wrapper class
 - `models/video_url.py` - URL parsing with 70+ provider patterns
 
-## Workflow
+---
 
-1. Run pre-task hook: `./scripts/hooks/pre-task.sh <task-id>`
-2. Claim: `bd update <task-id> --status in_progress`
-3. Implement the task
-4. Commit with ticket ID: `git commit -m "feat: <task-id> - Description"`
-5. Back-link SHA: `bd comments add <task-id> "Commit: $(git rev-parse HEAD)"`
-6. Run post-task hook: `./scripts/hooks/post-task.sh <task-id>`
-7. Add completion comment (see format below)
-8. Close: `bd close <task-id> --reason "Done"`
-9. Sync: `bd sync`
+## Workflow (Per Task)
+
+1. **Claim**: `bd update <task-id> --status in_progress`
+2. **Implement** the task
+3. **Test**: Run `pytest tests/` to verify changes
+4. **Lint**: Run `ruff check src/` to catch issues
+5. **Commit** with ticket ID: `git commit -m "feat: <task-id> - Description"`
+6. **Back-link SHA**: `bd comments add <task-id> "Commit: $(git rev-parse HEAD)"`
+7. **Add completion comment** (see format below)
+8. **Close**: `bd close <task-id> --reason "Done"`
+9. **Sync**: `bd sync`
 10. **STOP** — Let the loop assign the next task
+
+---
+
+## Session Close Protocol
+
+**CRITICAL**: Before outputting stop signals, complete this checklist:
+
+```
+[ ] 1. git status              # Check what changed
+[ ] 2. git add <files>         # Stage code changes
+[ ] 3. git commit -m "..."     # Commit code with ticket ID
+[ ] 4. bd comments add ...     # Add completion comment
+[ ] 5. bd close <id>           # Close the task
+[ ] 6. bd sync                 # Sync beads to git
+[ ] 7. git push                # Push to remote (if permitted)
+```
+
+**Work is not done until synced.**
+
+---
 
 ## Completion Comment Format
 
 ```
 ## What was done
-- [changes]
-- Files: [list]
+- [specific changes]
+- Files: [list of modified files]
 
 ## Left undone
-- [or None]
+- [deferred items, or "None"]
 
 ## Gotchas
-- [surprises]
+- [surprises, edge cases, patterns discovered]
 ```
+
+---
 
 ## Stop Signals
 
-- `<promise>COMPLETE</promise>` — No more tasks
-- `<ralph>STUCK</ralph>` — Blocked, need human help
+- `<promise>COMPLETE</promise>` — No more tasks available
+- `<ralph>STUCK</ralph>` — Blocked after 3+ attempts, need human help
 
-## bd Commands
+---
 
+## bd Commands Reference
+
+### Finding Work
 | Action | Command |
 |--------|---------|
-| Ready tasks | `bd ready` |
-| Show task | `bd show <id>` |
-| Claim | `bd update <id> --status in_progress` |
-| Comment | `bd comments add <id> "text"` |
-| Close | `bd close <id> --reason "Done"` |
+| Ready tasks (unblocked) | `bd ready` |
+| All open issues | `bd list --status=open` |
+| In-progress work | `bd list --status=in_progress` |
+| Show task details | `bd show <id>` |
+| Blocked issues | `bd blocked` |
+
+### Working on Tasks
+| Action | Command |
+|--------|---------|
+| Claim task | `bd update <id> --status in_progress` |
+| Add comment | `bd comments add <id> "text"` |
+| Close task | `bd close <id> --reason "Done"` |
+| Close multiple | `bd close <id1> <id2> ...` |
+
+### Creating Issues
+| Action | Command |
+|--------|---------|
+| Create task | `bd create --title="..." --type=task --priority=2` |
+| Create bug | `bd create --title="..." --type=bug --priority=1` |
+| Create feature | `bd create --title="..." --type=feature --priority=2` |
+
+**Priority**: 0-4 or P0-P4 (0=critical, 2=medium, 4=backlog). NOT "high"/"medium"/"low".
+
+### Dependencies
+| Action | Command |
+|--------|---------|
+| Add dependency | `bd dep add <issue> <depends-on>` |
+| View dependencies | `bd show <id>` |
+
+### Sync & Health
+| Action | Command |
+|--------|---------|
+| Sync to git | `bd sync` |
+| Check sync status | `bd sync --status` |
+| Project stats | `bd stats` |
+| Health check | `bd doctor` |
+| Lint issues | `bd lint` |
+
+---
+
+## Creating Dependent Work
+
+When implementation reveals new work needed:
+
+```bash
+# Create the new issue
+bd create --title="Follow-up: Handle edge case X" --type=task --priority=2
+
+# If it blocks or is blocked by current work, add dependency
+bd dep add <new-id> <current-id>   # new-id depends on current-id
+
+# Add context in completion comment
+bd comments add <current-id> "Created follow-up: <new-id> for edge case X"
+```
+
+---
+
+## Quality Checks Before Closing
+
+```bash
+# Run tests
+pytest tests/ -q
+
+# Run linter
+ruff check src/
+
+# Check for uncommitted changes
+git status
+```
+
+If tests fail or linter errors exist, fix them before closing the task.
