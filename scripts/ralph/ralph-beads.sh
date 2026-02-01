@@ -22,7 +22,7 @@ echo "════════════════════════�
 
 iteration=0
 while [ $iteration -lt $MAX_ITERATIONS ]; do
-    ((iteration++))
+    ((++iteration))
     echo ""
     echo "━━━ Iteration $iteration / $MAX_ITERATIONS ━━━"
 
