@@ -285,7 +285,6 @@ async def get_playlist(
     """
     from claudetube.operations.playlist import (
         extract_playlist_metadata,
-        load_playlist_metadata,
         save_playlist_metadata,
     )
 
@@ -462,6 +461,43 @@ async def get_scenes(
     video_id = extract_video_id(video_id)
 
     result = await asyncio.to_thread(_get_scenes_sync, video_id, force)
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def generate_visual_transcripts(
+    video_id: str,
+    scene_id: int | None = None,
+    force: bool = False,
+) -> str:
+    """Generate visual descriptions for video scenes.
+
+    Uses vision AI (Claude Haiku by default) to describe what's happening
+    visually in each scene. Results are cached in scene_{NNN}/visual.json.
+
+    Follows "Cheap First, Expensive Last" principle:
+    - Returns cached descriptions instantly if available
+    - Skips scenes with good transcript coverage (talking heads)
+    - Only calls vision API when visual context adds value
+
+    Requires ANTHROPIC_API_KEY environment variable to be set.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        scene_id: Optional specific scene ID (None = all scenes).
+        force: Re-generate even if cached (default: False).
+    """
+    from claudetube.operations.visual_transcript import generate_visual_transcript
+
+    video_id = extract_video_id(video_id)
+    result = await asyncio.to_thread(
+        generate_visual_transcript,
+        video_id,
+        scene_id=scene_id,
+        force=force,
+        output_base=get_cache_dir(),
+    )
 
     return json.dumps(result, indent=2)
 

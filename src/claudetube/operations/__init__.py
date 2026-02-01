@@ -20,16 +20,20 @@ from claudetube.operations.extract_frames import (
     extract_hq_frames_local,
 )
 from claudetube.operations.processor import process_local_video, process_video
+from claudetube.operations.segmentation import (
+    boundaries_to_segments,
+    segment_video_smart,
+)
 from claudetube.operations.subtitles import (
     fetch_local_subtitles,
     find_embedded_subtitles,
     find_sidecar_subtitles,
 )
-from claudetube.operations.segmentation import (
-    boundaries_to_segments,
-    segment_video_smart,
-)
 from claudetube.operations.transcribe import transcribe_audio, transcribe_video
+from claudetube.operations.visual_transcript import (
+    generate_visual_transcript,
+    get_visual_transcript,
+)
 
 __all__ = [
     "process_video",
@@ -52,4 +56,6 @@ __all__ = [
     "find_sidecar_subtitles",
     "boundaries_to_segments",
     "segment_video_smart",
+    "generate_visual_transcript",
+    "get_visual_transcript",
 ]
