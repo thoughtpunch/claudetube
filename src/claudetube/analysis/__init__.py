@@ -30,6 +30,13 @@ from claudetube.analysis.code import (
     load_code_results,
     save_code_results,
 )
+from claudetube.analysis.comprehension import (
+    VerificationResult,
+    answer_from_understanding,
+    generate_self_test_questions,
+    verify_answer,
+    verify_comprehension,
+)
 from claudetube.analysis.embeddings import (
     SceneEmbedding,
     embed_scene,
@@ -102,6 +109,12 @@ __all__ = [
     "get_structural_weight",
     "get_weights_for_video_type",
     "rank_scenes_by_attention",
+    # Comprehension verification
+    "VerificationResult",
+    "answer_from_understanding",
+    "generate_self_test_questions",
+    "verify_answer",
+    "verify_comprehension",
     # Other exports
     "Boundary",
     "CodeBlock",
