@@ -19,6 +19,15 @@ from claudetube.cache.entities import (
     track_objects_from_scenes,
 )
 from claudetube.cache.manager import CacheManager
+from claudetube.cache.knowledge_graph import (
+    ConceptNode,
+    EntityNode,
+    RelatedVideoMatch,
+    VideoKnowledgeGraph,
+    VideoNode,
+    get_knowledge_graph,
+    index_video_to_graph,
+)
 from claudetube.cache.memory import (
     Observation,
     QAPair,
@@ -72,6 +81,14 @@ __all__ = [
     "load_scenes_data",
     "save_scenes_data",
     "get_all_scene_statuses",
+    # Knowledge graph utilities
+    "ConceptNode",
+    "EntityNode",
+    "RelatedVideoMatch",
+    "VideoKnowledgeGraph",
+    "VideoNode",
+    "get_knowledge_graph",
+    "index_video_to_graph",
     # Memory utilities
     "Observation",
     "QAPair",

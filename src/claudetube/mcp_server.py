@@ -14,6 +14,7 @@ from mcp.server.fastmcp import FastMCP
 
 # Import search functionality
 from claudetube.analysis.search import find_moments, format_timestamp
+from claudetube.cache.knowledge_graph import get_knowledge_graph, index_video_to_graph
 from claudetube.cache.scenes import has_scenes, load_scenes_data
 from claudetube.config import get_cache_dir
 from claudetube.models.local_file import is_local_file
@@ -747,6 +748,136 @@ async def get_analysis_status_tool(
     )
 
     return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def find_related_videos_tool(
+    query: str,
+) -> str:
+    """Find videos related to a topic across all cached videos.
+
+    Searches the cross-video knowledge graph for videos sharing
+    entities or concepts matching the query. Use this to discover
+    connections between videos or find all videos about a topic.
+
+    The query performs case-insensitive substring matching against:
+    - Entities: People, technologies, objects mentioned in videos
+    - Concepts: Key topics and terms extracted from transcripts
+
+    Args:
+        query: Search query (e.g., "python", "machine learning", "authentication")
+    """
+    graph = get_knowledge_graph()
+
+    if graph.video_count == 0:
+        return json.dumps({
+            "query": query,
+            "error": "No videos indexed yet. Use index_video_to_graph_tool first.",
+            "matches": [],
+        })
+
+    matches = graph.find_related_videos(query)
+
+    return json.dumps({
+        "query": query,
+        "match_count": len(matches),
+        "matches": [m.to_dict() for m in matches],
+        "graph_stats": graph.get_stats(),
+    }, indent=2)
+
+
+@mcp.tool()
+async def index_video_to_graph_tool(
+    video_id: str,
+    force: bool = False,
+) -> str:
+    """Index a video's entities and concepts into the knowledge graph.
+
+    Adds the video to the cross-video knowledge graph, enabling
+    cross-video search and relationship discovery. The video must
+    have been processed and have entity tracking data.
+
+    Indexing is automatic if the video has entities/concepts.json.
+    Use force=True to re-index with updated entity data.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        force: Re-index even if already present (default: False).
+    """
+    video_id = extract_video_id(video_id)
+    cache_dir = get_cache_dir() / video_id
+
+    if not cache_dir.exists():
+        return json.dumps({"error": f"No cached video found for '{video_id}'"})
+
+    result = await asyncio.to_thread(
+        index_video_to_graph,
+        video_id,
+        cache_dir,
+        force=force,
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def get_video_connections_tool(
+    video_id: str,
+) -> str:
+    """Get videos connected to a specific video.
+
+    Finds other videos that share entities or concepts with the
+    specified video. Useful for discovering related content or
+    building viewing paths through a video collection.
+
+    Args:
+        video_id: Video ID to find connections for.
+    """
+    video_id = extract_video_id(video_id)
+    graph = get_knowledge_graph()
+
+    video = graph.get_video(video_id)
+    if not video:
+        return json.dumps({
+            "error": f"Video '{video_id}' not in knowledge graph. Index it first.",
+            "video_id": video_id,
+        })
+
+    connected_ids = graph.get_video_connections(video_id)
+
+    # Get full info for connected videos
+    connections = []
+    for vid in connected_ids:
+        v = graph.get_video(vid)
+        if v:
+            connections.append(v.to_dict())
+
+    return json.dumps({
+        "video_id": video_id,
+        "video_title": video.title,
+        "connection_count": len(connections),
+        "connections": connections,
+    }, indent=2)
+
+
+@mcp.tool()
+async def get_knowledge_graph_stats_tool() -> str:
+    """Get statistics about the cross-video knowledge graph.
+
+    Returns counts of indexed videos, entities, and concepts,
+    along with the graph storage location.
+    """
+    graph = get_knowledge_graph()
+    stats = graph.get_stats()
+
+    # Add list of indexed video IDs
+    videos = graph.get_all_videos()
+    stats["videos"] = [
+        {"video_id": v.video_id, "title": v.title}
+        for v in videos
+    ]
+
+    return json.dumps(stats, indent=2)
 
 
 def main():
