@@ -44,6 +44,20 @@ from claudetube.providers.base import (
     VisionAnalyzer,
 )
 
+# Import result types
+from claudetube.providers.types import (
+    EntityExtractionResult,
+    SemanticConcept,
+    TranscriptionResult,
+    TranscriptionSegment,
+    VisualDescription,
+    VisualEntity,
+    get_entity_extraction_result_model,
+    get_semantic_concept_model,
+    get_visual_description_model,
+    get_visual_entity_model,
+)
+
 # Public API - implementations added in future tickets
 __all__ = [
     # Provider access
@@ -57,6 +71,19 @@ __all__ = [
     "VideoAnalyzer",
     "Reasoner",
     "Embedder",
+    # Result types
+    "TranscriptionSegment",
+    "TranscriptionResult",
+    # Pydantic model accessors
+    "get_visual_entity_model",
+    "get_semantic_concept_model",
+    "get_entity_extraction_result_model",
+    "get_visual_description_model",
+    # Lazy-loading model wrappers
+    "VisualEntity",
+    "SemanticConcept",
+    "EntityExtractionResult",
+    "VisualDescription",
 ]
 
 
