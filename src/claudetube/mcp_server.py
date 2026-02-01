@@ -12,13 +12,14 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from claudetube.models.local_file import is_local_file
 from claudetube.operations.extract_frames import (
     extract_frames as get_frames_at,
 )
 from claudetube.operations.extract_frames import (
     extract_hq_frames as get_hq_frames_at,
 )
-from claudetube.operations.processor import process_video
+from claudetube.operations.processor import process_local_video, process_video
 from claudetube.operations.transcribe import transcribe_video as _transcribe_video
 from claudetube.parsing.utils import extract_video_id
 
@@ -40,22 +41,38 @@ mcp = FastMCP("claudetube")
 async def process_video_tool(
     url: str,
     whisper_model: str = "tiny",
+    copy: bool = False,
 ) -> str:
-    """Process a YouTube video: download, transcribe, and cache.
+    """Process a video from URL or local file path.
 
     Returns JSON with metadata, transcript text (capped at 50k chars),
     and file paths for the full transcript and thumbnail.
 
     Args:
-        url: YouTube video URL or video ID.
+        url: Video URL, video ID, or local file path.
+             Supports YouTube, Vimeo, and 1500+ sites via yt-dlp.
+             Local paths can be absolute (/path/to/video.mp4),
+             relative (./video.mp4), home-relative (~/Videos/file.mp4),
+             or file URIs (file:///path/to/video.mp4).
         whisper_model: Whisper model size (tiny/base/small/medium/large).
+        copy: For local files only - if True, copy the file to cache instead of symlink.
     """
-    result = await asyncio.to_thread(
-        process_video,
-        url,
-        output_base=CACHE_DIR,
-        whisper_model=whisper_model,
-    )
+    # Detect if input is a local file or URL
+    if is_local_file(url):
+        result = await asyncio.to_thread(
+            process_local_video,
+            url,
+            output_base=CACHE_DIR,
+            whisper_model=whisper_model,
+            copy=copy,
+        )
+    else:
+        result = await asyncio.to_thread(
+            process_video,
+            url,
+            output_base=CACHE_DIR,
+            whisper_model=whisper_model,
+        )
 
     if not result.success:
         return json.dumps({"error": result.error})

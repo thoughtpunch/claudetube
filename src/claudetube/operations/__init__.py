@@ -19,11 +19,12 @@ from claudetube.operations.extract_frames import (
     extract_hq_frames,
     extract_hq_frames_local,
 )
-from claudetube.operations.processor import process_video
+from claudetube.operations.processor import process_local_video, process_video
 from claudetube.operations.transcribe import transcribe_audio, transcribe_video
 
 __all__ = [
     "process_video",
+    "process_local_video",
     "fetch_metadata",
     "download_audio",
     "download_thumbnail",
