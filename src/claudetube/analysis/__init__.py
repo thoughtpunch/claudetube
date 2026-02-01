@@ -8,8 +8,16 @@ from claudetube.analysis.linguistic import (
     Boundary,
     detect_linguistic_boundaries,
 )
+from claudetube.analysis.pause import (
+    detect_pause_boundaries,
+    parse_srt_file,
+    parse_srt_timestamp,
+)
 
 __all__ = [
     "Boundary",
     "detect_linguistic_boundaries",
+    "detect_pause_boundaries",
+    "parse_srt_file",
+    "parse_srt_timestamp",
 ]
