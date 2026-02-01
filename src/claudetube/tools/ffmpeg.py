@@ -21,6 +21,49 @@ class FFmpegTool(VideoTool):
     def name(self) -> str:
         return "ffmpeg"
 
+    def extract_audio(
+        self,
+        input_path: Path,
+        output_path: Path,
+        sample_rate: int = 16000,
+        channels: int = 1,
+        bitrate: str = "128k",
+    ) -> Path | None:
+        """Extract audio from video/audio file to MP3.
+
+        Optimized for speech recognition (whisper) with:
+        - 16kHz sample rate (whisper native)
+        - Mono channel (speech doesn't need stereo)
+        - 128kbps quality (plenty for speech)
+
+        Args:
+            input_path: Path to input video/audio file
+            output_path: Output MP3 path
+            sample_rate: Audio sample rate (default 16000 for whisper)
+            channels: Number of audio channels (default 1 for mono)
+            bitrate: Audio bitrate (default "128k")
+
+        Returns:
+            Path to extracted audio, or None if failed
+        """
+        args = [
+            "-i", str(input_path),
+            "-vn",  # No video
+            "-acodec", "libmp3lame",
+            "-ar", str(sample_rate),
+            "-ac", str(channels),
+            "-ab", bitrate,
+            "-y",  # Overwrite output
+            str(output_path),
+        ]
+
+        result = self._run(args)
+        if not result.success:
+            logger.error(f"Audio extraction failed: {result.stderr}")
+            return None
+
+        return output_path if output_path.exists() else None
+
     def is_available(self) -> bool:
         """Check if ffmpeg is installed."""
         try:

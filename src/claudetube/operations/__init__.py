@@ -5,6 +5,7 @@ High-level video processing operations.
 from claudetube.operations.download import (
     download_audio,
     download_thumbnail,
+    extract_audio_local,
     fetch_metadata,
     fetch_subtitles,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "fetch_metadata",
     "download_audio",
     "download_thumbnail",
+    "extract_audio_local",
     "fetch_subtitles",
     "transcribe_audio",
     "transcribe_video",
