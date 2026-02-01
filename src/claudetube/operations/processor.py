@@ -324,9 +324,35 @@ def process_local_video(
         else:
             log_timed("Thumbnail generation failed", t0)
 
-    # STEP 4: Extract audio and transcribe with whisper
-    audio_path = cache.get_audio_path(video_id)
+    # STEP 4: Check for embedded/sidecar subtitles (faster than whisper)
+    transcript_source = None
     if not srt_path.exists():
+        log_timed("Checking for existing subtitles...", t0)
+        from claudetube.operations.subtitles import fetch_local_subtitles
+        sub_result = fetch_local_subtitles(local_file.path, cache_dir)
+        if sub_result:
+            srt_path.write_text(sub_result["srt"])
+            txt_path.write_text(sub_result["txt"])
+            transcript_source = sub_result["source"]
+            log_timed(f"DONE via {transcript_source} subtitles in {time.time() - t0:.1f}s", t0)
+            state.transcript_complete = True
+            state.transcript_source = transcript_source
+            cache.save_state(video_id, state)
+            return VideoResult(
+                success=True,
+                video_id=video_id,
+                output_dir=cache_dir,
+                transcript_srt=srt_path,
+                transcript_txt=txt_path,
+                thumbnail=thumbnail_path if thumbnail_path.exists() else None,
+                frames=[],
+                metadata=state.to_dict(),
+            )
+
+    # STEP 5: No existing subtitles - extract audio and transcribe with whisper
+    if not srt_path.exists():
+        log_timed("No existing subtitles, falling back to whisper...", t0)
+        audio_path = cache.get_audio_path(video_id)
         log_timed("Extracting audio...", t0)
         try:
             audio_path = extract_audio_local(cached_path, cache_dir)
@@ -346,6 +372,7 @@ def process_local_video(
             transcript = transcribe_audio(audio_path, model_size=whisper_model)
             txt_path.write_text(transcript["txt"])
             srt_path.write_text(transcript["srt"])
+            transcript_source = "whisper"
             log_timed("Transcription complete", t0)
         except Exception as e:
             log_timed(f"Transcription failed: {e}", t0)
@@ -353,8 +380,8 @@ def process_local_video(
 
     # Update state
     state.transcript_complete = srt_path.exists()
-    state.transcript_source = "whisper" if srt_path.exists() else None
-    state.whisper_model = whisper_model if srt_path.exists() else None
+    state.transcript_source = transcript_source
+    state.whisper_model = whisper_model if transcript_source == "whisper" else None
     cache.save_state(video_id, state)
 
     log_timed(f"DONE in {time.time() - t0:.1f}s", t0)

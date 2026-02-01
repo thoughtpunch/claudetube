@@ -25,6 +25,7 @@ classifiers = [
 dependencies = [
     "yt-dlp",
     "faster-whisper>=1.0.0",
+    "pysubs2>=1.6.0",
 ]
 
 [project.optional-dependencies]
