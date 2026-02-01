@@ -1,0 +1,576 @@
+"""
+Active video watching agent for human-like video comprehension.
+
+Implements an agent that actively decides what to examine in a video
+rather than passively analyzing everything. The watcher:
+- Ranks unexplored scenes by expected information gain
+- Builds and updates hypotheses from findings
+- Stops when confidence is sufficient
+- Formulates answers with evidence
+
+Architecture: Cheap First, Expensive Last
+1. TEXT - Use transcript matching first for relevance
+2. EMBEDDINGS - Use vector similarity only if text fails
+3. VISUAL - Deep examination only for high-relevance scenes
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from claudetube.cache.scenes import SceneBoundary
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Hypothesis:
+    """A hypothesis about video content being built from evidence.
+
+    Attributes:
+        claim: The hypothesis statement.
+        evidence: List of evidence dicts supporting this hypothesis.
+        confidence: Confidence score from 0.0 to 1.0.
+    """
+
+    claim: str
+    evidence: list[dict] = field(default_factory=list)
+    confidence: float = 0.0
+
+    def to_dict(self) -> dict:
+        """Convert to JSON-serializable dict."""
+        return {
+            "claim": self.claim,
+            "evidence": self.evidence,
+            "confidence": self.confidence,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Hypothesis:
+        """Create from dictionary."""
+        return cls(
+            claim=data["claim"],
+            evidence=data.get("evidence", []),
+            confidence=data.get("confidence", 0.0),
+        )
+
+
+@dataclass
+class WatcherAction:
+    """An action the watcher decides to take.
+
+    Attributes:
+        action: Type of action - 'examine_quick', 'examine_deep', or 'answer'.
+        scene_id: Scene to examine (for examine_* actions).
+        content: Answer content (for answer action).
+    """
+
+    action: str  # 'examine_quick', 'examine_deep', 'answer'
+    scene_id: int | None = None
+    content: dict | None = None
+
+    def to_dict(self) -> dict:
+        """Convert to JSON-serializable dict."""
+        return {
+            "action": self.action,
+            "scene_id": self.scene_id,
+            "content": self.content,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> WatcherAction:
+        """Create from dictionary."""
+        return cls(
+            action=data["action"],
+            scene_id=data.get("scene_id"),
+            content=data.get("content"),
+        )
+
+
+class ActiveVideoWatcher:
+    """Agent that actively decides what to examine in a video.
+
+    Rather than analyzing all content, the watcher strategically
+    explores based on the user's goal, building hypotheses and
+    stopping when sufficient confidence is reached.
+
+    Example usage:
+        watcher = ActiveVideoWatcher(
+            video_id="abc123",
+            user_goal="When do they fix the bug?",
+            scenes=scenes_list,
+            cache_dir=cache_dir,
+        )
+
+        while True:
+            action = watcher.decide_next_action()
+            if action.action == 'answer':
+                return action.content
+
+            # Examine the scene (quick or deep based on action.action)
+            findings = examine_scene(action.scene_id, action.action)
+            watcher.update_understanding(action.scene_id, findings)
+    """
+
+    def __init__(
+        self,
+        video_id: str,
+        user_goal: str,
+        scenes: list[dict | SceneBoundary],
+        cache_dir: Path | None = None,
+        confidence_threshold: float = 0.8,
+        max_examinations: int = 10,
+    ):
+        """Initialize the active video watcher.
+
+        Args:
+            video_id: Video identifier.
+            user_goal: User's question or goal for watching.
+            scenes: List of scene data (dicts or SceneBoundary objects).
+            cache_dir: Optional video cache directory for memory/embeddings.
+            confidence_threshold: Stop when hypothesis confidence reaches this.
+            max_examinations: Maximum scenes to examine before answering.
+        """
+        self.video_id = video_id
+        self.user_goal = user_goal
+        self.scenes = scenes
+        self.cache_dir = cache_dir
+        self.examined: set[int] = set()
+        self.hypotheses: list[Hypothesis] = []
+        self.confidence_threshold = confidence_threshold
+        self.max_examinations = max_examinations
+
+        # Pre-compute goal words for text matching
+        self._goal_words = set(user_goal.lower().split())
+
+        logger.info(
+            f"ActiveVideoWatcher initialized for '{user_goal}' with "
+            f"{len(scenes)} scenes (threshold={confidence_threshold})"
+        )
+
+    def decide_next_action(self) -> WatcherAction:
+        """Decide what to examine next.
+
+        Returns:
+            WatcherAction indicating what to do next:
+            - examine_quick: Quick look at a moderately relevant scene
+            - examine_deep: Deep analysis of a highly relevant scene
+            - answer: Stop examining and return the answer
+        """
+        # Check if we have sufficient confidence
+        if self.has_sufficient_confidence():
+            logger.info(
+                f"Sufficient confidence ({self._get_max_confidence():.2f}) - "
+                "formulating answer"
+            )
+            return WatcherAction("answer", content=self.formulate_answer())
+
+        # Check examination budget
+        if len(self.examined) >= self.max_examinations:
+            logger.info(
+                f"Reached max examinations ({self.max_examinations}) - "
+                "formulating answer"
+            )
+            return WatcherAction("answer", content=self.formulate_answer())
+
+        # Rank unexplored scenes
+        candidates = self.rank_unexplored_scenes()
+
+        if not candidates:
+            logger.info("No more scenes to examine - formulating answer")
+            return WatcherAction("answer", content=self.formulate_answer())
+
+        best = candidates[0]
+        scene_id = best["scene_id"]
+        relevance = best["relevance"]
+
+        # Decide examination depth based on relevance
+        if relevance > 0.8:
+            logger.info(
+                f"High relevance ({relevance:.2f}) - examining scene {scene_id} deeply"
+            )
+            return WatcherAction("examine_deep", scene_id=scene_id)
+        else:
+            logger.info(
+                f"Moderate relevance ({relevance:.2f}) - quick examination of "
+                f"scene {scene_id}"
+            )
+            return WatcherAction("examine_quick", scene_id=scene_id)
+
+    def rank_unexplored_scenes(self) -> list[dict]:
+        """Rank scenes by expected information gain.
+
+        Returns:
+            List of dicts with scene_id, relevance, and scene data,
+            sorted by relevance descending.
+        """
+        candidates = []
+
+        for scene in self.scenes:
+            scene_id = self._get_scene_id(scene)
+            if scene_id in self.examined:
+                continue
+
+            # Calculate relevance to goal
+            relevance = self.calculate_relevance(scene)
+
+            candidates.append({
+                "scene_id": scene_id,
+                "relevance": relevance,
+                "scene": scene,
+            })
+
+        return sorted(candidates, key=lambda x: x["relevance"], reverse=True)
+
+    def calculate_relevance(self, scene: dict | SceneBoundary) -> float:
+        """Estimate scene relevance to user goal.
+
+        Uses embedding similarity if available, otherwise falls back
+        to keyword matching.
+
+        Args:
+            scene: Scene data (dict or SceneBoundary).
+
+        Returns:
+            Relevance score from 0.0 to 1.0.
+        """
+        # Check if scene has embedding for semantic matching
+        scene_id = self._get_scene_id(scene)
+        if self.cache_dir and self._has_embeddings():
+            try:
+                relevance = self._semantic_relevance(scene_id)
+                if relevance is not None:
+                    return relevance
+            except Exception as e:
+                logger.debug(f"Semantic relevance failed for scene {scene_id}: {e}")
+
+        # Fallback: keyword matching on transcript
+        return self._text_relevance(scene)
+
+    def _text_relevance(self, scene: dict | SceneBoundary) -> float:
+        """Calculate relevance using keyword matching.
+
+        Args:
+            scene: Scene data.
+
+        Returns:
+            Relevance score based on word overlap.
+        """
+        if hasattr(scene, "transcript_text"):
+            transcript = scene.transcript_text or ""
+        else:
+            transcript = scene.get("transcript_text", "")
+
+        if not transcript:
+            return 0.0
+
+        transcript_lower = transcript.lower()
+        transcript_words = set(transcript_lower.split())
+
+        if not self._goal_words:
+            return 0.0
+
+        # Calculate word overlap
+        matches = sum(1 for w in self._goal_words if w in transcript_words)
+
+        # Bonus for exact phrase
+        goal_lower = self.user_goal.lower()
+        phrase_bonus = 0.3 if goal_lower in transcript_lower else 0.0
+
+        return min(1.0, (matches / len(self._goal_words)) + phrase_bonus)
+
+    def _semantic_relevance(self, scene_id: int) -> float | None:
+        """Calculate semantic relevance using embeddings.
+
+        Args:
+            scene_id: Scene to check.
+
+        Returns:
+            Relevance score or None if embeddings unavailable.
+        """
+        from claudetube.analysis.vector_index import (
+            has_vector_index,
+            search_scenes_by_text,
+        )
+
+        if not has_vector_index(self.cache_dir):
+            return None
+
+        try:
+            # Search for scenes matching the goal
+            results = search_scenes_by_text(
+                self.cache_dir,
+                self.user_goal,
+                top_k=len(self.scenes),
+            )
+
+            # Find this scene's relevance in results
+            for result in results:
+                if result.scene_id == scene_id:
+                    # Convert distance to relevance (lower distance = higher relevance)
+                    # Typical L2 distances range 0-2 for normalized embeddings
+                    return max(0.0, 1.0 - (result.distance / 2.0))
+
+            return 0.0
+        except Exception as e:
+            logger.debug(f"Semantic search failed: {e}")
+            return None
+
+    def _has_embeddings(self) -> bool:
+        """Check if embeddings exist for this video."""
+        if not self.cache_dir:
+            return False
+        from claudetube.analysis.vector_index import has_vector_index
+        return has_vector_index(self.cache_dir)
+
+    def update_understanding(self, scene_id: int, findings: list[dict]) -> None:
+        """Update hypotheses based on examination findings.
+
+        Args:
+            scene_id: Scene that was examined.
+            findings: List of finding dicts, each with at least:
+                - description: What was observed
+                - claim (optional): Hypothesis this supports
+                - initial_confidence (optional): Confidence boost
+                - timestamp (optional): When in the scene
+        """
+        self.examined.add(scene_id)
+        logger.info(
+            f"Updating understanding from scene {scene_id}: "
+            f"{len(findings)} findings"
+        )
+
+        for finding in findings:
+            matched = False
+
+            # Try to match to existing hypothesis
+            for hyp in self.hypotheses:
+                if self._finding_supports_hypothesis(finding, hyp):
+                    hyp.evidence.append(finding)
+                    hyp.confidence = self._calculate_confidence(hyp)
+                    matched = True
+                    logger.debug(
+                        f"Finding supports existing hypothesis '{hyp.claim}' "
+                        f"(confidence now {hyp.confidence:.2f})"
+                    )
+                    break
+
+            if not matched:
+                # Create new hypothesis
+                claim = finding.get("claim") or finding.get("description", "")
+                if claim:
+                    new_hyp = Hypothesis(
+                        claim=claim,
+                        evidence=[finding],
+                        confidence=finding.get("initial_confidence", 0.3),
+                    )
+                    self.hypotheses.append(new_hyp)
+                    logger.debug(
+                        f"Created new hypothesis '{claim}' "
+                        f"(confidence {new_hyp.confidence:.2f})"
+                    )
+
+    def _finding_supports_hypothesis(self, finding: dict, hyp: Hypothesis) -> bool:
+        """Check if a finding supports an existing hypothesis.
+
+        Uses simple keyword overlap between finding description
+        and hypothesis claim.
+
+        Args:
+            finding: Finding dict with at least 'description'.
+            hyp: Hypothesis to check against.
+
+        Returns:
+            True if finding appears to support the hypothesis.
+        """
+        description = finding.get("description", "").lower()
+        claim = hyp.claim.lower()
+
+        if not description or not claim:
+            return False
+
+        # Check for significant word overlap
+        desc_words = set(description.split())
+        claim_words = set(claim.split())
+
+        # Filter common words
+        stop_words = {
+            "the", "a", "an", "is", "are", "was", "were", "be", "been",
+            "being", "have", "has", "had", "do", "does", "did", "will",
+            "would", "could", "should", "may", "might", "must", "shall",
+            "can", "to", "of", "in", "for", "on", "with", "at", "by",
+            "from", "as", "into", "through", "during", "before", "after",
+            "above", "below", "between", "under", "again", "further",
+            "then", "once", "here", "there", "when", "where", "why",
+            "how", "all", "each", "few", "more", "most", "other", "some",
+            "such", "no", "nor", "not", "only", "own", "same", "so",
+            "than", "too", "very", "just", "and", "but", "if", "or",
+            "because", "until", "while", "this", "that", "these", "those",
+        }
+        desc_words -= stop_words
+        claim_words -= stop_words
+
+        if not desc_words or not claim_words:
+            return False
+
+        overlap = len(desc_words & claim_words)
+        return overlap >= 2 or (overlap >= 1 and len(claim_words) <= 3)
+
+    def _calculate_confidence(self, hyp: Hypothesis) -> float:
+        """Calculate confidence score for a hypothesis.
+
+        Confidence increases with:
+        - More pieces of evidence
+        - Evidence from different scenes
+        - High individual evidence confidence
+
+        Args:
+            hyp: Hypothesis to evaluate.
+
+        Returns:
+            Confidence score from 0.0 to 1.0.
+        """
+        if not hyp.evidence:
+            return 0.0
+
+        # Base confidence from evidence count (diminishing returns)
+        evidence_count = len(hyp.evidence)
+        base_confidence = min(0.6, evidence_count * 0.15)
+
+        # Bonus for evidence from multiple scenes
+        scenes_with_evidence = set()
+        for e in hyp.evidence:
+            if "scene_id" in e:
+                scenes_with_evidence.add(e["scene_id"])
+            elif "timestamp" in e:
+                # Try to infer scene from timestamp
+                scenes_with_evidence.add(e.get("timestamp", 0))
+
+        multi_scene_bonus = min(0.2, len(scenes_with_evidence) * 0.05)
+
+        # Average individual confidence scores
+        avg_individual = sum(
+            e.get("initial_confidence", 0.3) for e in hyp.evidence
+        ) / evidence_count if evidence_count else 0
+
+        confidence = base_confidence + multi_scene_bonus + (avg_individual * 0.3)
+
+        return min(1.0, confidence)
+
+    def has_sufficient_confidence(self) -> bool:
+        """Check if any hypothesis has reached confidence threshold.
+
+        Returns:
+            True if confident enough to answer.
+        """
+        if not self.hypotheses:
+            return False
+        return self._get_max_confidence() >= self.confidence_threshold
+
+    def _get_max_confidence(self) -> float:
+        """Get the maximum confidence among all hypotheses."""
+        if not self.hypotheses:
+            return 0.0
+        return max(h.confidence for h in self.hypotheses)
+
+    def formulate_answer(self) -> dict:
+        """Generate answer from hypotheses.
+
+        Returns:
+            Dict with:
+            - main_answer: Best hypothesis claim
+            - confidence: Confidence score
+            - evidence: List of supporting evidence
+            - alternative_interpretations: Other plausible hypotheses
+            - scenes_examined: Number of scenes looked at
+        """
+        ranked = sorted(
+            self.hypotheses,
+            key=lambda h: h.confidence,
+            reverse=True,
+        )
+
+        if not ranked:
+            return {
+                "main_answer": "Unable to determine from video content",
+                "confidence": 0.0,
+                "evidence": [],
+                "alternative_interpretations": [],
+                "scenes_examined": len(self.examined),
+            }
+
+        best = ranked[0]
+        return {
+            "main_answer": best.claim,
+            "confidence": best.confidence,
+            "evidence": [
+                {
+                    "timestamp": e.get("timestamp"),
+                    "observation": e.get("description"),
+                    "scene_id": e.get("scene_id"),
+                }
+                for e in best.evidence
+            ],
+            "alternative_interpretations": [h.claim for h in ranked[1:3]],
+            "scenes_examined": len(self.examined),
+        }
+
+    def get_state(self) -> dict:
+        """Get current watcher state for serialization.
+
+        Returns:
+            Dict with video_id, goal, examined scenes, and hypotheses.
+        """
+        return {
+            "video_id": self.video_id,
+            "user_goal": self.user_goal,
+            "examined": list(self.examined),
+            "hypotheses": [h.to_dict() for h in self.hypotheses],
+            "confidence_threshold": self.confidence_threshold,
+            "max_examinations": self.max_examinations,
+        }
+
+    @classmethod
+    def from_state(
+        cls,
+        state: dict,
+        scenes: list[dict | SceneBoundary],
+        cache_dir: Path | None = None,
+    ) -> ActiveVideoWatcher:
+        """Restore watcher from saved state.
+
+        Args:
+            state: State dict from get_state().
+            scenes: Scene data (required, not serialized).
+            cache_dir: Optional cache directory.
+
+        Returns:
+            Restored ActiveVideoWatcher instance.
+        """
+        watcher = cls(
+            video_id=state["video_id"],
+            user_goal=state["user_goal"],
+            scenes=scenes,
+            cache_dir=cache_dir,
+            confidence_threshold=state.get("confidence_threshold", 0.8),
+            max_examinations=state.get("max_examinations", 10),
+        )
+
+        watcher.examined = set(state.get("examined", []))
+        watcher.hypotheses = [
+            Hypothesis.from_dict(h)
+            for h in state.get("hypotheses", [])
+        ]
+
+        return watcher
+
+    def _get_scene_id(self, scene: dict | SceneBoundary) -> int:
+        """Extract scene_id from scene data."""
+        if hasattr(scene, "scene_id"):
+            return scene.scene_id
+        return scene.get("scene_id", 0)

@@ -72,6 +72,11 @@ from claudetube.analysis.visual import (
 from claudetube.analysis.vocabulary import (
     detect_vocabulary_shifts,
 )
+from claudetube.analysis.watcher import (
+    ActiveVideoWatcher,
+    Hypothesis,
+    WatcherAction,
+)
 
 __all__ = [
     "Boundary",
@@ -120,4 +125,8 @@ __all__ = [
     "search_scenes",
     "search_scenes_by_text",
     "should_use_visual_detection",
+    # Active video watcher
+    "ActiveVideoWatcher",
+    "Hypothesis",
+    "WatcherAction",
 ]
