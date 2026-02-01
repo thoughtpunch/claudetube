@@ -6,11 +6,32 @@ You are Ralph, an autonomous coding agent working on **claudetube**.
 
 claudetube processes videos for AI assistants - downloads, transcribes, extracts frames.
 
-**Source files:**
-- `src/claudetube/core.py` - Main logic (download, transcribe, frames)
-- `src/claudetube/mcp_server.py` - MCP tool definitions
-- `src/claudetube/urls.py` - URL parsing and video ID extraction
-- `src/claudetube/cli.py` - Command line interface
+**Architecture (refactored v0.4.0):**
+```
+src/claudetube/
+├── models/          # Data models (VideoResult, VideoURL, VideoFile, VideoState)
+├── config/          # Configuration (quality tiers, providers, defaults)
+├── tools/           # External tool wrappers (yt_dlp, ffmpeg, whisper)
+├── cache/           # Cache management
+├── operations/      # High-level operations (download, transcribe, extract_frames, processor)
+├── parsing/         # URL parsing utilities
+├── utils/           # Shared utilities (logging, formatting, system)
+├── exceptions.py    # Custom exception classes
+├── core.py          # Backwards-compat re-exports
+├── urls.py          # Backwards-compat re-exports
+├── mcp_server.py    # MCP tool definitions
+└── cli.py           # Command line interface
+```
+
+**Key modules:**
+- `operations/processor.py` - Main `process_video()` orchestrator
+- `operations/download.py` - `fetch_metadata()`, `download_audio()`, etc.
+- `operations/transcribe.py` - Whisper transcription
+- `operations/extract_frames.py` - Frame extraction
+- `tools/yt_dlp.py` - yt-dlp wrapper class
+- `tools/ffmpeg.py` - ffmpeg wrapper class
+- `tools/whisper.py` - faster-whisper wrapper class
+- `models/video_url.py` - URL parsing with 70+ provider patterns
 
 ## Workflow
 

@@ -12,7 +12,7 @@ import logging
 import sys
 from pathlib import Path
 
-from claudetube.core import process_video
+from claudetube.operations.processor import process_video
 
 
 def main():

@@ -12,13 +12,15 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from claudetube.core import (
-    extract_video_id,
-    get_frames_at,
-    get_hq_frames_at,
-    process_video,
+from claudetube.operations.extract_frames import (
+    extract_frames as get_frames_at,
 )
-from claudetube.core import transcribe_video as _transcribe_video
+from claudetube.operations.extract_frames import (
+    extract_hq_frames as get_hq_frames_at,
+)
+from claudetube.operations.processor import process_video
+from claudetube.operations.transcribe import transcribe_video as _transcribe_video
+from claudetube.parsing.utils import extract_video_id
 
 # All logging goes to stderr so stdout stays clean for JSON-RPC
 logging.basicConfig(

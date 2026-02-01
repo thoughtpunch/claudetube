@@ -8,7 +8,7 @@ Modes:
 
 Runs the full pipeline for each URL:
   1. extract_video_id (URL parsing)
-  2. _get_metadata (yt-dlp metadata fetch)
+  2. fetch_metadata (yt-dlp metadata fetch)
   3. process_video (metadata + transcript) [--full only]
   4. get_frames (extract frames) [--full only]
   5. get_hq_frames (extract HQ frames) [--full only]
@@ -29,13 +29,14 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from claudetube.core import (  # noqa: E402
-    _get_metadata,
+from claudetube import (  # noqa: E402
+    VideoURL,
+    extract_video_id,
     get_frames_at,
     get_hq_frames_at,
     process_video,
 )
-from claudetube.urls import VideoURL, extract_video_id  # noqa: E402
+from claudetube.operations.download import fetch_metadata  # noqa: E402
 
 TEST_CACHE = Path(__file__).parent / "_integration_cache"
 RESULTS_FILE = Path(__file__).parent / "integration_results.json"
@@ -75,38 +76,28 @@ def run_metadata_test(url: str, site: str) -> dict:
     # Step 2: Metadata fetch via yt-dlp
     try:
         t0 = time.time()
-        meta = _get_metadata(url)
+        meta = fetch_metadata(url)
         elapsed = time.time() - t0
 
-        if meta and "_error" not in meta:
-            result["steps"]["get_metadata"] = {
-                "status": "OK",
-                "elapsed": round(elapsed, 1),
-                "title": meta.get("title", "?")[:80],
-                "duration": meta.get("duration"),
-                "uploader": meta.get("uploader", meta.get("channel", "?"))[:40],
-                "has_subtitles": bool(
-                    meta.get("subtitles") or meta.get("automatic_captions")
-                ),
-                "has_audio_only": any(
-                    f.get("vcodec") == "none"
-                    or f.get("acodec") != "none"
-                    and not f.get("vcodec")
-                    for f in meta.get("formats", [])
-                    if f.get("acodec") != "none"
-                ),
-            }
-        else:
-            error_msg = (
-                meta.get("_error", "Unknown error") if meta else "No metadata returned"
-            )
-            result["steps"]["get_metadata"] = {
-                "status": "FAIL",
-                "elapsed": round(elapsed, 1),
-                "error": error_msg[:200],
-            }
+        result["steps"]["get_metadata"] = {
+            "status": "OK",
+            "elapsed": round(elapsed, 1),
+            "title": meta.get("title", "?")[:80],
+            "duration": meta.get("duration"),
+            "uploader": meta.get("uploader", meta.get("channel", "?"))[:40],
+            "has_subtitles": bool(
+                meta.get("subtitles") or meta.get("automatic_captions")
+            ),
+            "has_audio_only": any(
+                f.get("vcodec") == "none"
+                or f.get("acodec") != "none"
+                and not f.get("vcodec")
+                for f in meta.get("formats", [])
+                if f.get("acodec") != "none"
+            ),
+        }
     except Exception as e:
-        result["steps"]["get_metadata"] = {"status": "ERROR", "error": str(e)[:200]}
+        result["steps"]["get_metadata"] = {"status": "FAIL", "error": str(e)[:200]}
 
     return result
 
