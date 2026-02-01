@@ -34,6 +34,11 @@ from claudetube.operations.subtitles import (
     find_sidecar_subtitles,
 )
 from claudetube.operations.transcribe import transcribe_audio, transcribe_video
+from claudetube.operations.change_detection import (
+    detect_scene_changes,
+    get_major_transitions,
+    get_scene_changes,
+)
 from claudetube.operations.visual_transcript import (
     generate_visual_transcript,
     get_visual_transcript,
@@ -64,4 +69,7 @@ __all__ = [
     "get_visual_transcript",
     "get_people_tracking",
     "track_people",
+    "detect_scene_changes",
+    "get_scene_changes",
+    "get_major_transitions",
 ]
