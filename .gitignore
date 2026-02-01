@@ -53,3 +53,4 @@ Thumbs.db
 
 # bv (beads viewer) local config and caches
 .bv/
+ralph.log
