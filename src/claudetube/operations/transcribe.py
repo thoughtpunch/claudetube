@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 
 from claudetube.cache.manager import CacheManager
-from claudetube.config.defaults import CACHE_DIR
+from claudetube.config.loader import get_cache_dir
 from claudetube.exceptions import TranscriptionError
 from claudetube.operations.download import download_audio
 from claudetube.tools.whisper import WhisperTool
@@ -62,7 +62,7 @@ def transcribe_video(
     from claudetube.parsing.utils import extract_video_id
 
     t0 = time.time()
-    cache = CacheManager(output_base or CACHE_DIR)
+    cache = CacheManager(output_base or get_cache_dir())
 
     video_id = extract_video_id(video_id_or_url)
     srt_path, txt_path = cache.get_transcript_paths(video_id)

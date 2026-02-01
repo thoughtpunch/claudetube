@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 
 from claudetube.cache.manager import CacheManager
-from claudetube.config.defaults import CACHE_DIR
+from claudetube.config.loader import get_cache_dir
 from claudetube.config.quality import QUALITY_LADDER, QUALITY_TIERS
 from claudetube.operations.download import download_video_segment
 from claudetube.tools.ffmpeg import FFmpegTool
@@ -67,7 +67,7 @@ def extract_frames(
     tier = QUALITY_TIERS[quality]
     effective_width = width or tier["width"]
 
-    cache = CacheManager(output_base or CACHE_DIR)
+    cache = CacheManager(output_base or get_cache_dir())
     video_id = extract_video_id(video_id_or_url)
     cache_dir = cache.get_cache_dir(video_id)
     drill_dir = cache_dir / f"drill_{quality}"
@@ -171,7 +171,7 @@ def extract_hq_frames(
 
     t0 = time.time()
 
-    cache = CacheManager(output_base or CACHE_DIR)
+    cache = CacheManager(output_base or get_cache_dir())
     video_id = extract_video_id(video_id_or_url)
     cache_dir = cache.get_cache_dir(video_id)
     hq_dir = cache_dir / "hq"
@@ -277,7 +277,7 @@ def extract_frames_local(
     width = QUALITY_WIDTHS[quality]
     jpeg_quality = QUALITY_TIERS[quality]["jpeg_q"]
 
-    cache = CacheManager(output_base or CACHE_DIR)
+    cache = CacheManager(output_base or get_cache_dir())
 
     # Get state and validate it's a local file
     state = cache.get_state(video_id)
@@ -378,7 +378,7 @@ def extract_hq_frames_local(
 
     t0 = time.time()
 
-    cache = CacheManager(output_base or CACHE_DIR)
+    cache = CacheManager(output_base or get_cache_dir())
 
     # Get state and validate it's a local file
     state = cache.get_state(video_id)

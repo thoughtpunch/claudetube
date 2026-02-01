@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from claudetube.cache.manager import CacheManager
-from claudetube.config.defaults import CACHE_DIR
+from claudetube.config.loader import get_cache_dir
 from claudetube.models.local_file import LocalFile, LocalFileError
 from claudetube.models.state import VideoState
 from claudetube.models.video_result import VideoResult
@@ -49,7 +49,7 @@ def process_video(
     t0 = time.time()
     log_timed("Starting video processing", t0)
 
-    cache = CacheManager(output_base or CACHE_DIR)
+    cache = CacheManager(output_base or get_cache_dir())
 
     # Extract context from URL (video_id, playlist_id, etc.)
     url_context = extract_url_context(url)
@@ -224,7 +224,7 @@ def process_local_video(
     t0 = time.time()
     log_timed("Starting local video processing", t0)
 
-    cache = CacheManager(output_base or CACHE_DIR)
+    cache = CacheManager(output_base or get_cache_dir())
 
     # Parse and validate the local file path
     try:

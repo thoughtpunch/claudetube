@@ -14,7 +14,7 @@ from claudetube.cache.storage import (
     save_state,
 )
 from claudetube.cache import scenes as scene_cache
-from claudetube.config.defaults import CACHE_DIR
+from claudetube.config.loader import get_cache_dir
 from claudetube.models.state import VideoState
 from claudetube.models.video_file import VideoFile
 
@@ -23,7 +23,7 @@ class CacheManager:
     """Manages video cache directory and state."""
 
     def __init__(self, cache_base: Path | None = None):
-        self.cache_base = cache_base or CACHE_DIR
+        self.cache_base = cache_base or get_cache_dir()
 
     def get_cache_dir(self, video_id: str) -> Path:
         """Get cache directory for a video."""

@@ -1,11 +1,9 @@
 """
 Default configuration values for claudetube.
+
+Note: Cache directory is configured via config/loader.py which supports
+environment variables (CLAUDETUBE_CACHE_DIR), project config, and user config.
 """
-
-from pathlib import Path
-
-# Default cache directory
-CACHE_DIR = Path.home() / ".claude" / "video_cache"
 
 # Default whisper model (tiny is fastest, small is good balance)
 DEFAULT_WHISPER_MODEL = "tiny"

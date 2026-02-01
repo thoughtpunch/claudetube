@@ -79,7 +79,7 @@ def _get_cache_dir_from_yaml(config: dict[str, Any] | None) -> Path | None:
     if cache_dir is None:
         return None
 
-    path = Path(cache_dir).expanduser()
+    path = Path(cache_dir).expanduser().resolve()
     return path
 
 
@@ -122,8 +122,8 @@ def _resolve_config() -> ClaudetubeConfig:
     # 1. Check environment variable
     env_cache_dir = os.environ.get("CLAUDETUBE_CACHE_DIR")
     if env_cache_dir:
-        cache_dir = Path(env_cache_dir).expanduser()
-        logger.debug(f"Using cache_dir from env: {cache_dir}")
+        cache_dir = Path(env_cache_dir).expanduser().resolve()
+        logger.info(f"Using cache_dir from CLAUDETUBE_CACHE_DIR: {cache_dir}")
         return ClaudetubeConfig(cache_dir=cache_dir, source=ConfigSource.ENV)
 
     # 2. Check project config
@@ -162,13 +162,19 @@ def get_config() -> ClaudetubeConfig:
     return _resolve_config()
 
 
-def get_cache_dir() -> Path:
-    """Convenience function to get the resolved cache directory.
+def get_cache_dir(ensure_exists: bool = True) -> Path:
+    """Get the resolved cache directory.
+
+    Args:
+        ensure_exists: If True (default), create the directory if it doesn't exist.
 
     Returns:
         Path to the cache directory.
     """
-    return get_config().cache_dir
+    cache_dir = get_config().cache_dir
+    if ensure_exists:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 
 def clear_config_cache() -> None:

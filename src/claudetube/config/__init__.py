@@ -4,7 +4,7 @@ Configuration constants for claudetube.
 Contains quality tiers, provider definitions, and default settings.
 """
 
-from claudetube.config.defaults import CACHE_DIR, DEFAULT_WHISPER_MODEL
+from claudetube.config.defaults import DEFAULT_WHISPER_MODEL
 from claudetube.config.loader import (
     ClaudetubeConfig,
     ConfigSource,
@@ -25,7 +25,6 @@ __all__ = [
     "next_quality",
     "VIDEO_PROVIDERS",
     "get_provider_count",
-    "CACHE_DIR",
     "DEFAULT_WHISPER_MODEL",
     # Config loader
     "ClaudetubeConfig",

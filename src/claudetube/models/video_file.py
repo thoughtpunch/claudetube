@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from claudetube.config.defaults import CACHE_DIR
+from claudetube.config.loader import get_cache_dir
 from claudetube.models.state import VideoState
 
 
@@ -105,7 +105,7 @@ class VideoFile:
         cache_base: Path | None = None,
     ) -> VideoFile:
         """Create a VideoFile for a URL-sourced video."""
-        cache_base = cache_base or CACHE_DIR
+        cache_base = cache_base or get_cache_dir()
         cache_dir = cache_base / video_id
         return cls(
             video_id=video_id,
@@ -121,7 +121,7 @@ class VideoFile:
         cache_base: Path | None = None,
     ) -> VideoFile:
         """Create a VideoFile for a user-provided local file."""
-        cache_base = cache_base or CACHE_DIR
+        cache_base = cache_base or get_cache_dir()
         cache_dir = cache_base / video_id
         return cls(
             video_id=video_id,
@@ -141,7 +141,7 @@ class VideoFile:
         """
         import json
 
-        cache_base = cache_base or CACHE_DIR
+        cache_base = cache_base or get_cache_dir()
         cache_dir = cache_base / video_id
         state_file = cache_dir / "state.json"
 
