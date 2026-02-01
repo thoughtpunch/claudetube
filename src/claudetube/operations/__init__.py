@@ -19,6 +19,10 @@ from claudetube.operations.extract_frames import (
     extract_hq_frames,
     extract_hq_frames_local,
 )
+from claudetube.operations.person_tracking import (
+    get_people_tracking,
+    track_people,
+)
 from claudetube.operations.processor import process_local_video, process_video
 from claudetube.operations.segmentation import (
     boundaries_to_segments,
@@ -58,4 +62,6 @@ __all__ = [
     "segment_video_smart",
     "generate_visual_transcript",
     "get_visual_transcript",
+    "get_people_tracking",
+    "track_people",
 ]

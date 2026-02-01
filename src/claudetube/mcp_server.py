@@ -394,6 +394,16 @@ def _get_scenes_sync(video_id: str, force: bool = False) -> dict:
                         visual_data = json.loads(visual_text)
                         if visual_data:
                             scene["visual"] = visual_data
+
+            # Enrich with people tracking data if available
+            people_file = cache_dir / "entities" / "people.json"
+            if people_file.exists():
+                try:
+                    people_data = json.loads(people_file.read_text())
+                    result["people_tracking"] = people_data
+                except json.JSONDecodeError:
+                    pass
+
             return result
 
     # No cached scenes - run segmentation
@@ -498,6 +508,40 @@ async def generate_visual_transcripts(
         video_id,
         scene_id=scene_id,
         force=force,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def track_people_tool(
+    video_id: str,
+    force: bool = False,
+    use_face_recognition: bool = False,
+) -> str:
+    """Track people across scenes in a video.
+
+    Identifies distinct people and tracks their appearances with timestamps.
+    Uses visual transcript data by default (cheap), with optional face_recognition
+    for more accurate tracking (expensive, requires pip install face_recognition).
+
+    Results are cached in entities/people.json.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        force: Re-generate even if cached (default: False).
+        use_face_recognition: Use face_recognition library for accurate tracking.
+            Requires: pip install face_recognition (default: False).
+    """
+    from claudetube.operations.person_tracking import track_people
+
+    video_id = extract_video_id(video_id)
+    result = await asyncio.to_thread(
+        track_people,
+        video_id,
+        force=force,
+        use_face_recognition=use_face_recognition,
         output_base=get_cache_dir(),
     )
 
