@@ -117,7 +117,9 @@ def get_provider(name: str, **kwargs) -> Provider | Any:
         >>> provider = get_provider("whisper-local", model_size="small")
         >>> result = await provider.transcribe(audio_path)
     """
-    raise NotImplementedError("Provider registry not yet implemented (claudetube-2su)")
+    from claudetube.providers.registry import get_provider as _get_provider
+
+    return _get_provider(name, **kwargs)
 
 
 def list_available() -> list[str]:
@@ -132,4 +134,6 @@ def list_available() -> list[str]:
         >>> available = list_available()
         >>> print(available)  # ["whisper-local", "claude-code"]
     """
-    raise NotImplementedError("Provider registry not yet implemented (claudetube-2su)")
+    from claudetube.providers.registry import list_available as _list_available
+
+    return _list_available()
