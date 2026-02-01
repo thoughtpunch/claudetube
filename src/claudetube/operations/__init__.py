@@ -10,6 +10,10 @@ from claudetube.operations.analysis_depth import (
     analyze_video,
     get_analysis_status,
 )
+from claudetube.operations.audio_description import (
+    compile_scene_descriptions,
+    get_scene_descriptions,
+)
 from claudetube.operations.change_detection import (
     detect_scene_changes,
     get_major_transitions,
@@ -86,4 +90,6 @@ __all__ = [
     "Entities",
     "analyze_video",
     "get_analysis_status",
+    "compile_scene_descriptions",
+    "get_scene_descriptions",
 ]
