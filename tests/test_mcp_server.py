@@ -11,8 +11,8 @@ from claudetube.core import VideoResult
 
 @pytest.fixture
 def cache_dir(tmp_path):
-    """Provide a temporary cache directory and patch CACHE_DIR."""
-    with patch("claudetube.mcp_server.CACHE_DIR", tmp_path):
+    """Provide a temporary cache directory and patch get_cache_dir."""
+    with patch("claudetube.mcp_server.get_cache_dir", return_value=tmp_path):
         yield tmp_path
 
 

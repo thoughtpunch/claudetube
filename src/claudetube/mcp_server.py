@@ -12,6 +12,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from claudetube.config import get_cache_dir
 from claudetube.models.local_file import is_local_file
 from claudetube.operations.extract_frames import (
     extract_frames as get_frames_at,
@@ -31,7 +32,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = Path.home() / ".claude" / "video_cache"
 TRANSCRIPT_INLINE_CAP = 50_000
 
 mcp = FastMCP("claudetube")
@@ -62,7 +62,7 @@ async def process_video_tool(
         result = await asyncio.to_thread(
             process_local_video,
             url,
-            output_base=CACHE_DIR,
+            output_base=get_cache_dir(),
             whisper_model=whisper_model,
             copy=copy,
         )
@@ -70,7 +70,7 @@ async def process_video_tool(
         result = await asyncio.to_thread(
             process_video,
             url,
-            output_base=CACHE_DIR,
+            output_base=get_cache_dir(),
             whisper_model=whisper_model,
         )
 
@@ -130,7 +130,7 @@ async def get_frames(
         start_time=start_time,
         duration=duration,
         interval=interval,
-        output_base=CACHE_DIR,
+        output_base=get_cache_dir(),
         quality=quality,
     )
 
@@ -169,7 +169,7 @@ async def get_hq_frames(
         start_time=start_time,
         duration=duration,
         interval=interval,
-        output_base=CACHE_DIR,
+        output_base=get_cache_dir(),
         width=width,
     )
 
@@ -204,7 +204,7 @@ async def transcribe_video(
         video_id_or_url,
         whisper_model=whisper_model,
         force=force,
-        output_base=CACHE_DIR,
+        output_base=get_cache_dir(),
     )
 
     if not result["success"]:
@@ -245,9 +245,10 @@ async def list_cached_videos() -> str:
     Returns JSON with video ID, title, duration, and transcript source
     for each cached video.
     """
+    cache_dir = get_cache_dir()
     videos = []
-    if CACHE_DIR.exists():
-        for state_file in sorted(CACHE_DIR.glob("*/state.json")):
+    if cache_dir.exists():
+        for state_file in sorted(cache_dir.glob("*/state.json")):
             try:
                 state = json.loads(state_file.read_text())
                 videos.append(
@@ -281,7 +282,7 @@ async def get_transcript(
         format: Transcript format — "txt" for plain text or "srt" for subtitles.
     """
     video_id = extract_video_id(video_id)
-    video_dir = CACHE_DIR / video_id
+    video_dir = get_cache_dir() / video_id
 
     if not video_dir.exists():
         return json.dumps({"error": f"No cached video found for '{video_id}'"})
