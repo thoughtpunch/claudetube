@@ -266,3 +266,142 @@ class TestGetTranscriptTool:
         result = json.loads(await get_transcript("notranscript"))
 
         assert "error" in result
+
+
+class TestFormatMomentsForClaude:
+    """Tests for the _format_moments_for_claude helper."""
+
+    def test_formats_moments_correctly(self):
+        """Formats moments as human-readable text."""
+        from claudetube.mcp_server import _format_moments_for_claude
+
+        moments = [
+            {
+                "rank": 1,
+                "scene_id": 0,
+                "start_time": 272.0,
+                "end_time": 315.0,
+                "relevance": 0.92,
+                "preview": "...so the issue was we weren't validating the token...",
+                "timestamp_str": "4:32",
+                "match_type": "text",
+            },
+            {
+                "rank": 2,
+                "scene_id": 3,
+                "start_time": 728.0,
+                "end_time": 765.0,
+                "relevance": 0.85,
+                "preview": "...and that's how we patched the auth middleware...",
+                "timestamp_str": "12:08",
+                "match_type": "semantic",
+            },
+        ]
+
+        result = _format_moments_for_claude(moments)
+
+        assert "Found 2 relevant moments:" in result
+        assert "1. [4:32-5:15] (relevance: 92%)" in result
+        assert "2. [12:08-12:45] (relevance: 85%)" in result
+        assert "validating the token" in result
+        assert "auth middleware" in result
+
+    def test_empty_moments(self):
+        """Returns appropriate message for empty moments."""
+        from claudetube.mcp_server import _format_moments_for_claude
+
+        result = _format_moments_for_claude([])
+
+        assert "No relevant moments found" in result
+
+    def test_single_moment(self):
+        """Handles singular 'moment' grammar."""
+        from claudetube.mcp_server import _format_moments_for_claude
+
+        moments = [
+            {
+                "rank": 1,
+                "scene_id": 0,
+                "start_time": 0.0,
+                "end_time": 60.0,
+                "relevance": 0.75,
+                "preview": "Test preview",
+                "timestamp_str": "0:00",
+                "match_type": "text",
+            },
+        ]
+
+        result = _format_moments_for_claude(moments)
+
+        assert "Found 1 relevant moment:" in result
+
+
+class TestFindMomentsTool:
+    """Tests for the find_moments_tool MCP tool."""
+
+    @pytest.mark.asyncio
+    @patch("claudetube.mcp_server.find_moments")
+    async def test_returns_formatted_results(self, mock_find, cache_dir):
+        """Returns JSON with moments and formatted text."""
+        from claudetube.analysis.search import SearchMoment
+        from claudetube.mcp_server import find_moments_tool
+
+        mock_find.return_value = [
+            SearchMoment(
+                rank=1,
+                scene_id=0,
+                start_time=60.0,
+                end_time=120.0,
+                relevance=0.9,
+                preview="This is the matching content...",
+                timestamp_str="1:00",
+                match_type="text",
+            ),
+        ]
+
+        result = json.loads(await find_moments_tool("test123", "matching content"))
+
+        assert result["video_id"] == "test123"
+        assert result["query"] == "matching content"
+        assert len(result["results"]) == 1
+        assert result["results"][0]["relevance"] == 0.9
+        assert "Found 1 relevant moment:" in result["formatted"]
+
+    @pytest.mark.asyncio
+    @patch("claudetube.mcp_server.find_moments")
+    async def test_returns_error_on_not_found(self, mock_find, cache_dir):
+        """Returns error when video is not found."""
+        from claudetube.mcp_server import find_moments_tool
+
+        mock_find.side_effect = FileNotFoundError("Video not123 not found in cache.")
+
+        result = json.loads(await find_moments_tool("not123", "query"))
+
+        assert "error" in result
+        assert "not found" in result["error"]
+
+    @pytest.mark.asyncio
+    @patch("claudetube.mcp_server.find_moments")
+    async def test_returns_error_on_no_scenes(self, mock_find, cache_dir):
+        """Returns error when video has no scene data."""
+        from claudetube.mcp_server import find_moments_tool
+
+        mock_find.side_effect = ValueError("Video has no scene data.")
+
+        result = json.loads(await find_moments_tool("noscenes", "query"))
+
+        assert "error" in result
+        assert "scene" in result["error"].lower()
+
+    @pytest.mark.asyncio
+    @patch("claudetube.mcp_server.find_moments")
+    async def test_empty_results(self, mock_find, cache_dir):
+        """Returns empty results gracefully."""
+        from claudetube.mcp_server import find_moments_tool
+
+        mock_find.return_value = []
+
+        result = json.loads(await find_moments_tool("test123", "nonexistent"))
+
+        assert result["results"] == []
+        assert "No relevant moments found" in result["formatted"]

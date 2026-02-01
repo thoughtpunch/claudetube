@@ -12,6 +12,8 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+# Import search functionality
+from claudetube.analysis.search import find_moments, format_timestamp
 from claudetube.cache.scenes import has_scenes, load_scenes_data
 from claudetube.config import get_cache_dir
 from claudetube.models.local_file import is_local_file
@@ -500,6 +502,78 @@ async def generate_visual_transcripts(
     )
 
     return json.dumps(result, indent=2)
+
+
+def _format_moments_for_claude(moments: list[dict]) -> str:
+    """Format moments as readable text for Claude.
+
+    Args:
+        moments: List of moment dicts from SearchMoment.to_dict().
+
+    Returns:
+        Human-readable formatted string.
+    """
+    if not moments:
+        return "No relevant moments found."
+
+    lines = [f"Found {len(moments)} relevant moment{'s' if len(moments) != 1 else ''}:\n"]
+
+    for m in moments:
+        end_str = format_timestamp(m["end_time"])
+        lines.append(
+            f"{m['rank']}. [{m['timestamp_str']}-{end_str}] "
+            f"(relevance: {m['relevance']:.0%})\n"
+            f"   {m['preview']}\n"
+        )
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def find_moments_tool(
+    video_id: str,
+    query: str,
+    top_k: int = 5,
+) -> str:
+    """Find moments in a video matching a natural language query.
+
+    Uses tiered search strategy (Cheap First, Expensive Last):
+    1. TEXT - Fast transcript text matching (~100ms)
+    2. SEMANTIC - Vector embedding similarity (if text search fails)
+
+    The video must have been processed with process_video and have scene data.
+
+    Example: find_moments_tool('abc123', 'when they fix the auth bug')
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        query: Natural language query (e.g., "when they discuss authentication").
+        top_k: Maximum number of results to return (default: 5).
+    """
+    video_id = extract_video_id(video_id)
+
+    try:
+        moments = await asyncio.to_thread(
+            find_moments,
+            video_id,
+            query,
+            top_k=top_k,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        return json.dumps({"error": str(e)})
+
+    # Convert to dicts for JSON serialization
+    moment_dicts = [m.to_dict() for m in moments]
+
+    # Format for Claude
+    output = {
+        "video_id": video_id,
+        "query": query,
+        "results": moment_dicts,
+        "formatted": _format_moments_for_claude(moment_dicts),
+    }
+
+    return json.dumps(output, indent=2)
 
 
 def main():
