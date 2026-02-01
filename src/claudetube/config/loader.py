@@ -116,8 +116,28 @@ def _find_project_config() -> Path | None:
 
 
 def _get_user_config_path() -> Path:
-    """Get the user-level config path."""
-    return Path.home() / ".config" / "claudetube" / "config.yaml"
+    """Get the user-level config path.
+
+    Returns:
+        Path to user config file:
+        - Windows: %APPDATA%/claudetube/config.yaml
+        - macOS/Linux: ~/.config/claudetube/config.yaml
+    """
+    import sys
+
+    if sys.platform == "win32":
+        # Windows: use APPDATA environment variable
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            return Path(appdata) / "claudetube" / "config.yaml"
+        # Fallback to home directory on Windows
+        return Path.home() / "AppData" / "Roaming" / "claudetube" / "config.yaml"
+    else:
+        # macOS/Linux: use XDG_CONFIG_HOME or ~/.config
+        xdg_config = os.environ.get("XDG_CONFIG_HOME")
+        if xdg_config:
+            return Path(xdg_config) / "claudetube" / "config.yaml"
+        return Path.home() / ".config" / "claudetube" / "config.yaml"
 
 
 def _get_default_cache_dir() -> Path:
