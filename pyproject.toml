@@ -40,6 +40,13 @@ ocr = [
 search = [
     "chromadb>=0.4.0",
 ]
+embeddings = [
+    "voyageai>=0.2.0",
+]
+embeddings-local = [
+    "sentence-transformers>=2.2.0",
+    "open-clip-torch>=2.20.0",
+]
 dev = [
     "pytest",
     "pytest-asyncio",
