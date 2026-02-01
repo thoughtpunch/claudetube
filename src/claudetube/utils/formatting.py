@@ -31,3 +31,25 @@ def format_timestamp(seconds: float) -> str:
     minutes = int(seconds // 60)
     secs = int(seconds % 60)
     return f"{minutes:02d}-{secs:02d}"
+
+
+def format_duration(seconds: float | None) -> str | None:
+    """Format seconds as human-readable duration string.
+
+    Args:
+        seconds: Duration in seconds
+
+    Returns:
+        Formatted duration string (e.g., "1:30" or "1:05:30"), or None
+    """
+    if seconds is None:
+        return None
+
+    seconds = int(seconds)
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"

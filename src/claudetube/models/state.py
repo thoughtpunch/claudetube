@@ -134,22 +134,50 @@ class VideoState:
         source_path: str,
         title: str | None = None,
         duration: float | None = None,
+        duration_string: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        fps: float | None = None,
+        codec: str | None = None,
+        creation_time: str | None = None,
     ) -> "VideoState":
-        """Create from a local file.
+        """Create from a local file with optional ffprobe metadata.
 
         Args:
             video_id: Generated video_id from LocalFile.video_id
             source_path: Absolute path to the source file
             title: Optional title (defaults to filename stem)
-            duration: Optional duration in seconds (from ffprobe)
+            duration: Duration in seconds (from ffprobe)
+            duration_string: Human-readable duration (e.g., "1:30")
+            width: Video width in pixels
+            height: Video height in pixels
+            fps: Frames per second
+            codec: Video codec name (e.g., "h264")
+            creation_time: ISO timestamp of creation (if available)
         """
         from pathlib import Path
 
         path = Path(source_path)
-        return cls(
+
+        state = cls(
             video_id=video_id,
             url=None,
             source_type="local",
             source_path=source_path,
             title=title or path.stem,
+            duration=duration,
+            duration_string=duration_string,
+            upload_date=creation_time,  # Map creation_time to upload_date
         )
+
+        # Store video dimensions and codec in description for now
+        # (VideoState doesn't have dedicated fields for these)
+        if width and height:
+            dimensions = f"{width}x{height}"
+            if fps:
+                dimensions += f" @ {fps:.1f}fps"
+            if codec:
+                dimensions += f" ({codec})"
+            state.description = dimensions
+
+        return state
