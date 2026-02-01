@@ -16,6 +16,15 @@ from claudetube.utils.logging import log_timed
 
 logger = logging.getLogger(__name__)
 
+# Width mapping for quality tiers (used for local file extraction)
+QUALITY_WIDTHS: dict[str, int] = {
+    "lowest": 480,
+    "low": 640,
+    "medium": 854,
+    "high": 1280,
+    "highest": 1920,
+}
+
 
 def extract_frames(
     video_id_or_url: str,
@@ -224,4 +233,197 @@ def extract_hq_frames(
         hq_video_path.unlink()
 
     log_timed(f"HQ drill-in complete: {len(frames)} frames", t0)
+    return frames
+
+
+def extract_frames_local(
+    video_id: str,
+    start_time: float,
+    duration: float = 5.0,
+    interval: float = 1.0,
+    quality: str = "lowest",
+    output_base: Path | None = None,
+) -> list[Path]:
+    """Extract frames from a local video file (no download step).
+
+    This is significantly faster than URL-based extraction since it
+    operates directly on the cached local file without downloading.
+
+    Args:
+        video_id: Video ID (must be a cached local file)
+        start_time: Start time in seconds
+        duration: Duration to capture (default: 5s)
+        interval: Seconds between frames (default: 1s)
+        quality: Quality tier (lowest/low/medium/high/highest)
+        output_base: Cache directory (default: ~/.claude/video_cache)
+
+    Returns:
+        List of extracted frame paths
+
+    Raises:
+        ValueError: If quality tier is invalid or video is not a local file
+        FileNotFoundError: If video is not cached or source file is missing
+    """
+    import time
+
+    t0 = time.time()
+
+    # Validate quality tier
+    if quality not in QUALITY_WIDTHS:
+        raise ValueError(
+            f"Invalid quality '{quality}'. Must be one of: {', '.join(QUALITY_LADDER)}"
+        )
+
+    width = QUALITY_WIDTHS[quality]
+    jpeg_quality = QUALITY_TIERS[quality]["jpeg_q"]
+
+    cache = CacheManager(output_base or CACHE_DIR)
+
+    # Get state and validate it's a local file
+    state = cache.get_state(video_id)
+    if not state:
+        raise FileNotFoundError(f"Video not cached: {video_id}")
+
+    if state.source_type != "local":
+        raise ValueError(
+            f"Video '{video_id}' is not a local file (source_type={state.source_type}). "
+            "Use extract_frames() for URL-based videos."
+        )
+
+    # Get the source file path
+    source_path = cache.get_source_path(video_id)
+    if not source_path:
+        raise FileNotFoundError(f"No cached source file for video: {video_id}")
+
+    # Check if source is still valid (symlink not broken)
+    is_valid, warning = cache.check_source_valid(video_id)
+    if not is_valid:
+        raise FileNotFoundError(f"Source file unavailable: {warning}")
+
+    # Set up output directory
+    cache_dir = cache.get_cache_dir(video_id)
+    drill_dir = cache_dir / f"drill_{quality}"
+    drill_dir.mkdir(parents=True, exist_ok=True)
+
+    log_timed(
+        f"Extracting {quality} frames from local file at {start_time}s...",
+        t0,
+    )
+
+    # Extract frames directly from source (no download, no segment extraction)
+    # Using -ss before -i for fast keyframe-based seeking
+    ffmpeg = FFmpegTool()
+    frames = ffmpeg.extract_frames_range(
+        video_path=source_path,
+        output_dir=drill_dir,
+        start_time=start_time,
+        duration=duration,
+        interval=interval,
+        width=width,
+        jpeg_quality=jpeg_quality,
+        seek_offset=0.0,  # No offset needed - seeking directly in source
+        prefix="frame",
+    )
+
+    # Track extraction in state.json
+    import json
+
+    state_file = cache.get_state_file(video_id)
+    if state_file.exists():
+        state_data = json.loads(state_file.read_text())
+        extractions = state_data.get("quality_extractions", {})
+        extractions[quality] = {
+            "start_time": start_time,
+            "duration": duration,
+            "frames": len(frames),
+            "width": width,
+            "local": True,
+        }
+        state_data["quality_extractions"] = extractions
+        state_file.write_text(json.dumps(state_data, indent=2))
+
+    log_timed(f"Local drill-in complete ({quality}): {len(frames)} frames", t0)
+    return frames
+
+
+def extract_hq_frames_local(
+    video_id: str,
+    start_time: float,
+    duration: float = 5.0,
+    interval: float = 1.0,
+    width: int = 1280,
+    output_base: Path | None = None,
+) -> list[Path]:
+    """Extract HIGH QUALITY frames from a local video file.
+
+    Use this when you need to read text, code, or small UI elements
+    from a local video file.
+
+    Args:
+        video_id: Video ID (must be a cached local file)
+        start_time: Start time in seconds
+        duration: Duration to capture (default: 5s)
+        interval: Seconds between frames (default: 1s)
+        width: Frame width in pixels (default: 1280)
+        output_base: Cache directory (default: ~/.claude/video_cache)
+
+    Returns:
+        List of extracted frame paths
+
+    Raises:
+        ValueError: If video is not a local file
+        FileNotFoundError: If video is not cached or source file is missing
+    """
+    import time
+
+    t0 = time.time()
+
+    cache = CacheManager(output_base or CACHE_DIR)
+
+    # Get state and validate it's a local file
+    state = cache.get_state(video_id)
+    if not state:
+        raise FileNotFoundError(f"Video not cached: {video_id}")
+
+    if state.source_type != "local":
+        raise ValueError(
+            f"Video '{video_id}' is not a local file (source_type={state.source_type}). "
+            "Use extract_hq_frames() for URL-based videos."
+        )
+
+    # Get the source file path
+    source_path = cache.get_source_path(video_id)
+    if not source_path:
+        raise FileNotFoundError(f"No cached source file for video: {video_id}")
+
+    # Check if source is still valid (symlink not broken)
+    is_valid, warning = cache.check_source_valid(video_id)
+    if not is_valid:
+        raise FileNotFoundError(f"Source file unavailable: {warning}")
+
+    # Set up output directory
+    cache_dir = cache.get_cache_dir(video_id)
+    hq_dir = cache_dir / "hq"
+    hq_dir.mkdir(parents=True, exist_ok=True)
+
+    log_timed(
+        f"Extracting HQ frames from local file at {start_time}s (width={width})...",
+        t0,
+    )
+
+    # Extract HQ frames directly from source
+    ffmpeg = FFmpegTool()
+    frames = ffmpeg.extract_frames_range(
+        video_path=source_path,
+        output_dir=hq_dir,
+        start_time=start_time,
+        duration=duration,
+        interval=interval,
+        width=width,
+        jpeg_quality=2,  # High quality JPEG
+        seek_offset=0.0,  # No offset needed - seeking directly in source
+        prefix="hq",
+    )
+
+    log_timed(f"Local HQ drill-in complete: {len(frames)} frames", t0)
     return frames
