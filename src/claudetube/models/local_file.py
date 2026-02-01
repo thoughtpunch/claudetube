@@ -4,6 +4,8 @@ LocalFile Pydantic model for local file path parsing.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -109,6 +111,34 @@ class LocalFile(BaseModel):
     def stem(self) -> str:
         """Get filename without extension."""
         return self.path.stem
+
+    @property
+    def video_id(self) -> str:
+        """Generate a deterministic, filesystem-safe video_id for caching.
+
+        Uses sanitized filename + first 8 chars of path hash for uniqueness.
+        Example: 'my_screen_recording_a3f2dd1e'
+
+        Properties:
+        - Filesystem-safe (alphanumeric + hyphens + underscores)
+        - Deterministic (same file path = same ID)
+        - Collision-resistant (hash suffix)
+        - Reasonably short (<50 chars)
+        """
+        # Sanitize filename: replace unsafe chars with underscores, limit to 30 chars
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", self.stem)[:30]
+
+        # Collapse multiple underscores
+        safe_name = re.sub(r"_+", "_", safe_name).strip("_")
+
+        # Ensure non-empty
+        if not safe_name:
+            safe_name = "local"
+
+        # Add hash suffix for uniqueness (based on absolute path)
+        path_hash = hashlib.sha256(str(self.path).encode()).hexdigest()[:8]
+
+        return f"{safe_name}_{path_hash}"
 
     def __str__(self) -> str:
         return str(self.path)

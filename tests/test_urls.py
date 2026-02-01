@@ -597,3 +597,179 @@ class TestLocalFileEdgeCases:
         video.touch()
 
         assert is_local_file("video.mp4") is True
+
+
+class TestLocalFileVideoId:
+    """Tests for LocalFile.video_id property."""
+
+    def test_video_id_is_filesystem_safe(self, tmp_path):
+        """video_id should only contain alphanumeric, hyphens, underscores."""
+        video = tmp_path / "test_video.mp4"
+        video.touch()
+
+        lf = LocalFile.parse(str(video))
+        video_id = lf.video_id
+
+        import re
+        assert re.match(r"^[\w-]+$", video_id), f"video_id '{video_id}' contains unsafe chars"
+
+    def test_video_id_is_deterministic(self, tmp_path):
+        """Same file path should always produce same video_id."""
+        video = tmp_path / "test_video.mp4"
+        video.touch()
+
+        lf1 = LocalFile.parse(str(video))
+        lf2 = LocalFile.parse(str(video))
+
+        assert lf1.video_id == lf2.video_id
+
+    def test_video_id_is_unique_for_different_paths(self, tmp_path):
+        """Different file paths should produce different video_ids."""
+        video1 = tmp_path / "video1.mp4"
+        video2 = tmp_path / "video2.mp4"
+        video1.touch()
+        video2.touch()
+
+        lf1 = LocalFile.parse(str(video1))
+        lf2 = LocalFile.parse(str(video2))
+
+        assert lf1.video_id != lf2.video_id
+
+    def test_video_id_different_dirs_same_name(self, tmp_path):
+        """Same filename in different directories should produce different video_ids."""
+        dir1 = tmp_path / "dir1"
+        dir2 = tmp_path / "dir2"
+        dir1.mkdir()
+        dir2.mkdir()
+
+        video1 = dir1 / "recording.mp4"
+        video2 = dir2 / "recording.mp4"
+        video1.touch()
+        video2.touch()
+
+        lf1 = LocalFile.parse(str(video1))
+        lf2 = LocalFile.parse(str(video2))
+
+        assert lf1.video_id != lf2.video_id
+
+    def test_video_id_reasonably_short(self, tmp_path):
+        """video_id should be under 50 characters."""
+        # Create a file with a very long name
+        long_name = "this_is_a_very_long_filename_that_exceeds_thirty_chars.mp4"
+        video = tmp_path / long_name
+        video.touch()
+
+        lf = LocalFile.parse(str(video))
+        assert len(lf.video_id) < 50
+
+    def test_video_id_format(self, tmp_path):
+        """video_id should be sanitized_name + underscore + 8char_hash."""
+        video = tmp_path / "my_recording.mp4"
+        video.touch()
+
+        lf = LocalFile.parse(str(video))
+        video_id = lf.video_id
+
+        # Should contain underscore separating name from hash
+        assert "_" in video_id
+        # Last 8 chars should be hex (the hash)
+        parts = video_id.rsplit("_", 1)
+        assert len(parts) == 2
+        assert len(parts[1]) == 8
+        # Hash should be hex characters
+        int(parts[1], 16)  # Should not raise
+
+    def test_video_id_sanitizes_special_chars(self, tmp_path):
+        """Special characters in filename should be sanitized."""
+        video = tmp_path / "my video (2024) - final!.mp4"
+        video.touch()
+
+        lf = LocalFile.parse(str(video))
+        video_id = lf.video_id
+
+        # No spaces, parens, or special chars
+        assert " " not in video_id
+        assert "(" not in video_id
+        assert ")" not in video_id
+        assert "!" not in video_id
+        assert "-" in video_id or "_" in video_id  # Hyphens allowed
+
+    def test_video_id_empty_filename_after_sanitize(self, tmp_path):
+        """Files with only special chars should still get valid video_id."""
+        video = tmp_path / "!!!.mp4"
+        video.touch()
+
+        lf = LocalFile.parse(str(video))
+        video_id = lf.video_id
+
+        # Should use 'local' as fallback name
+        assert video_id.startswith("local_")
+        assert len(video_id) > 8  # At least 'local_' + hash
+
+
+class TestVideoStateLocalFile:
+    """Tests for VideoState with local file support."""
+
+    def test_video_state_from_local_file(self, tmp_path):
+        """VideoState.from_local_file creates correct state."""
+        from claudetube.models.state import VideoState
+
+        video = tmp_path / "my_recording.mp4"
+        video.touch()
+
+        lf = LocalFile.parse(str(video))
+        state = VideoState.from_local_file(
+            video_id=lf.video_id,
+            source_path=str(lf.path),
+        )
+
+        assert state.video_id == lf.video_id
+        assert state.source_type == "local"
+        assert state.source_path == str(lf.path)
+        assert state.url is None
+        assert state.title == "my_recording"  # Uses stem as default title
+
+    def test_video_state_serialization_round_trip(self, tmp_path):
+        """VideoState with local file fields serializes/deserializes correctly."""
+        from claudetube.models.state import VideoState
+
+        video = tmp_path / "test.mp4"
+        video.touch()
+
+        lf = LocalFile.parse(str(video))
+        original = VideoState.from_local_file(
+            video_id=lf.video_id,
+            source_path=str(lf.path),
+            title="Custom Title",
+        )
+
+        # Round-trip through dict
+        data = original.to_dict()
+        restored = VideoState.from_dict(data)
+
+        assert restored.video_id == original.video_id
+        assert restored.source_type == "local"
+        assert restored.source_path == str(lf.path)
+        assert restored.title == "Custom Title"
+        assert restored.url is None
+
+    def test_video_state_default_source_type(self):
+        """VideoState defaults to source_type='url'."""
+        from claudetube.models.state import VideoState
+
+        state = VideoState(video_id="abc123")
+        assert state.source_type == "url"
+        assert state.source_path is None
+
+    def test_video_state_from_metadata_sets_url_type(self):
+        """VideoState.from_metadata sets source_type='url'."""
+        from claudetube.models.state import VideoState
+
+        state = VideoState.from_metadata(
+            video_id="dQw4w9WgXcQ",
+            url="https://youtube.com/watch?v=dQw4w9WgXcQ",
+            meta={"title": "Test Video"},
+        )
+
+        assert state.source_type == "url"
+        assert state.source_path is None

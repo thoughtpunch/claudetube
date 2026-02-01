@@ -13,6 +13,11 @@ class VideoState:
     url: str | None = None
     playlist_id: str | None = None
 
+    # Source type: "url" for remote videos, "local" for local files
+    source_type: str = "url"
+    # For local files, the absolute path to the source file
+    source_path: str | None = None
+
     # Metadata from yt-dlp
     title: str | None = None
     duration: float | None = None
@@ -45,6 +50,8 @@ class VideoState:
             "video_id": self.video_id,
             "url": self.url,
             "playlist_id": self.playlist_id,
+            "source_type": self.source_type,
+            "source_path": self.source_path,
             "title": self.title,
             "duration": self.duration,
             "duration_string": self.duration_string,
@@ -74,6 +81,8 @@ class VideoState:
             video_id=data.get("video_id", ""),
             url=data.get("url"),
             playlist_id=data.get("playlist_id"),
+            source_type=data.get("source_type", "url"),
+            source_path=data.get("source_path"),
             title=data.get("title"),
             duration=data.get("duration"),
             duration_string=data.get("duration_string"),
@@ -102,6 +111,7 @@ class VideoState:
         return cls(
             video_id=video_id,
             url=url,
+            source_type="url",
             title=meta.get("title"),
             duration=meta.get("duration"),
             duration_string=meta.get("duration_string"),
@@ -115,4 +125,31 @@ class VideoState:
             view_count=meta.get("view_count"),
             like_count=meta.get("like_count"),
             thumbnail=meta.get("thumbnail"),
+        )
+
+    @classmethod
+    def from_local_file(
+        cls,
+        video_id: str,
+        source_path: str,
+        title: str | None = None,
+        duration: float | None = None,
+    ) -> "VideoState":
+        """Create from a local file.
+
+        Args:
+            video_id: Generated video_id from LocalFile.video_id
+            source_path: Absolute path to the source file
+            title: Optional title (defaults to filename stem)
+            duration: Optional duration in seconds (from ffprobe)
+        """
+        from pathlib import Path
+
+        path = Path(source_path)
+        return cls(
+            video_id=video_id,
+            url=None,
+            source_type="local",
+            source_path=source_path,
+            title=title or path.stem,
         )
