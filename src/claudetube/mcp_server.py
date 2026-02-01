@@ -14,6 +14,13 @@ from mcp.server.fastmcp import FastMCP
 
 # Import search functionality
 from claudetube.analysis.search import find_moments, format_timestamp
+from claudetube.cache.enrichment import (
+    get_enrichment_stats,
+    get_scene_context,
+    record_frame_examination,
+    record_qa_interaction,
+    search_cached_qa,
+)
 from claudetube.cache.knowledge_graph import get_knowledge_graph, index_video_to_graph
 from claudetube.cache.scenes import has_scenes, load_scenes_data
 from claudetube.config import get_cache_dir
@@ -120,6 +127,7 @@ async def get_frames(
     """Extract frames from a cached video at a specific time range.
 
     The video must have been processed first with process_video.
+    Frame examinations are automatically recorded for progressive learning.
 
     Args:
         video_id_or_url: YouTube video ID or URL.
@@ -128,6 +136,9 @@ async def get_frames(
         interval: Seconds between frames.
         quality: Quality tier (lowest/low/medium/high/highest).
     """
+    video_id = extract_video_id(video_id_or_url)
+    cache_dir = get_cache_dir() / video_id
+
     frames = await asyncio.to_thread(
         get_frames_at,
         video_id_or_url,
@@ -138,13 +149,30 @@ async def get_frames(
         quality=quality,
     )
 
-    return json.dumps(
-        {
-            "frame_count": len(frames),
-            "frame_paths": [str(f) for f in frames],
-        },
-        indent=2,
-    )
+    # Record frame examination for progressive learning
+    enrichment = None
+    if frames and cache_dir.exists():
+        enrichment = await asyncio.to_thread(
+            record_frame_examination,
+            video_id,
+            cache_dir,
+            start_time,
+            duration,
+            quality,
+        )
+
+    result = {
+        "frame_count": len(frames),
+        "frame_paths": [str(f) for f in frames],
+    }
+
+    if enrichment:
+        result["learning"] = {
+            "scene_examined": enrichment["scene_id"],
+            "relevance_boost": enrichment["new_boost"],
+        }
+
+    return json.dumps(result, indent=2)
 
 
 @mcp.tool()
@@ -159,6 +187,7 @@ async def get_hq_frames(
 
     Downloads best available quality (larger file, slower). The video must
     have been processed first with process_video.
+    Frame examinations are automatically recorded for progressive learning.
 
     Args:
         video_id_or_url: YouTube video ID or URL.
@@ -167,6 +196,9 @@ async def get_hq_frames(
         interval: Seconds between frames.
         width: Frame width in pixels.
     """
+    video_id = extract_video_id(video_id_or_url)
+    cache_dir = get_cache_dir() / video_id
+
     frames = await asyncio.to_thread(
         get_hq_frames_at,
         video_id_or_url,
@@ -177,13 +209,30 @@ async def get_hq_frames(
         width=width,
     )
 
-    return json.dumps(
-        {
-            "frame_count": len(frames),
-            "frame_paths": [str(f) for f in frames],
-        },
-        indent=2,
-    )
+    # Record frame examination for progressive learning
+    enrichment = None
+    if frames and cache_dir.exists():
+        enrichment = await asyncio.to_thread(
+            record_frame_examination,
+            video_id,
+            cache_dir,
+            start_time,
+            duration,
+            "hq",
+        )
+
+    result = {
+        "frame_count": len(frames),
+        "frame_paths": [str(f) for f in frames],
+    }
+
+    if enrichment:
+        result["learning"] = {
+            "scene_examined": enrichment["scene_id"],
+            "relevance_boost": enrichment["new_boost"],
+        }
+
+    return json.dumps(result, indent=2)
 
 
 @mcp.tool()
@@ -748,6 +797,145 @@ async def get_analysis_status_tool(
     )
 
     return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def record_qa_tool(
+    video_id: str,
+    question: str,
+    answer: str,
+) -> str:
+    """Record a question-answer interaction for progressive learning.
+
+    Call this after answering a question about a video to cache the Q&A
+    for future reference. Subsequent similar questions can be answered faster
+    by checking the cached Q&A history.
+
+    The system automatically identifies which scenes are relevant to the Q&A
+    and boosts their relevance scores for future searches.
+
+    Args:
+        video_id: Video ID of the video the question was about.
+        question: The question that was asked.
+        answer: The answer that was given.
+    """
+    video_id = extract_video_id(video_id)
+    cache_dir = get_cache_dir() / video_id
+
+    if not cache_dir.exists():
+        return json.dumps({"error": f"Video '{video_id}' not found in cache"})
+
+    result = await asyncio.to_thread(
+        record_qa_interaction,
+        video_id,
+        cache_dir,
+        question,
+        answer,
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def search_qa_history_tool(
+    video_id: str,
+    query: str,
+) -> str:
+    """Search for previously answered questions about a video.
+
+    Use this before answering a new question to check if a similar question
+    has been answered before. This enables "second query faster than first"
+    by returning cached answers.
+
+    Args:
+        video_id: Video ID to search Q&A history for.
+        query: The question to search for (keyword matching).
+    """
+    video_id = extract_video_id(video_id)
+    cache_dir = get_cache_dir() / video_id
+
+    if not cache_dir.exists():
+        return json.dumps({"error": f"Video '{video_id}' not found in cache"})
+
+    results = await asyncio.to_thread(
+        search_cached_qa,
+        video_id,
+        cache_dir,
+        query,
+    )
+
+    return json.dumps({
+        "video_id": video_id,
+        "query": query,
+        "match_count": len(results),
+        "matches": results,
+    }, indent=2)
+
+
+@mcp.tool()
+async def get_scene_context_tool(
+    video_id: str,
+    scene_id: int,
+) -> str:
+    """Get all learned context for a specific scene.
+
+    Returns observations made about the scene, related Q&A pairs,
+    and the scene's relevance boost. Use this when revisiting a scene
+    to leverage prior analysis.
+
+    Args:
+        video_id: Video ID.
+        scene_id: Scene index (0-based).
+    """
+    video_id = extract_video_id(video_id)
+    cache_dir = get_cache_dir() / video_id
+
+    if not cache_dir.exists():
+        return json.dumps({"error": f"Video '{video_id}' not found in cache"})
+
+    context = await asyncio.to_thread(
+        get_scene_context,
+        video_id,
+        cache_dir,
+        scene_id,
+    )
+
+    return json.dumps({
+        "video_id": video_id,
+        "scene_id": scene_id,
+        **context,
+    }, indent=2)
+
+
+@mcp.tool()
+async def get_enrichment_stats_tool(
+    video_id: str,
+) -> str:
+    """Get statistics about cache enrichment for a video.
+
+    Shows how much progressive learning has occurred:
+    - Number of observations recorded
+    - Number of Q&A pairs cached
+    - Number of scenes with relevance boosts
+
+    Args:
+        video_id: Video ID.
+    """
+    video_id = extract_video_id(video_id)
+    cache_dir = get_cache_dir() / video_id
+
+    if not cache_dir.exists():
+        return json.dumps({"error": f"Video '{video_id}' not found in cache"})
+
+    stats = await asyncio.to_thread(
+        get_enrichment_stats,
+        cache_dir,
+    )
+
+    return json.dumps({
+        "video_id": video_id,
+        **stats,
+    }, indent=2)
 
 
 @mcp.tool()
