@@ -2,6 +2,10 @@
 High-level video processing operations.
 """
 
+from claudetube.operations.chapters import (
+    extract_youtube_chapters,
+    parse_timestamp,
+)
 from claudetube.operations.download import (
     download_audio,
     download_thumbnail,
@@ -27,4 +31,6 @@ __all__ = [
     "transcribe_video",
     "extract_frames",
     "extract_hq_frames",
+    "extract_youtube_chapters",
+    "parse_timestamp",
 ]
