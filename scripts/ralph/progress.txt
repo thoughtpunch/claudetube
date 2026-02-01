@@ -27,3 +27,12 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 (Entries appended by ralph-beads.sh when running)
 
 ---
+- 2026-02-01 14:38 | claudetube-i3x [P2] | Implement VideoMemory class
+- 2026-02-01 14:43 | claudetube-j2j [P2] | Multi-pass analysis depths
+- 2026-02-01 14:50 | claudetube-jzb [P3] | Cross-video knowledge graph for playlists
+- 2026-02-01 14:56 | claudetube-pow [P3] | Support local embedding models
+- 2026-02-01 14:58 | claudetube-bv5 [P3] | Track objects and concepts across scenes
+- 2026-02-01 15:06 | claudetube-h5b [P3] | Cross-video knowledge graph
+- 2026-02-01 15:14 | claudetube-175 [P3] | Interaction-driven cache enrichment
+- 2026-02-01 15:24 | claudetube-9i5 [P3] | Implement ActiveVideoWatcher class
+- 2026-02-01 15:31 | claudetube-awk [P3] | Implement attention priority modeling
