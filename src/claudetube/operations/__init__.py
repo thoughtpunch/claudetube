@@ -2,6 +2,19 @@
 High-level video processing operations.
 """
 
+from claudetube.operations.analysis_depth import (
+    AnalysisDepth,
+    AnalysisResult,
+    Entities,
+    TechnicalContent,
+    analyze_video,
+    get_analysis_status,
+)
+from claudetube.operations.change_detection import (
+    detect_scene_changes,
+    get_major_transitions,
+    get_scene_changes,
+)
 from claudetube.operations.chapters import (
     extract_youtube_chapters,
     parse_timestamp,
@@ -34,11 +47,6 @@ from claudetube.operations.subtitles import (
     find_sidecar_subtitles,
 )
 from claudetube.operations.transcribe import transcribe_audio, transcribe_video
-from claudetube.operations.change_detection import (
-    detect_scene_changes,
-    get_major_transitions,
-    get_scene_changes,
-)
 from claudetube.operations.visual_transcript import (
     generate_visual_transcript,
     get_visual_transcript,
@@ -72,4 +80,10 @@ __all__ = [
     "detect_scene_changes",
     "get_scene_changes",
     "get_major_transitions",
+    "AnalysisDepth",
+    "AnalysisResult",
+    "TechnicalContent",
+    "Entities",
+    "analyze_video",
+    "get_analysis_status",
 ]

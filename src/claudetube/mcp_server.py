@@ -620,6 +620,135 @@ async def find_moments_tool(
     return json.dumps(output, indent=2)
 
 
+@mcp.tool()
+async def analyze_deep_tool(
+    video_id: str,
+    force: bool = False,
+) -> str:
+    """Deep analysis of video with OCR and entity extraction.
+
+    Performs comprehensive analysis including:
+    - Scene segmentation
+    - Visual transcripts for each scene
+    - OCR text extraction
+    - Code block detection
+    - Entity extraction (people, technologies, keywords)
+
+    This is more expensive than standard analysis (~2 min for 30-min video).
+    Results are cached for subsequent queries.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        force: Re-run analysis even if cached (default: False).
+    """
+    from claudetube.operations.analysis_depth import AnalysisDepth, analyze_video
+
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        analyze_video,
+        video_id,
+        depth=AnalysisDepth.DEEP,
+        force=force,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result.to_dict(), indent=2)
+
+
+@mcp.tool()
+async def analyze_focus_tool(
+    video_id: str,
+    start_time: float,
+    end_time: float,
+    force: bool = False,
+) -> str:
+    """Exhaustive analysis of a specific video section.
+
+    Performs frame-by-frame analysis on scenes within the specified time range.
+    Use this for detailed investigation of specific moments (e.g., code demos,
+    bug introductions, key explanations).
+
+    This is the most expensive analysis mode. Use sparingly.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        start_time: Start time in seconds.
+        end_time: End time in seconds.
+        force: Re-run analysis even if cached (default: False).
+    """
+    from claudetube.cache.scenes import load_scenes_data
+    from claudetube.operations.analysis_depth import AnalysisDepth, analyze_video
+
+    video_id = extract_video_id(video_id)
+    cache_dir = get_cache_dir() / video_id
+
+    # Find scenes in time range
+    scenes_data = load_scenes_data(cache_dir)
+    if not scenes_data:
+        return json.dumps({"error": "No scenes found. Run get_scenes first.", "video_id": video_id})
+
+    focus_ids = [
+        s.scene_id for s in scenes_data.scenes
+        if s.start_time >= start_time and s.end_time <= end_time
+    ]
+
+    # Also include scenes that overlap with the range
+    if not focus_ids:
+        focus_ids = [
+            s.scene_id for s in scenes_data.scenes
+            if not (s.end_time < start_time or s.start_time > end_time)
+        ]
+
+    if not focus_ids:
+        return json.dumps({
+            "error": f"No scenes found between {start_time}s and {end_time}s",
+            "video_id": video_id,
+        })
+
+    result = await asyncio.to_thread(
+        analyze_video,
+        video_id,
+        depth=AnalysisDepth.EXHAUSTIVE,
+        focus_sections=focus_ids,
+        force=force,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result.to_dict(), indent=2)
+
+
+@mcp.tool()
+async def get_analysis_status_tool(
+    video_id: str,
+) -> str:
+    """Get current analysis status for a video.
+
+    Shows what analysis has been completed for each scene:
+    - Transcript coverage
+    - Visual descriptions
+    - Technical content (OCR, code)
+    - Entity extraction
+
+    Use this to understand what analysis is cached before running
+    more expensive operations.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+    """
+    from claudetube.operations.analysis_depth import get_analysis_status
+
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        get_analysis_status,
+        video_id,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
+
+
 def main():
     """Entry point for the claudetube-mcp command."""
     mcp.run()
