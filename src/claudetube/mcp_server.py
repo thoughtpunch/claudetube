@@ -12,6 +12,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from claudetube.cache.scenes import has_scenes, load_scenes_data
 from claudetube.config import get_cache_dir
 from claudetube.models.local_file import is_local_file
 from claudetube.operations.extract_frames import (
@@ -310,6 +311,117 @@ async def get_transcript(
         },
         indent=2,
     )
+
+
+def _get_scenes_sync(video_id: str, force: bool = False) -> dict:
+    """Get scene structure for a cached video (sync version).
+
+    Returns cached scenes if available, otherwise runs smart segmentation.
+    Implements "Cheap First, Expensive Last" - returns cached data instantly.
+
+    Args:
+        video_id: Video ID
+        force: Re-run segmentation even if cached
+
+    Returns:
+        Dict with scene data or error
+    """
+    cache_dir = get_cache_dir() / video_id
+
+    if not cache_dir.exists():
+        return {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+
+    # Check state.json exists
+    state_file = cache_dir / "state.json"
+    if not state_file.exists():
+        return {"error": "Video not processed. Run process_video first.", "video_id": video_id}
+
+    # Fast path: return cached scenes
+    if not force and has_scenes(cache_dir):
+        scenes_data = load_scenes_data(cache_dir)
+        if scenes_data:
+            result = scenes_data.to_dict()
+            # Enrich with visual descriptions if available
+            for scene in result.get("scenes", []):
+                scene_id = scene.get("scene_id", 0)
+                visual_file = cache_dir / "scenes" / f"scene_{scene_id:03d}" / "visual.json"
+                if visual_file.exists():
+                    visual_text = visual_file.read_text()
+                    if visual_text.strip():
+                        visual_data = json.loads(visual_text)
+                        if visual_data:
+                            scene["visual"] = visual_data
+            return result
+
+    # No cached scenes - run segmentation
+    try:
+        state = json.loads(state_file.read_text())
+    except json.JSONDecodeError:
+        return {"error": "Invalid state.json", "video_id": video_id}
+
+    # Build video_info dict for chapter extraction
+    # (use stored state data - includes description for chapter parsing)
+    video_info = {
+        "duration": state.get("duration"),
+        "description": state.get("description", ""),
+    }
+
+    # Load transcript segments from SRT
+    transcript_segments = None
+    srt_path = cache_dir / "audio.srt"
+    if srt_path.exists():
+        from claudetube.analysis.pause import parse_srt_file
+        transcript_segments = parse_srt_file(srt_path)
+
+    # Run smart segmentation
+    from claudetube.operations.segmentation import segment_video_smart
+
+    # Find video path for visual fallback (if needed)
+    video_path = None
+    cached_file = state.get("cached_file")
+    if cached_file:
+        video_path = cache_dir / cached_file
+        if not video_path.exists():
+            video_path = None
+
+    scenes_data = segment_video_smart(
+        video_id=video_id,
+        video_path=video_path,
+        transcript_segments=transcript_segments,
+        video_info=video_info,
+        cache_dir=cache_dir,
+        srt_path=srt_path if srt_path.exists() else None,
+        force=force,
+    )
+
+    return scenes_data.to_dict()
+
+
+@mcp.tool()
+async def get_scenes(
+    video_id: str,
+    force: bool = False,
+) -> str:
+    """Get scene structure of a processed video.
+
+    Returns scene list with timestamps, transcript summaries, and visual
+    descriptions for understanding video structure. Uses cached scenes if
+    available, otherwise runs smart segmentation.
+
+    This is useful for:
+    - Understanding video organization before asking questions
+    - Finding specific sections by topic
+    - Getting an overview of video content
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        force: Re-run segmentation even if cached (default: False).
+    """
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(_get_scenes_sync, video_id, force)
+
+    return json.dumps(result, indent=2)
 
 
 def main():
