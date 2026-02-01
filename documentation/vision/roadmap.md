@@ -5,12 +5,29 @@
 ## Current State (v0.4.0)
 
 **What works today:**
-- Process videos from 1500+ sites (YouTube, Vimeo, Twitch, etc.)
-- Transcription via subtitles or Whisper
-- On-demand frame extraction (480px and 1280px)
-- Intelligent caching
-- MCP server for Claude integration
-- Local file support (in progress)
+- [x] Process videos from 1500+ sites (YouTube, Vimeo, Twitch, etc.)
+- [x] Transcription via subtitles or Whisper
+- [x] On-demand frame extraction (480px and 1280px)
+- [x] Intelligent caching
+- [x] MCP server for Claude integration
+- [x] Modular library architecture (refactored)
+
+## Local File Support (In Progress)
+
+Enable processing of local video files (screen recordings, downloads).
+
+- [x] Detect local file paths vs URLs
+- [x] Generate deterministic video_id for local files
+- [x] Extract metadata via ffprobe
+- [x] Extract audio for Whisper transcription
+- [x] Frame extraction from local files
+- [x] Copy/symlink local files to cache
+- [ ] MCP tool for local file processing (in progress)
+- [ ] Generate thumbnail from local video
+- [ ] Check for embedded subtitles
+- [ ] Tests for local file processing
+
+**Goal**: Same workflow for local files as URL-sourced videos.
 
 ## Development Phases
 
@@ -20,11 +37,15 @@ Give the agent a semantic map of the video.
 
 - [x] YouTube chapters extraction
 - [x] Cache structure for scenes
+- [ ] Unified cheap boundary detection
 - [ ] Transcript-based boundary detection
 - [ ] Visual scene detection (PySceneDetect)
 - [ ] Transcript-scene alignment
 - [ ] Visual transcripts (dense captioning)
 - [ ] /yt:scenes command
+- [ ] Smart segmentation strategy
+- [ ] OCR extraction for technical content
+- [ ] Code block detection
 
 **Goal**: Videos become structured documents, not linear streams.
 
@@ -32,10 +53,11 @@ Give the agent a semantic map of the video.
 
 Enable "find the part where..." queries.
 
-- [ ] Multimodal scene embeddings
-- [ ] Vector index (ChromaDB/FAISS)
-- [ ] /yt:find command
-- [ ] Natural language moment search
+- [ ] Implement temporal grounding search
+- [ ] Add /yt:find command
+- [ ] Create multimodal scene embeddings
+- [ ] Build vector index (ChromaDB/FAISS)
+- [ ] Support local embedding models
 
 **Goal**: Jump directly to relevant sections.
 
@@ -43,10 +65,11 @@ Enable "find the part where..." queries.
 
 Understand change over time.
 
-- [ ] Entity tracking (people, objects, code)
-- [ ] Change detection between scenes
-- [ ] Narrative structure detection
-- [ ] Code evolution tracking
+- [ ] Track entities (people, objects, code) across scenes
+- [ ] Detect changes between consecutive scenes
+- [ ] Detect narrative structure (intro, sections, conclusion)
+- [ ] Track code evolution in programming tutorials
+- [ ] Track objects and concepts across scenes
 
 **Goal**: Answer "how did X evolve during this video?"
 
@@ -54,8 +77,9 @@ Understand change over time.
 
 Get smarter with each interaction.
 
+- [ ] Implement VideoMemory class
+- [ ] Multi-pass analysis depths (quick/standard/deep)
 - [ ] Interaction-driven cache enrichment
-- [ ] Multi-pass analysis (quick/standard/deep)
 - [ ] Cross-video knowledge graph
 
 **Goal**: Memory across sessions, connected knowledge.
@@ -64,12 +88,25 @@ Get smarter with each interaction.
 
 Watch video like a human expert.
 
-- [ ] Active watching strategy
-- [ ] Attention modeling
+- [ ] Implement ActiveVideoWatcher class
+- [ ] Attention priority modeling
 - [ ] Comprehension verification
-- [ ] /yt:watch command
+- [ ] /yt:watch command for active viewing
 
 **Goal**: True video comprehension, not just retrieval.
+
+## Infrastructure
+
+### Configurable Cache Directory (Planned)
+
+- [ ] Environment variable (CLAUDETUBE_CACHE_DIR)
+- [ ] Project config (.claudetube/config.yaml)
+- [ ] User config (~/.config/claudetube/)
+- [ ] Update CacheManager
+- [ ] Update MCP server
+- [ ] Documentation
+
+**Goal**: Flexible storage location for different workflows.
 
 ## Contributing
 
