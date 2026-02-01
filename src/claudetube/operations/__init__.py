@@ -25,6 +25,10 @@ from claudetube.operations.subtitles import (
     find_embedded_subtitles,
     find_sidecar_subtitles,
 )
+from claudetube.operations.segmentation import (
+    boundaries_to_segments,
+    segment_video_smart,
+)
 from claudetube.operations.transcribe import transcribe_audio, transcribe_video
 
 __all__ = [
@@ -46,4 +50,6 @@ __all__ = [
     "fetch_local_subtitles",
     "find_embedded_subtitles",
     "find_sidecar_subtitles",
+    "boundaries_to_segments",
+    "segment_video_smart",
 ]
