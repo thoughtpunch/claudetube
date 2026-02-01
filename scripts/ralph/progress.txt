@@ -37,3 +37,25 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 - 2026-02-01 15:24 | claudetube-9i5 [P3] | Implement ActiveVideoWatcher class
 - 2026-02-01 15:31 | claudetube-awk [P3] | Implement attention priority modeling
 - 2026-02-01 15:52 | claudetube-bst [P0] | Create Provider Base Module Structure
+- 2026-02-01 15:56 | claudetube-gpx [P0] | Define Provider Protocols and Base Classes
+- 2026-02-01 16:01 | claudetube-cqq [P0] | Define Result Types and Schemas
+- 2026-02-01 16:09 | claudetube-p5o [P0] | Define Capability Enum and ProviderInfo
+- 2026-02-01 16:14 | claudetube-2su [P0] | Create Provider Registry
+- 2026-02-01 16:15 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:15 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:15 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:15 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:16 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:16 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:16 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:16 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:16 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:16 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:17 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:17 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:17 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:17 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:20 | claudetube-wnb.1 [P2] | Add yt-dlp AD Track Detection
+- 2026-02-01 16:23 | claudetube-wnb.5 [P2] | Extend State Model for AD
+- 2026-02-01 16:27 | claudetube-wnb.2 [P2] | Implement Scene Description Compiler
+- 2026-02-01 16:34 | claudetube-did [P3] | Implement comprehension verification
