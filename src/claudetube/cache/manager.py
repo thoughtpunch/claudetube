@@ -113,6 +113,18 @@ class CacheManager:
             return True
         return False
 
+    # Audio Description methods
+
+    def get_ad_paths(self, video_id: str) -> tuple[Path, Path]:
+        """Return (vtt_path, txt_path) for audio descriptions."""
+        cache_dir = self.get_cache_dir(video_id)
+        return (cache_dir / "audio.ad.vtt", cache_dir / "audio.ad.txt")
+
+    def has_ad(self, video_id: str) -> bool:
+        """Check if audio descriptions exist in cache."""
+        vtt, txt = self.get_ad_paths(video_id)
+        return vtt.exists() or txt.exists()
+
     # Local file methods
 
     def cache_local_file(

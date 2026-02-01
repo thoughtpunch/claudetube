@@ -48,6 +48,11 @@ class VideoState:
     frame_interval: int | None = None
     quality_extractions: dict = field(default_factory=dict)
 
+    # Audio Description
+    ad_complete: bool = False
+    ad_source: str | None = None  # 'source_track' | 'scene_compilation' | 'generated'
+    ad_track_available: bool | None = None  # Did source have AD track?
+
     # Scene processing state
     scenes_processed: bool = False
     scenes_method: str | None = None  # "transcript", "visual", "hybrid"
@@ -85,6 +90,9 @@ class VideoState:
             "frames_count": self.frames_count,
             "frame_interval": self.frame_interval,
             "quality_extractions": self.quality_extractions,
+            "ad_complete": self.ad_complete,
+            "ad_source": self.ad_source,
+            "ad_track_available": self.ad_track_available,
             "scenes_processed": self.scenes_processed,
             "scenes_method": self.scenes_method,
             "scene_count": self.scene_count,
@@ -123,6 +131,9 @@ class VideoState:
             frames_count=data.get("frames_count"),
             frame_interval=data.get("frame_interval"),
             quality_extractions=data.get("quality_extractions", {}),
+            ad_complete=data.get("ad_complete", False),
+            ad_source=data.get("ad_source"),
+            ad_track_available=data.get("ad_track_available"),
             scenes_processed=data.get("scenes_processed", False),
             scenes_method=data.get("scenes_method"),
             scene_count=data.get("scene_count"),
