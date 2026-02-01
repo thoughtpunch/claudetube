@@ -279,6 +279,117 @@ class YtDlpTool(VideoTool):
             "source": source,
         }
 
+    def get_formats(self, url: str, timeout: int = 30) -> list[dict]:
+        """Fetch available formats for a video.
+
+        Returns:
+            List of format dicts from yt-dlp
+
+        Raises:
+            MetadataError: If format listing fails
+        """
+        result = self._run(
+            ["-j", "--no-download", url],
+            timeout=timeout,
+            retry_mweb=False,
+        )
+
+        if not result.success:
+            error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+            if "ERROR:" in error_msg:
+                error_msg = error_msg.split("ERROR:")[-1].strip()
+            raise MetadataError(error_msg[:500])
+
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            raise MetadataError(f"Invalid JSON response: {e}") from e
+
+        return data.get("formats", [])
+
+    def check_audio_description(self, url: str, timeout: int = 30) -> dict | None:
+        """Check if the video has an audio description (AD) track.
+
+        Detects AD tracks by looking for keywords in format_note
+        and format_id fields.
+
+        Args:
+            url: Video URL
+            timeout: Timeout for the metadata fetch
+
+        Returns:
+            Format dict for the AD track if found, or None
+        """
+        formats = self.get_formats(url, timeout=timeout)
+        ad_indicators = ["description", "descriptive", "ad", "dvs"]
+
+        for fmt in formats:
+            note = fmt.get("format_note", "").lower()
+            format_id = fmt.get("format_id", "").lower()
+            language = fmt.get("language", "").lower() if fmt.get("language") else ""
+
+            # Check format_note for AD indicators
+            if any(ind in note for ind in ad_indicators):
+                return fmt
+
+            # Check format_id for AD indicators
+            if any(ind in format_id for ind in ad_indicators):
+                return fmt
+
+            # Check language field (some platforms use language tags like "en-ad")
+            if "ad" in language.split("-") or "descriptive" in language:
+                return fmt
+
+        return None
+
+    def download_audio_description(
+        self,
+        url: str,
+        output_path: Path,
+        format_id: str | None = None,
+        quality: str = "64K",
+    ) -> Path:
+        """Download the audio description track from a video.
+
+        Args:
+            url: Video URL
+            output_path: Output file path
+            format_id: Specific format ID to download (from check_audio_description).
+                        If None, will auto-detect the AD track.
+            quality: Audio quality (e.g., "64K", "128K")
+
+        Returns:
+            Path to downloaded audio file
+
+        Raises:
+            DownloadError: If no AD track found or download fails
+        """
+        if format_id is None:
+            ad_format = self.check_audio_description(url)
+            if ad_format is None:
+                raise DownloadError("No audio description track found")
+            format_id = ad_format["format_id"]
+
+        args = [
+            "-f", format_id,
+            "-x",
+            "--audio-format", "mp3",
+            "--audio-quality", quality,
+            "--no-playlist",
+            "--no-warnings",
+            "-o", str(output_path),
+            url,
+        ]
+
+        result = self._run(args)
+
+        if not result.success or not output_path.exists():
+            raise DownloadError(
+                f"Audio description download failed: {result.stderr[:200] if result.stderr else 'Unknown error'}"
+            )
+
+        return output_path
+
     def download_video_segment(
         self,
         url: str,
