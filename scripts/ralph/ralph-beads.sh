@@ -10,6 +10,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 MAX_ITERATIONS=${1:-10}
 LOG_FILE="ralph.log"
+PROGRESS_FILE="scripts/ralph/progress.txt"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -47,8 +48,12 @@ while [ $iteration -lt $MAX_ITERATIONS ]; do
 
     TASK_ID=$(echo "$TASK" | jq -r '.id')
     TITLE=$(echo "$TASK" | jq -r '.title')
+    PRIORITY=$(echo "$TASK" | jq -r '.priority // "?"')
 
     echo "Task: $TASK_ID - $TITLE"
+
+    # Log to progress file
+    echo "- $(date '+%Y-%m-%d %H:%M') | $TASK_ID [P$PRIORITY] | $TITLE" >> "$PROGRESS_FILE"
 
     # Build prompt
     TASK_DETAILS=$(bd show "$TASK_ID" 2>/dev/null)
