@@ -34,6 +34,9 @@ dependencies = [
 mcp = [
     "mcp>=1.2.0",
 ]
+ocr = [
+    "easyocr>=1.7.0",
+]
 dev = [
     "pytest",
     "pytest-asyncio",
