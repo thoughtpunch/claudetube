@@ -3,13 +3,18 @@
 import pytest
 
 from claudetube.urls import (
+    LocalFile,
+    LocalFileError,
     VideoURL,
     extract_playlist_id,
     extract_url_context,
     extract_video_id,
     get_provider_count,
     get_provider_for_url,
+    is_local_file,
+    is_url,
     list_supported_providers,
+    parse_input,
 )
 
 
@@ -350,3 +355,245 @@ class TestMultiSiteUrlParsing:
         v = VideoURL.parse(url)
         assert v.video_id == expected_id
         assert v.provider == expected_provider
+
+
+# =============================================================================
+# Local File Detection Tests
+# =============================================================================
+
+
+class TestIsLocalFile:
+    """Tests for is_local_file() function."""
+
+    def test_http_url_not_local(self):
+        assert is_local_file("https://youtube.com/watch?v=abc") is False
+        assert is_local_file("http://example.com/video.mp4") is False
+
+    def test_nonexistent_file_not_local(self):
+        assert is_local_file("/nonexistent/path/video.mp4") is False
+
+    def test_empty_string_not_local(self):
+        assert is_local_file("") is False
+        assert is_local_file("   ") is False
+
+    def test_none_not_local(self):
+        assert is_local_file(None) is False
+
+    def test_absolute_path_is_local(self, tmp_path):
+        video = tmp_path / "test.mp4"
+        video.touch()
+        assert is_local_file(str(video)) is True
+
+    def test_relative_path_is_local(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        video = tmp_path / "test.mp4"
+        video.touch()
+        assert is_local_file("./test.mp4") is True
+
+    def test_home_relative_path(self, tmp_path, monkeypatch):
+        # Create a test file in home directory (use tmp as fake home)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        video = tmp_path / "test_video.mp4"
+        video.touch()
+        # This test uses expanduser which reads HOME env var
+        result = is_local_file("~/test_video.mp4")
+        assert result is True
+
+    def test_file_uri_is_local(self, tmp_path):
+        video = tmp_path / "test.mp4"
+        video.touch()
+        assert is_local_file(f"file://{video}") is True
+        assert is_local_file(f"file:///{video}") is True
+
+    def test_domain_like_string_is_url(self):
+        # Should be treated as URL, not local file
+        assert is_local_file("youtube.com/watch?v=abc") is False
+        assert is_local_file("example.com/video.mp4") is False
+
+
+class TestIsUrl:
+    """Tests for is_url() function."""
+
+    def test_http_urls(self):
+        assert is_url("https://youtube.com/watch?v=abc") is True
+        assert is_url("http://example.com/video.mp4") is True
+
+    def test_file_uri_not_url(self, tmp_path):
+        video = tmp_path / "test.mp4"
+        video.touch()
+        assert is_url(f"file://{video}") is False
+
+    def test_local_file_not_url(self, tmp_path):
+        video = tmp_path / "test.mp4"
+        video.touch()
+        assert is_url(str(video)) is False
+
+    def test_empty_string_not_url(self):
+        assert is_url("") is False
+        assert is_url("   ") is False
+
+
+class TestLocalFile:
+    """Tests for LocalFile model."""
+
+    def test_parse_absolute_path(self, tmp_path):
+        video = tmp_path / "test_video.mp4"
+        video.touch()
+
+        lf = LocalFile.parse(str(video))
+        assert lf.path == video
+        assert lf.extension == ".mp4"
+        assert lf.is_video is True
+        assert lf.filename == "test_video.mp4"
+        assert lf.stem == "test_video"
+
+    def test_parse_file_uri(self, tmp_path):
+        video = tmp_path / "test.mkv"
+        video.touch()
+
+        lf = LocalFile.parse(f"file://{video}")
+        assert lf.path == video
+        assert lf.extension == ".mkv"
+
+    def test_parse_file_uri_with_spaces(self, tmp_path):
+        video = tmp_path / "my video file.mp4"
+        video.touch()
+
+        # URL-encoded spaces
+        lf = LocalFile.parse(f"file://{str(video).replace(' ', '%20')}")
+        assert lf.path == video
+
+    def test_parse_audio_file(self, tmp_path):
+        audio = tmp_path / "podcast.mp3"
+        audio.touch()
+
+        lf = LocalFile.parse(str(audio))
+        assert lf.extension == ".mp3"
+        assert lf.is_video is False
+
+    def test_parse_nonexistent_raises(self):
+        with pytest.raises(LocalFileError, match="File not found"):
+            LocalFile.parse("/nonexistent/video.mp4")
+
+    def test_parse_unsupported_format_raises(self, tmp_path):
+        txt = tmp_path / "document.txt"
+        txt.touch()
+
+        with pytest.raises(LocalFileError, match="Unsupported file format"):
+            LocalFile.parse(str(txt))
+
+    def test_parse_directory_raises(self, tmp_path):
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+
+        with pytest.raises(LocalFileError, match="Not a file"):
+            LocalFile.parse(str(subdir))
+
+    def test_try_parse_returns_none_on_error(self):
+        assert LocalFile.try_parse("/nonexistent/video.mp4") is None
+        assert LocalFile.try_parse("") is None
+
+    def test_all_video_extensions(self, tmp_path):
+        """Test that all documented video extensions are supported."""
+        from claudetube.urls import SUPPORTED_VIDEO_EXTENSIONS
+
+        for ext in SUPPORTED_VIDEO_EXTENSIONS:
+            video = tmp_path / f"test{ext}"
+            video.touch()
+            lf = LocalFile.parse(str(video))
+            assert lf.is_video is True
+            video.unlink()
+
+    def test_all_audio_extensions(self, tmp_path):
+        """Test that all documented audio extensions are supported."""
+        from claudetube.urls import SUPPORTED_AUDIO_EXTENSIONS
+
+        for ext in SUPPORTED_AUDIO_EXTENSIONS:
+            audio = tmp_path / f"test{ext}"
+            audio.touch()
+            lf = LocalFile.parse(str(audio))
+            assert lf.is_video is False
+            audio.unlink()
+
+
+class TestParseInput:
+    """Tests for parse_input() unified input parser."""
+
+    def test_parse_url(self):
+        result = parse_input("https://youtube.com/watch?v=dQw4w9WgXcQ")
+        assert result["type"] == "url"
+        assert result["video_id"] == "dQw4w9WgXcQ"
+        assert result["provider"] == "YouTube"
+
+    def test_parse_local_file(self, tmp_path):
+        video = tmp_path / "my_recording.mp4"
+        video.touch()
+
+        result = parse_input(str(video))
+        assert result["type"] == "local"
+        assert result["path"] == str(video)
+        assert result["filename"] == "my_recording.mp4"
+        assert result["stem"] == "my_recording"
+        assert result["extension"] == ".mp4"
+        assert result["is_video"] is True
+
+    def test_parse_local_audio(self, tmp_path):
+        audio = tmp_path / "podcast.mp3"
+        audio.touch()
+
+        result = parse_input(str(audio))
+        assert result["type"] == "local"
+        assert result["is_video"] is False
+
+    def test_parse_file_uri(self, tmp_path):
+        video = tmp_path / "test.webm"
+        video.touch()
+
+        result = parse_input(f"file://{video}")
+        assert result["type"] == "local"
+        assert result["extension"] == ".webm"
+
+
+class TestLocalFileEdgeCases:
+    """Edge case tests for local file detection."""
+
+    def test_relative_path_with_dots(self, tmp_path, monkeypatch):
+        """Test ../path/to/video.mp4 style paths."""
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        video = tmp_path / "video.mp4"
+        video.touch()
+
+        monkeypatch.chdir(subdir)
+        assert is_local_file("../video.mp4") is True
+
+    def test_path_with_special_chars(self, tmp_path):
+        """Test paths with spaces and special characters."""
+        video = tmp_path / "my video (2024) - final.mp4"
+        video.touch()
+
+        lf = LocalFile.parse(str(video))
+        assert lf.path == video
+
+    def test_uppercase_extension(self, tmp_path):
+        """Test that uppercase extensions work."""
+        video = tmp_path / "VIDEO.MP4"
+        video.touch()
+
+        lf = LocalFile.parse(str(video))
+        assert lf.extension == ".mp4"  # Should be normalized to lowercase
+        assert lf.is_video is True
+
+    def test_url_without_scheme_not_confused_with_file(self):
+        """Ensure URLs without http:// aren't confused with files."""
+        # These should be treated as URLs, not local files
+        assert is_local_file("youtube.com/watch?v=abc") is False
+        assert is_local_file("vimeo.com/123456") is False
+
+    def test_bare_filename_in_cwd(self, tmp_path, monkeypatch):
+        """Test bare filename (no path) works if file exists in cwd."""
+        monkeypatch.chdir(tmp_path)
+        video = tmp_path / "video.mp4"
+        video.touch()
+
+        assert is_local_file("video.mp4") is True

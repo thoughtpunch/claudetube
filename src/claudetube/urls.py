@@ -3,14 +3,55 @@ URL parsing and video ID extraction for claudetube.
 
 Supports 70+ video providers with site-specific regex patterns,
 plus a generic fallback for unknown sites.
+Also supports local file paths for offline video processing.
 """
 
 import hashlib
 import re
+from pathlib import Path
 from typing import ClassVar
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Supported video file extensions (lowercase)
+SUPPORTED_VIDEO_EXTENSIONS = {
+    ".mp4",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".wmv",
+    ".flv",
+    ".webm",
+    ".m4v",
+    ".mpeg",
+    ".mpg",
+    ".3gp",
+    ".3g2",
+    ".ogv",
+    ".ts",
+    ".mts",
+    ".m2ts",
+    ".vob",
+    ".divx",
+    ".xvid",
+    ".asf",
+    ".rm",
+    ".rmvb",
+}
+
+# Supported audio file extensions (for audio-only processing)
+SUPPORTED_AUDIO_EXTENSIONS = {
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".aac",
+    ".ogg",
+    ".opus",
+    ".m4a",
+    ".wma",
+    ".aiff",
+}
 
 # Video provider patterns - ranked by popularity/traffic
 # Each pattern extracts video_id (and optionally other fields like channel, clip_id, etc.)
@@ -684,7 +725,254 @@ class VideoURL(BaseModel):
         return f"VideoURL(url={self.url!r}, video_id={self.video_id!r}, provider={self.provider!r})"
 
 
+# =============================================================================
+# Local File Support
+# =============================================================================
+
+
+class LocalFileError(Exception):
+    """Error when processing local file paths."""
+
+    pass
+
+
+class LocalFile(BaseModel):
+    """Parsed and validated local file with metadata."""
+
+    path: Path = Field(..., description="Resolved absolute path to the file")
+    original_input: str = Field(..., description="Original input string")
+    extension: str = Field(..., description="File extension (lowercase, with dot)")
+    is_video: bool = Field(..., description="True if video file, False if audio")
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    @classmethod
+    def parse(cls, input_str: str) -> "LocalFile":
+        """Parse a local file path and validate it exists.
+
+        Args:
+            input_str: File path (absolute, relative, ~, or file:// URI)
+
+        Returns:
+            LocalFile with resolved path and metadata
+
+        Raises:
+            LocalFileError: If file doesn't exist or is not a supported format
+        """
+        # Handle file:// URI scheme
+        if input_str.startswith("file://"):
+            # file:///path/to/file or file://localhost/path/to/file
+            path_str = input_str[7:]  # Remove 'file://'
+            if path_str.startswith("localhost"):
+                path_str = path_str[9:]  # Remove 'localhost'
+            elif path_str.startswith("//"):
+                path_str = path_str[1:]  # Remove extra slash
+            # URL decode the path (handles %20 for spaces, etc.)
+            path_str = unquote(path_str)
+        else:
+            path_str = input_str
+
+        # Expand ~ and resolve to absolute path
+        try:
+            path = Path(path_str).expanduser().resolve()
+        except Exception as e:
+            raise LocalFileError(f"Invalid path '{input_str}': {e}")
+
+        # Check file exists
+        if not path.exists():
+            raise LocalFileError(f"File not found: {path}")
+
+        if not path.is_file():
+            raise LocalFileError(f"Not a file (maybe a directory?): {path}")
+
+        # Check extension
+        ext = path.suffix.lower()
+        is_video = ext in SUPPORTED_VIDEO_EXTENSIONS
+        is_audio = ext in SUPPORTED_AUDIO_EXTENSIONS
+
+        if not is_video and not is_audio:
+            supported = sorted(SUPPORTED_VIDEO_EXTENSIONS | SUPPORTED_AUDIO_EXTENSIONS)
+            raise LocalFileError(
+                f"Unsupported file format '{ext}'. "
+                f"Supported formats: {', '.join(supported)}"
+            )
+
+        return cls(
+            path=path,
+            original_input=input_str,
+            extension=ext,
+            is_video=is_video,
+        )
+
+    @classmethod
+    def try_parse(cls, input_str: str) -> "LocalFile | None":
+        """Try to parse a local file, returning None on failure."""
+        try:
+            return cls.parse(input_str)
+        except (LocalFileError, Exception):
+            return None
+
+    @property
+    def filename(self) -> str:
+        """Get the filename without path."""
+        return self.path.name
+
+    @property
+    def stem(self) -> str:
+        """Get filename without extension."""
+        return self.path.stem
+
+    def __str__(self) -> str:
+        return str(self.path)
+
+    def __repr__(self) -> str:
+        return f"LocalFile(path={self.path!r}, is_video={self.is_video})"
+
+
+def is_local_file(input_str: str) -> bool:
+    """Check if input string is a local file path (not a URL).
+
+    Detects:
+    - Absolute paths: /path/to/video.mp4
+    - Relative paths: ./video.mp4, ../videos/file.mkv
+    - Home-relative paths: ~/Videos/file.mp4
+    - File URIs: file:///path/to/video.mp4
+
+    Args:
+        input_str: Input string to check
+
+    Returns:
+        True if input is a local file path that exists
+    """
+    if not input_str or not isinstance(input_str, str):
+        return False
+
+    input_str = input_str.strip()
+
+    # Definitely a URL if it starts with http/https
+    if input_str.startswith(("http://", "https://")):
+        return False
+
+    # Definitely a local file if it starts with file://
+    if input_str.startswith("file://"):
+        return LocalFile.try_parse(input_str) is not None
+
+    # Check for path-like patterns
+    # Absolute path (Unix or Windows)
+    if input_str.startswith("/") or (
+        len(input_str) > 2 and input_str[1] == ":" and input_str[2] in "/\\"
+    ):
+        return LocalFile.try_parse(input_str) is not None
+
+    # Home-relative path
+    if input_str.startswith("~"):
+        return LocalFile.try_parse(input_str) is not None
+
+    # Relative path starting with . or ..
+    if input_str.startswith(("./", "../", ".\\", "..\\")):
+        return LocalFile.try_parse(input_str) is not None
+
+    # At this point, it could be:
+    # 1. A bare filename (video.mp4) - check if it exists in current dir
+    # 2. A URL without scheme (youtube.com/watch?v=...)
+    # 3. A relative path without ./ prefix (videos/file.mp4)
+
+    # If it looks like a domain (contains . but not as file extension at end),
+    # treat as URL
+    if "." in input_str:
+        # Check if the dot is part of a file extension or a domain
+        parts = input_str.split("/")[0]  # Get first path component
+        if "." in parts and not any(
+            parts.endswith(ext)
+            for ext in (SUPPORTED_VIDEO_EXTENSIONS | SUPPORTED_AUDIO_EXTENSIONS)
+        ):
+            # Looks like a domain (e.g., youtube.com)
+            return False
+
+    # Try to resolve as a file
+    return LocalFile.try_parse(input_str) is not None
+
+
+def is_url(input_str: str) -> bool:
+    """Check if input string is a URL (not a local file).
+
+    Args:
+        input_str: Input string to check
+
+    Returns:
+        True if input is a URL
+    """
+    if not input_str or not isinstance(input_str, str):
+        return False
+
+    input_str = input_str.strip()
+
+    # Empty after strip
+    if not input_str:
+        return False
+
+    # Explicit URL schemes
+    if input_str.startswith(("http://", "https://")):
+        return True
+
+    # file:// is a local file, not a remote URL
+    if input_str.startswith("file://"):
+        return False
+
+    # If it's detected as a local file, it's not a URL
+    if is_local_file(input_str):
+        return False
+
+    # Otherwise, assume it's a URL (could be missing scheme)
+    return True
+
+
+def parse_input(input_str: str) -> dict:
+    """Parse input string as either a URL or local file.
+
+    This is the main entry point for handling user input that could be
+    either a URL or a local file path.
+
+    Args:
+        input_str: URL or file path
+
+    Returns:
+        dict with keys:
+            - type: 'url' or 'local'
+            - For URLs: video_id, playlist_id, provider, provider_data, etc.
+            - For local files: path, filename, extension, is_video
+
+    Raises:
+        ValueError: If input cannot be parsed as either URL or local file
+    """
+    input_str = input_str.strip()
+
+    # Try local file first (more specific check)
+    if is_local_file(input_str):
+        local = LocalFile.parse(input_str)  # Will raise LocalFileError if invalid
+        return {
+            "type": "local",
+            "path": str(local.path),
+            "filename": local.filename,
+            "stem": local.stem,
+            "extension": local.extension,
+            "is_video": local.is_video,
+            "original_input": input_str,
+        }
+
+    # Try as URL
+    url_context = extract_url_context(input_str)
+    return {
+        "type": "url",
+        **url_context,
+    }
+
+
+# =============================================================================
 # Convenience functions for backwards compatibility
+# =============================================================================
+
+
 def extract_video_id(url: str) -> str:
     """Extract video ID from URL (backwards-compatible function)."""
     try:
