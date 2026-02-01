@@ -1,23 +1,342 @@
 """
 claudetube.providers.config - Provider configuration loading.
 
-This module handles loading provider configurations from environment
-variables, config files, and runtime settings.
+Loads provider configuration from YAML config files with support for:
+- ${ENV_VAR} interpolation for API keys
+- Provider-specific settings (api_key, model, extras)
+- Capability preferences (which provider for transcription, vision, etc.)
+- Fallback chains for graceful degradation
+- Backward compatibility with existing CLAUDETUBE_* env vars
 
-Functions:
-    load_provider_config: Load config for a specific provider.
-    get_api_key: Get API key for a provider (from env or keychain).
-    validate_config: Validate provider configuration.
+Config is loaded from the same YAML files as the base config:
+1. Project config (.claudetube/config.yaml)
+2. User config (~/.config/claudetube/config.yaml)
+
+YAML structure:
+    providers:
+      openai:
+        api_key: ${OPENAI_API_KEY}
+        model: gpt-4o
+      anthropic:
+        api_key: ${ANTHROPIC_API_KEY}
+      preferences:
+        transcription: whisper-local
+        vision: claude-code
+        reasoning: claude-code
+      fallbacks:
+        vision: [anthropic, openai, claude-code]
 """
 
 from __future__ import annotations
 
-# Config loading implementation will be added in a future ticket
-# This file establishes the module structure
+import logging
+import os
+import re
+from dataclasses import dataclass, field
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# Pattern for ${ENV_VAR} interpolation
+ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
+
+# Known provider names that have dedicated config fields
+_KNOWN_PROVIDERS = frozenset(
+    {"openai", "anthropic", "google", "deepgram", "assemblyai", "voyage"}
+)
+
+# Map from provider name to legacy env var for API key
+_LEGACY_ENV_VARS: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "deepgram": "DEEPGRAM_API_KEY",
+    "assemblyai": "ASSEMBLYAI_API_KEY",
+    "voyage": "VOYAGE_API_KEY",
+}
+
+
+@dataclass
+class ProviderConfig:
+    """Configuration for a single AI provider.
+
+    Attributes:
+        api_key: Resolved API key (after env var interpolation). None if not set.
+        model: Default model name for this provider. None uses provider default.
+        extra: Additional provider-specific settings.
+    """
+
+    api_key: str | None = None
+    model: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ProvidersConfig:
+    """Complete providers configuration.
+
+    Contains per-provider configs, local provider settings, capability
+    preferences, and fallback chains.
+
+    Attributes:
+        providers: Per-provider configuration keyed by canonical name.
+        whisper_local_model: Whisper model size for local transcription.
+        ollama_model: Model name for Ollama.
+        transcription_provider: Preferred transcription provider.
+        vision_provider: Preferred vision provider.
+        video_provider: Preferred video provider (only Gemini supports native).
+        reasoning_provider: Preferred reasoning provider.
+        embedding_provider: Preferred embedding provider.
+        transcription_fallbacks: Fallback chain for transcription.
+        vision_fallbacks: Fallback chain for vision.
+        reasoning_fallbacks: Fallback chain for reasoning.
+    """
+
+    # Per-provider configs keyed by canonical name
+    providers: dict[str, ProviderConfig] = field(default_factory=dict)
+
+    # Local provider configs
+    whisper_local_model: str = "small"
+    ollama_model: str = "llava:13b"
+
+    # Preferences (which provider to use for each capability)
+    transcription_provider: str = "whisper-local"
+    vision_provider: str = "claude-code"
+    video_provider: str | None = None
+    reasoning_provider: str = "claude-code"
+    embedding_provider: str = "voyage"
+
+    # Fallback chains
+    transcription_fallbacks: list[str] = field(
+        default_factory=lambda: ["whisper-local"]
+    )
+    vision_fallbacks: list[str] = field(default_factory=lambda: ["claude-code"])
+    reasoning_fallbacks: list[str] = field(default_factory=lambda: ["claude-code"])
+
+    def get_provider_config(self, name: str) -> ProviderConfig:
+        """Get config for a specific provider, creating default if needed.
+
+        Args:
+            name: Canonical provider name.
+
+        Returns:
+            ProviderConfig for the provider.
+        """
+        if name not in self.providers:
+            self.providers[name] = ProviderConfig()
+        return self.providers[name]
+
+
+def _interpolate_env_vars(value: Any) -> Any:
+    """Replace ${ENV_VAR} patterns with environment variable values.
+
+    Recursively processes strings, dicts, and lists. Missing env vars
+    produce a warning and are replaced with empty string.
+
+    Args:
+        value: Value to interpolate. Can be str, dict, list, or other.
+
+    Returns:
+        Value with all ${ENV_VAR} patterns resolved.
+    """
+    if isinstance(value, str):
+
+        def _replace_match(match: re.Match) -> str:
+            var_name = match.group(1)
+            env_value = os.environ.get(var_name)
+            if env_value is None:
+                logger.warning(
+                    "Environment variable %s not set (referenced in provider config)",
+                    var_name,
+                )
+                return ""
+            return env_value
+
+        return ENV_VAR_PATTERN.sub(_replace_match, value)
+    elif isinstance(value, dict):
+        return {k: _interpolate_env_vars(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [_interpolate_env_vars(v) for v in value]
+    return value
+
+
+def _load_single_provider_config(data: dict) -> ProviderConfig:
+    """Load a single provider's config from a dict.
+
+    Performs env var interpolation on all values. Extracts api_key and model
+    as dedicated fields, everything else goes into extra.
+
+    Args:
+        data: Raw config dict for one provider.
+
+    Returns:
+        ProviderConfig with resolved values.
+    """
+    resolved = _interpolate_env_vars(data)
+    return ProviderConfig(
+        api_key=resolved.get("api_key") or None,
+        model=resolved.get("model"),
+        extra={k: v for k, v in resolved.items() if k not in ("api_key", "model")},
+    )
+
+
+def _apply_legacy_env_vars(config: ProvidersConfig) -> None:
+    """Apply legacy CLAUDETUBE_* env vars as fallbacks.
+
+    For backward compatibility, if a provider has no api_key set in the
+    YAML config but has a legacy env var set, use that.
+
+    Also checks for direct provider env vars (OPENAI_API_KEY, etc.).
+
+    Args:
+        config: ProvidersConfig to update in-place.
+    """
+    for provider_name, env_var in _LEGACY_ENV_VARS.items():
+        pc = config.get_provider_config(provider_name)
+        if pc.api_key:
+            continue
+
+        # Check direct env var (e.g., OPENAI_API_KEY)
+        direct_value = os.environ.get(env_var)
+        if direct_value:
+            pc.api_key = direct_value
+            continue
+
+        # Check CLAUDETUBE_ prefixed env var (e.g., CLAUDETUBE_OPENAI_API_KEY)
+        prefixed_var = f"CLAUDETUBE_{env_var}"
+        prefixed_value = os.environ.get(prefixed_var)
+        if prefixed_value:
+            pc.api_key = prefixed_value
+
+
+def load_providers_config(config_dict: dict | None = None) -> ProvidersConfig:
+    """Load providers configuration from a config dict.
+
+    Processes the 'providers' section of the YAML config, resolving env vars
+    and building the complete configuration. Falls back to defaults for any
+    missing values.
+
+    Args:
+        config_dict: Parsed YAML config dict. If None, uses empty defaults.
+
+    Returns:
+        ProvidersConfig with all settings resolved.
+    """
+    if config_dict is None:
+        config_dict = {}
+
+    providers_section = config_dict.get("providers", {})
+    if not isinstance(providers_section, dict):
+        logger.warning("Invalid 'providers' section in config (expected dict)")
+        providers_section = {}
+
+    config = ProvidersConfig()
+
+    # Load provider-specific configs
+    for provider_name in _KNOWN_PROVIDERS:
+        if provider_name in providers_section:
+            raw = providers_section[provider_name]
+            if isinstance(raw, dict):
+                config.providers[provider_name] = _load_single_provider_config(raw)
+            else:
+                logger.warning(
+                    "Invalid config for provider '%s' (expected dict)", provider_name
+                )
+
+    # Load local configs
+    local = providers_section.get("local", {})
+    if isinstance(local, dict):
+        if "whisper_model" in local:
+            config.whisper_local_model = str(local["whisper_model"])
+        if "ollama_model" in local:
+            config.ollama_model = str(local["ollama_model"])
+
+    # Load preferences
+    prefs = providers_section.get("preferences", {})
+    if isinstance(prefs, dict):
+        if "transcription" in prefs:
+            config.transcription_provider = str(prefs["transcription"])
+        if "vision" in prefs:
+            config.vision_provider = str(prefs["vision"])
+        if "video" in prefs:
+            config.video_provider = str(prefs["video"])
+        if "reasoning" in prefs:
+            config.reasoning_provider = str(prefs["reasoning"])
+        if "embedding" in prefs:
+            config.embedding_provider = str(prefs["embedding"])
+
+    # Load fallbacks
+    fallbacks = providers_section.get("fallbacks", {})
+    if isinstance(fallbacks, dict):
+        if "transcription" in fallbacks and isinstance(
+            fallbacks["transcription"], list
+        ):
+            config.transcription_fallbacks = [
+                str(x) for x in fallbacks["transcription"]
+            ]
+        if "vision" in fallbacks and isinstance(fallbacks["vision"], list):
+            config.vision_fallbacks = [str(x) for x in fallbacks["vision"]]
+        if "reasoning" in fallbacks and isinstance(fallbacks["reasoning"], list):
+            config.reasoning_fallbacks = [str(x) for x in fallbacks["reasoning"]]
+
+    # Apply legacy env var fallbacks
+    _apply_legacy_env_vars(config)
+
+    return config
+
+
+# Singleton for global config
+_config: ProvidersConfig | None = None
+
+
+def get_providers_config() -> ProvidersConfig:
+    """Get the global providers configuration.
+
+    Loads from config file on first call, then returns cached.
+    Uses the same config file discovery as the base config loader.
+
+    Returns:
+        ProvidersConfig with all settings resolved.
+    """
+    global _config
+    if _config is not None:
+        return _config
+
+    from claudetube.config.loader import (
+        _find_project_config,
+        _get_user_config_path,
+        _load_yaml_config,
+    )
+
+    yaml_config: dict | None = None
+
+    # Try project config first, then user config
+    project_path = _find_project_config()
+    if project_path:
+        yaml_config = _load_yaml_config(project_path)
+
+    if yaml_config is None:
+        user_path = _get_user_config_path()
+        yaml_config = _load_yaml_config(user_path)
+
+    _config = load_providers_config(yaml_config)
+    return _config
+
+
+def clear_providers_config_cache() -> None:
+    """Clear cached providers config (for testing or config reload).
+
+    After clearing, the next get_providers_config() call will reload
+    from config files and environment.
+    """
+    global _config
+    _config = None
+
 
 __all__ = [
-    # Config functions
-    # "load_provider_config",
-    # "get_api_key",
-    # "validate_config",
+    "ProviderConfig",
+    "ProvidersConfig",
+    "load_providers_config",
+    "get_providers_config",
+    "clear_providers_config_cache",
 ]
