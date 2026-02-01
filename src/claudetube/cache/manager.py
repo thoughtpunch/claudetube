@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from claudetube.cache.storage import load_state, save_state
+from claudetube.cache import scenes as scene_cache
 from claudetube.config.defaults import CACHE_DIR
 from claudetube.models.state import VideoState
 from claudetube.models.video_file import VideoFile
@@ -105,3 +106,47 @@ class CacheManager:
             shutil.rmtree(cache_dir)
             return True
         return False
+
+    # Scene-related methods
+
+    def get_scenes_dir(self, video_id: str) -> Path:
+        """Get scenes directory for a video (creates if needed)."""
+        return scene_cache.get_scenes_dir(self.get_cache_dir(video_id))
+
+    def get_scene_dir(self, video_id: str, scene_id: int) -> Path:
+        """Get directory for a specific scene (creates if needed)."""
+        return scene_cache.get_scene_dir(self.get_cache_dir(video_id), scene_id)
+
+    def get_keyframes_dir(self, video_id: str, scene_id: int) -> Path:
+        """Get keyframes directory for a scene (creates if needed)."""
+        return scene_cache.get_keyframes_dir(self.get_cache_dir(video_id), scene_id)
+
+    def has_scenes(self, video_id: str) -> bool:
+        """Check if scenes have been processed for this video."""
+        return scene_cache.has_scenes(self.get_cache_dir(video_id))
+
+    def get_scene_status(
+        self, video_id: str, scene_id: int
+    ) -> scene_cache.SceneStatus:
+        """Get processing status for a specific scene."""
+        return scene_cache.get_scene_status(self.get_cache_dir(video_id), scene_id)
+
+    def load_scenes_data(self, video_id: str) -> scene_cache.ScenesData | None:
+        """Load scenes.json data for a video."""
+        return scene_cache.load_scenes_data(self.get_cache_dir(video_id))
+
+    def save_scenes_data(self, video_id: str, data: scene_cache.ScenesData) -> None:
+        """Save scenes.json data for a video."""
+        scene_cache.save_scenes_data(self.get_cache_dir(video_id), data)
+
+    def list_scene_keyframes(self, video_id: str, scene_id: int) -> list[Path]:
+        """List all keyframe images for a scene."""
+        return scene_cache.list_scene_keyframes(
+            self.get_cache_dir(video_id), scene_id
+        )
+
+    def get_all_scene_statuses(
+        self, video_id: str
+    ) -> dict[int, scene_cache.SceneStatus]:
+        """Get processing status for all scenes."""
+        return scene_cache.get_all_scene_statuses(self.get_cache_dir(video_id))

@@ -44,6 +44,13 @@ class VideoState:
     frame_interval: int | None = None
     quality_extractions: dict = field(default_factory=dict)
 
+    # Scene processing state
+    scenes_processed: bool = False
+    scenes_method: str | None = None  # "transcript", "visual", "hybrid"
+    scene_count: int | None = None
+    visual_transcripts_complete: bool = False
+    technical_extraction_complete: bool = False
+
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -72,6 +79,11 @@ class VideoState:
             "frames_count": self.frames_count,
             "frame_interval": self.frame_interval,
             "quality_extractions": self.quality_extractions,
+            "scenes_processed": self.scenes_processed,
+            "scenes_method": self.scenes_method,
+            "scene_count": self.scene_count,
+            "visual_transcripts_complete": self.visual_transcripts_complete,
+            "technical_extraction_complete": self.technical_extraction_complete,
         }
 
     @classmethod
@@ -103,6 +115,11 @@ class VideoState:
             frames_count=data.get("frames_count"),
             frame_interval=data.get("frame_interval"),
             quality_extractions=data.get("quality_extractions", {}),
+            scenes_processed=data.get("scenes_processed", False),
+            scenes_method=data.get("scenes_method"),
+            scene_count=data.get("scene_count"),
+            visual_transcripts_complete=data.get("visual_transcripts_complete", False),
+            technical_extraction_complete=data.get("technical_extraction_complete", False),
         )
 
     @classmethod
