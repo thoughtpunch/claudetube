@@ -17,6 +17,10 @@ class VideoState:
     source_type: str = "url"
     # For local files, the absolute path to the source file
     source_path: str | None = None
+    # How the local file was cached: "symlink", "copy", or None
+    cache_mode: str | None = None
+    # Path to the cached source file (e.g., "source.mp4")
+    cached_file: str | None = None
 
     # Metadata from yt-dlp
     title: str | None = None
@@ -59,6 +63,8 @@ class VideoState:
             "playlist_id": self.playlist_id,
             "source_type": self.source_type,
             "source_path": self.source_path,
+            "cache_mode": self.cache_mode,
+            "cached_file": self.cached_file,
             "title": self.title,
             "duration": self.duration,
             "duration_string": self.duration_string,
@@ -95,6 +101,8 @@ class VideoState:
             playlist_id=data.get("playlist_id"),
             source_type=data.get("source_type", "url"),
             source_path=data.get("source_path"),
+            cache_mode=data.get("cache_mode"),
+            cached_file=data.get("cached_file"),
             title=data.get("title"),
             duration=data.get("duration"),
             duration_string=data.get("duration_string"),
