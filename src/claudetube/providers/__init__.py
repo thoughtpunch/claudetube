@@ -44,6 +44,13 @@ from claudetube.providers.base import (
     VisionAnalyzer,
 )
 
+# Import capability types
+from claudetube.providers.capabilities import (
+    PROVIDER_INFO,
+    Capability,
+    ProviderInfo,
+)
+
 # Import result types
 from claudetube.providers.types import (
     EntityExtractionResult,
@@ -71,6 +78,10 @@ __all__ = [
     "VideoAnalyzer",
     "Reasoner",
     "Embedder",
+    # Capability types
+    "Capability",
+    "ProviderInfo",
+    "PROVIDER_INFO",
     # Result types
     "TranscriptionSegment",
     "TranscriptionResult",
