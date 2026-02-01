@@ -137,6 +137,24 @@ frames = get_frames_at("VIDEO_ID", start_time=120, duration=10)
     └── hq/            # High-quality frames (1280p)
 ```
 
+### Configuration
+
+The cache directory is configurable. Priority order (highest first):
+
+1. **Environment variable**: `CLAUDETUBE_CACHE_DIR=/path/to/cache`
+2. **Project config**: `.claudetube/config.yaml` in your project
+3. **User config**: `~/.config/claudetube/config.yaml`
+4. **Default**: `~/.claude/video_cache`
+
+Example project config:
+
+```yaml
+# .claudetube/config.yaml
+cache_dir: ./video_cache
+```
+
+See [Configuration Guide](documentation/guides/configuration.md) for details.
+
 ## Architecture
 
 claudetube uses a **provider-based architecture**. Video downloading is handled through `yt-dlp`, which currently supports YouTube and [1000+ other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). The transcription and frame extraction pipeline is provider-agnostic -- it works with any video source that yt-dlp supports, and the architecture is designed to accommodate additional providers in the future.

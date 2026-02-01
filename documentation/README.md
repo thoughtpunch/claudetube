@@ -30,6 +30,7 @@
 - [Exceptions](api/exceptions.md) - Error handling
 
 ### Guides
+- [**Configuration**](guides/configuration.md) - **Cache directory and settings**
 - [Processing YouTube Videos](guides/youtube.md) - YouTube-specific features
 - [Processing Local Files](guides/local-files.md) - Screen recordings, downloads
 - [Extracting Frames](guides/frames.md) - Visual analysis
