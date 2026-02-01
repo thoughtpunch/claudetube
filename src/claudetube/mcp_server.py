@@ -269,6 +269,48 @@ async def list_cached_videos() -> str:
 
 
 @mcp.tool()
+async def get_playlist(
+    playlist_url: str,
+) -> str:
+    """Extract metadata from a playlist URL.
+
+    Fetches playlist info including title, description, channel, and video list
+    without downloading any content. Useful for understanding course structure
+    or video series before processing individual videos.
+
+    The playlist is cached for future reference.
+
+    Args:
+        playlist_url: URL to a playlist on YouTube or other supported sites.
+    """
+    from claudetube.operations.playlist import (
+        extract_playlist_metadata,
+        load_playlist_metadata,
+        save_playlist_metadata,
+    )
+
+    try:
+        data = extract_playlist_metadata(playlist_url)
+        save_playlist_metadata(data)
+        return json.dumps(data, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def list_playlists() -> str:
+    """List all cached playlists.
+
+    Returns playlist ID, title, video count, and inferred type (course/series/
+    conference/collection) for each cached playlist.
+    """
+    from claudetube.operations.playlist import list_cached_playlists
+
+    playlists = list_cached_playlists()
+    return json.dumps({"count": len(playlists), "playlists": playlists}, indent=2)
+
+
+@mcp.tool()
 async def get_transcript(
     video_id: str,
     format: str = "txt",
