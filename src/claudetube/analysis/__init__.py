@@ -8,6 +8,18 @@ from claudetube.analysis.alignment import (
     align_transcript_to_scenes,
     align_transcript_to_scenes_simple,
 )
+from claudetube.analysis.attention import (
+    AttentionFactors,
+    calculate_attention_factors,
+    calculate_attention_priority,
+    calculate_relevance,
+    detect_audio_emphasis,
+    detect_visual_salience,
+    estimate_information_density,
+    get_structural_weight,
+    get_weights_for_video_type,
+    rank_scenes_by_attention,
+)
 from claudetube.analysis.code import (
     CodeBlock,
     FrameCodeResult,
@@ -79,6 +91,18 @@ from claudetube.analysis.watcher import (
 )
 
 __all__ = [
+    # Attention priority modeling
+    "AttentionFactors",
+    "calculate_attention_factors",
+    "calculate_attention_priority",
+    "calculate_relevance",
+    "detect_audio_emphasis",
+    "detect_visual_salience",
+    "estimate_information_density",
+    "get_structural_weight",
+    "get_weights_for_video_type",
+    "rank_scenes_by_attention",
+    # Other exports
     "Boundary",
     "CodeBlock",
     "FrameCodeResult",
