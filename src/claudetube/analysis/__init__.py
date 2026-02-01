@@ -49,6 +49,16 @@ from claudetube.analysis.unified import (
     detect_boundaries_cheap,
     merge_nearby_boundaries,
 )
+from claudetube.analysis.vector_index import (
+    SearchResult,
+    build_scene_index,
+    delete_scene_index,
+    get_index_stats,
+    has_vector_index,
+    load_scene_index,
+    search_scenes,
+    search_scenes_by_text,
+)
 from claudetube.analysis.visual import (
     detect_visual_boundaries,
     detect_visual_boundaries_fast,
@@ -93,5 +103,13 @@ __all__ = [
     "save_code_results",
     "save_embeddings",
     "save_ocr_results",
+    "build_scene_index",
+    "delete_scene_index",
+    "get_index_stats",
+    "has_vector_index",
+    "load_scene_index",
+    "search_scenes",
+    "search_scenes_by_text",
+    "SearchResult",
     "should_use_visual_detection",
 ]
