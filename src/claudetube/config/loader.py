@@ -70,8 +70,19 @@ def _load_yaml_config(config_path: Path) -> dict[str, Any] | None:
         return None
 
 
-def _get_cache_dir_from_yaml(config: dict[str, Any] | None) -> Path | None:
-    """Extract cache_dir from a parsed YAML config."""
+def _get_cache_dir_from_yaml(
+    config: dict[str, Any] | None,
+    config_path: Path | None = None,
+) -> Path | None:
+    """Extract cache_dir from a parsed YAML config.
+
+    Args:
+        config: Parsed YAML config dict.
+        config_path: Path to the config file (for resolving relative paths).
+
+    Returns:
+        Resolved cache directory path, or None if not specified.
+    """
     if config is None:
         return None
 
@@ -79,7 +90,14 @@ def _get_cache_dir_from_yaml(config: dict[str, Any] | None) -> Path | None:
     if cache_dir is None:
         return None
 
-    path = Path(cache_dir).expanduser().resolve()
+    path = Path(cache_dir).expanduser()
+
+    # Resolve relative paths relative to config file location
+    if not path.is_absolute() and config_path is not None:
+        path = (config_path.parent / path).resolve()
+    else:
+        path = path.resolve()
+
     return path
 
 
@@ -130,17 +148,17 @@ def _resolve_config() -> ClaudetubeConfig:
     project_config_path = _find_project_config()
     if project_config_path:
         project_config = _load_yaml_config(project_config_path)
-        cache_dir = _get_cache_dir_from_yaml(project_config)
+        cache_dir = _get_cache_dir_from_yaml(project_config, project_config_path)
         if cache_dir:
-            logger.debug(f"Using cache_dir from project config {project_config_path}: {cache_dir}")
+            logger.info(f"Using cache_dir from project config {project_config_path}: {cache_dir}")
             return ClaudetubeConfig(cache_dir=cache_dir, source=ConfigSource.PROJECT)
 
     # 3. Check user config
     user_config_path = _get_user_config_path()
     user_config = _load_yaml_config(user_config_path)
-    cache_dir = _get_cache_dir_from_yaml(user_config)
+    cache_dir = _get_cache_dir_from_yaml(user_config, user_config_path)
     if cache_dir:
-        logger.debug(f"Using cache_dir from user config {user_config_path}: {cache_dir}")
+        logger.info(f"Using cache_dir from user config {user_config_path}: {cache_dir}")
         return ClaudetubeConfig(cache_dir=cache_dir, source=ConfigSource.USER)
 
     # 4. Fall back to default
