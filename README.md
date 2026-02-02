@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="claudetube" width="500">
+  <img src="documentation/files/images/logo.png" alt="claudetube" width="500">
 </p>
 
 <h1 align="center">claudetube</h1>
@@ -44,6 +44,14 @@ Unlike other tools, claudetube doesn't just fetch transcripts. It lets AI work w
 
   # Ubuntu/Debian
   sudo apt install ffmpeg
+  ```
+- **deno** (recommended for YouTube) -- Since yt-dlp 2026.01.29, deno is required for full YouTube support (JS challenge solving). Without it, only limited YouTube clients are available.
+  ```bash
+  # macOS
+  brew install deno
+
+  # Linux
+  curl -fsSL https://deno.land/install.sh | sh
   ```
 
 ### Install

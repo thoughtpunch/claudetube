@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -50,6 +51,8 @@ class YtDlpTool(VideoTool):
         """Get path to yt-dlp executable."""
         return find_tool("yt-dlp")
 
+    _deno_checked: bool = False
+
     def _subprocess_env(self) -> dict[str, str]:
         """Build env dict that preserves system PATH for subprocess calls.
 
@@ -66,6 +69,17 @@ class YtDlpTool(VideoTool):
             if p not in current:
                 current = f"{current}:{p}"
         env["PATH"] = current
+
+        # One-time check: warn if deno is not discoverable
+        if not YtDlpTool._deno_checked:
+            YtDlpTool._deno_checked = True
+            if not shutil.which("deno", path=current):
+                logger.info(
+                    "deno not found on PATH. Since yt-dlp 2026.01.29, deno is "
+                    "required for full YouTube support (JS challenge solving). "
+                    "Install: brew install deno (macOS) or visit https://deno.land"
+                )
+
         return env
 
     def _run(

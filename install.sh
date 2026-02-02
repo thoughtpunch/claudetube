@@ -50,6 +50,22 @@ if [[ "$MISSING" -eq 1 ]]; then
     exit 1
 fi
 
+# --- Check recommended dependencies ---
+if ! command -v deno &>/dev/null; then
+    echo ""
+    echo "WARNING: deno is not installed."
+    echo "  Since yt-dlp 2026.01.29, deno is required for full YouTube support."
+    echo "  Without it, only limited YouTube clients (android_vr) are available."
+    echo ""
+    if [[ "$OS" == "macos" ]]; then
+        echo "  Install with: brew install deno"
+    elif [[ "$OS" == "linux" ]]; then
+        echo "  Install with: curl -fsSL https://deno.land/install.sh | sh"
+    fi
+    echo "  More info: https://deno.land"
+    echo ""
+fi
+
 echo ""
 
 # 1. Create stable venv at ~/.claudetube/venv/
