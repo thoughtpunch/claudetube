@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # Tool Reference
 
 claudetube exposes functionality through three interfaces: **MCP tools** (for Claude Code/Desktop), **CLI commands** (terminal), and **slash commands** (Claude Code shortcuts). This guide maps them all.

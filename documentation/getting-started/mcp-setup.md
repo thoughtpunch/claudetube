@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # MCP Server Setup
 
 > Use claudetube with Claude Desktop and Claude Code.
@@ -34,7 +36,7 @@ python3 -m venv ~/.claudetube/venv
 
 ### Docker Install
 
-See [Docker Setup](../docker.md) for container-based setup.
+See [Docker Setup](../guides/docker.md) for container-based setup.
 
 ## Configuring Claude Code
 

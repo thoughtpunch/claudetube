@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # PRD: Configurable AI Providers
 
 **Status:** Draft

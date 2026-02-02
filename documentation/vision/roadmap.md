@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # Roadmap
 
 > Where claudetube is going.
@@ -110,7 +112,7 @@ Watch video like a human expert.
 
 ## Contributing
 
-See the [detailed roadmap](../claudetube-roadmap.md) for technical specifications and implementation details.
+See the [detailed roadmap](../prds/claudetube-roadmap.md) for technical specifications and implementation details.
 
 Track progress in our [issue tracker](https://github.com/thoughtpunch/claudetube/issues).
 

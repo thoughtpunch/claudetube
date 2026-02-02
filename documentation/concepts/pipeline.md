@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # The Processing Pipeline
 
 > From URL to understanding: how claudetube processes video.
@@ -63,7 +65,7 @@ The URL parser:
 - Extracts the video ID
 - Handles edge cases (shorts, embeds, mobile URLs)
 
-**See**: [models/video_url.py](../api/models.md#videourl)
+**See**: [Architecture Overview](../architecture/architecture.md)
 
 ## Stage 2: Metadata Fetch
 
@@ -80,7 +82,7 @@ This stage:
 - Identifies available subtitle tracks
 - Checks for available audio formats
 
-**See**: [tools/yt_dlp.py](../architecture/tools.md#yt-dlp)
+**See**: [Architecture Overview](../architecture/architecture.md)
 
 ## Stage 3: Audio Download
 

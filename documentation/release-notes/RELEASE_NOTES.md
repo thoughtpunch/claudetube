@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # claudetube v1.0.0rc1 Release Notes
 
 **Release Candidate 1** | February 2, 2026

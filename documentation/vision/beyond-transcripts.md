@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # Beyond Transcripts: What Makes claudetube Different
 
 > Most YouTube tools give you text. We give you video understanding.

@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # Docker Setup
 
 Run the claudetube MCP server in a container for isolation or for environments where native install is inconvenient.

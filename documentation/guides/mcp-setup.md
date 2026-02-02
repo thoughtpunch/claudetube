@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # MCP Server Setup
 
 claudetube includes an MCP (Model Context Protocol) server that exposes video processing tools to any MCP-compatible client — Claude Desktop, Claude Code, or third-party tools.

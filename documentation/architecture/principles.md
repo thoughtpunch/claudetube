@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # Architecture Principles
 
 > The guiding philosophy behind claudetube's design.
@@ -148,5 +150,4 @@ When adding new capabilities, follow this checklist:
 ---
 
 **See also**:
-- [Data Flow](data-flow.md) - How data moves through the system
-- [Cache Structure](cache.md) - What gets stored and why
+- [Architecture Overview](architecture.md) - Codebase structure, data flow, cache layout

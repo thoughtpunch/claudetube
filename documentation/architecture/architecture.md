@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # Architecture
 
 claudetube serves two interfaces from a single codebase:
