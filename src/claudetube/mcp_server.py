@@ -252,8 +252,7 @@ async def transcribe_video(
         whisper_model: Whisper model size (tiny/base/small/medium/large).
         force: Re-transcribe even if a cached transcript exists.
     """
-    result = await asyncio.to_thread(
-        _transcribe_video,
+    result = await _transcribe_video(
         video_id_or_url,
         whisper_model=whisper_model,
         force=force,

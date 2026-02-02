@@ -51,7 +51,11 @@ from claudetube.operations.subtitles import (
     find_embedded_subtitles,
     find_sidecar_subtitles,
 )
-from claudetube.operations.transcribe import transcribe_audio, transcribe_video
+from claudetube.operations.transcribe import (
+    TranscribeOperation,
+    transcribe_audio,
+    transcribe_video,
+)
 from claudetube.operations.visual_transcript import (
     generate_visual_transcript,
     get_visual_transcript,
@@ -65,6 +69,7 @@ __all__ = [
     "download_thumbnail",
     "extract_audio_local",
     "fetch_subtitles",
+    "TranscribeOperation",
     "transcribe_audio",
     "transcribe_video",
     "extract_frames",

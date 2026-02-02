@@ -1,11 +1,15 @@
 """
 Transcription operations.
+
+Provides TranscribeOperation class for provider-based transcription,
+plus backward-compatible function wrappers.
 """
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+import time
+from typing import TYPE_CHECKING
 
 from claudetube.cache.manager import CacheManager
 from claudetube.config.loader import get_cache_dir
@@ -13,6 +17,11 @@ from claudetube.exceptions import TranscriptionError
 from claudetube.operations.download import download_audio
 from claudetube.tools.whisper import WhisperTool
 from claudetube.utils.logging import log_timed
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from claudetube.providers.base import Transcriber
 
 logger = logging.getLogger(__name__)
 
@@ -37,28 +46,95 @@ def transcribe_audio(
     return tool.transcribe(audio_path)
 
 
-def transcribe_video(
+class TranscribeOperation:
+    """Transcribe video audio using a configurable Transcriber provider.
+
+    Accepts any provider implementing the Transcriber protocol via constructor
+    injection. The execute() method runs the transcription, saves results to
+    cache, and updates video state.
+
+    Args:
+        transcriber: Provider implementing the Transcriber protocol.
+
+    Example:
+        >>> from claudetube.providers import get_provider
+        >>> transcriber = get_provider("whisper-local", model_size="small")
+        >>> op = TranscribeOperation(transcriber)
+        >>> result = await op.execute("abc123", Path("audio.mp3"))
+    """
+
+    def __init__(self, transcriber: Transcriber):
+        self.transcriber = transcriber
+
+    async def execute(
+        self,
+        video_id: str,
+        audio_path: Path,
+        language: str | None = None,
+        cache_dir: Path | None = None,
+    ) -> dict:
+        """Execute transcription and save results.
+
+        Args:
+            video_id: Video identifier
+            audio_path: Path to audio file
+            language: Optional language code (e.g., "en", "es")
+            cache_dir: Optional cache base directory
+
+        Returns:
+            Dict with success status, paths, and metadata
+        """
+        cache = CacheManager(cache_dir or get_cache_dir())
+        srt_path, txt_path = cache.get_transcript_paths(video_id)
+
+        result = await self.transcriber.transcribe(audio_path, language=language)
+
+        srt_path.write_text(result.to_srt())
+        txt_path.write_text(result.text)
+
+        state = cache.get_state(video_id)
+        if state:
+            state.transcript_complete = True
+            state.transcript_source = result.provider
+            cache.save_state(video_id, state)
+
+        return {
+            "success": True,
+            "video_id": video_id,
+            "transcript_srt": str(srt_path),
+            "transcript_txt": str(txt_path),
+            "source": result.provider,
+            "whisper_model": None,
+            "segments": len(result.segments),
+            "duration": result.duration,
+            "message": f"Transcribed with {result.provider}.",
+        }
+
+
+async def transcribe_video(
     video_id_or_url: str,
     whisper_model: str = "small",
     force: bool = False,
     output_base: Path | None = None,
+    transcriber: Transcriber | None = None,
 ) -> dict:
-    """Transcribe a video's audio using Whisper.
+    """Transcribe a video's audio using a configurable provider.
 
     Cache-first: returns existing transcript immediately unless force=True.
-    If no transcript exists, downloads audio (if needed) and runs Whisper.
+    If no transcript exists, downloads audio (if needed) and runs transcription.
+
+    This is a backward-compatible wrapper around TranscribeOperation.
 
     Args:
         video_id_or_url: Video ID or URL
-        whisper_model: Whisper model size
+        whisper_model: Whisper model size (used when transcriber is None)
         force: Re-transcribe even if cached transcript exists
         output_base: Cache directory (default: ~/.claude/video_cache)
+        transcriber: Optional Transcriber provider. If None, uses whisper-local.
 
     Returns:
         Dict with success, video_id, transcript paths, source, message
     """
-    import time
-
     from claudetube.parsing.utils import extract_video_id
 
     t0 = time.time()
@@ -81,11 +157,10 @@ def transcribe_video(
             "message": "Returned cached transcript.",
         }
 
-    # Need to run Whisper - ensure we have audio
+    # Ensure we have audio
     cache.ensure_cache_dir(video_id)
 
     if not audio_path.exists():
-        # Get URL from state or input
         state = cache.get_state(video_id)
         url = state.url if state else None
 
@@ -117,11 +192,18 @@ def transcribe_video(
                 "message": f"Audio download failed: {e}",
             }
 
-    # Run Whisper transcription
-    log_timed(f"Transcribing with Whisper ({whisper_model})...", t0)
+    # Get or create transcriber
+    if transcriber is None:
+        from claudetube.providers import get_provider
+
+        transcriber = get_provider("whisper-local", model_size=whisper_model)
+
+    # Execute operation
+    log_timed("Transcribing...", t0)
     try:
-        transcript = transcribe_audio(audio_path, model_size=whisper_model)
-    except TranscriptionError as e:
+        op = TranscribeOperation(transcriber)
+        result = await op.execute(video_id, audio_path, cache_dir=output_base)
+    except (TranscriptionError, FileNotFoundError) as e:
         return {
             "success": False,
             "video_id": video_id,
@@ -132,25 +214,5 @@ def transcribe_video(
             "message": str(e),
         }
 
-    srt_path.write_text(transcript["srt"])
-    txt_path.write_text(transcript["txt"])
-
-    # Update state
-    state = cache.get_state(video_id)
-    if state:
-        state.transcript_complete = True
-        state.transcript_source = "whisper"
-        state.whisper_model = whisper_model
-        cache.save_state(video_id, state)
-
     log_timed(f"Transcription complete in {time.time() - t0:.1f}s", t0)
-
-    return {
-        "success": True,
-        "video_id": video_id,
-        "transcript_srt": str(srt_path),
-        "transcript_txt": str(txt_path),
-        "source": "whisper",
-        "whisper_model": whisper_model,
-        "message": f"Transcribed with Whisper ({whisper_model}).",
-    }
+    return result
