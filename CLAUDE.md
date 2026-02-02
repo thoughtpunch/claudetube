@@ -148,3 +148,42 @@ Structure:
     ├── drill/         # Quick frames (480p)
     └── hq/            # High-quality frames (1280p)
 ```
+
+## AI Provider System
+
+claudetube uses configurable AI providers for transcription, vision analysis, reasoning, and embeddings. The provider system lives in `src/claudetube/providers/`.
+
+### Zero-Config Defaults
+
+Without any configuration, claudetube uses free/local providers:
+
+| Capability     | Default Provider | Notes |
+|---------------|-----------------|-------|
+| Transcription | whisper-local   | Local Whisper model |
+| Vision        | claude-code     | Uses Claude Code's built-in vision |
+| Reasoning     | claude-code     | Uses Claude Code's built-in reasoning |
+| Embedding     | voyage          | Requires API key |
+
+### Provider Architecture
+
+- **Protocols** (`providers/base.py`): `Transcriber`, `VisionAnalyzer`, `VideoAnalyzer`, `Reasoner`, `Embedder`
+- **Router** (`providers/router.py`): Selects provider based on config, handles fallbacks
+- **Registry** (`providers/registry.py`): Lazy-loads provider modules
+- **Config** (`providers/config.py`): YAML-based configuration with env var interpolation
+
+### Configuration
+
+Providers are configured in `.claudetube/config.yaml` or `~/.config/claudetube/config.yaml`:
+
+```yaml
+providers:
+  openai:
+    api_key: ${OPENAI_API_KEY}
+  preferences:
+    transcription: whisper-local
+    vision: claude-code
+  fallbacks:
+    vision: [anthropic, openai, claude-code]
+```
+
+See `documentation/guides/configuration.md` for the full reference and `examples/` for sample configs.
