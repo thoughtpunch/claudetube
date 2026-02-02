@@ -314,10 +314,12 @@ def _should_skip_scene(scene: SceneBoundary) -> bool:
 
 
 def _get_default_vision_analyzer() -> VisionAnalyzer:
-    """Get the default vision analyzer from available providers.
+    """Get the default vision analyzer via the ProviderRouter.
 
-    Tries anthropic first (explicit API provider), falls back to claude-code
-    (host Claude instance).
+    Uses the ProviderRouter to select the best available vision provider,
+    respecting user configuration preferences and fallback chains. This
+    supports all configured providers (Ollama, OpenAI, Anthropic,
+    claude-code, etc.) without hardcoding provider names.
 
     Returns:
         A VisionAnalyzer provider instance.
@@ -325,27 +327,23 @@ def _get_default_vision_analyzer() -> VisionAnalyzer:
     Raises:
         RuntimeError: If no vision provider is available.
     """
-    from claudetube.providers import get_provider
     from claudetube.providers.base import VisionAnalyzer as VisionAnalyzerProtocol
+    from claudetube.providers.capabilities import Capability
+    from claudetube.providers.router import NoProviderError, ProviderRouter
 
-    # Try anthropic first (explicit API)
     try:
-        provider = get_provider("anthropic")
-        if isinstance(provider, VisionAnalyzerProtocol) and provider.is_available():
+        router = ProviderRouter()
+        provider = router.get_for_capability(Capability.VISION)
+        if isinstance(provider, VisionAnalyzerProtocol):
             return provider
-    except (ImportError, ValueError):
+    except NoProviderError:
         pass
-
-    # Fall back to claude-code (always available in MCP context)
-    try:
-        provider = get_provider("claude-code")
-        if isinstance(provider, VisionAnalyzerProtocol) and provider.is_available():
-            return provider
-    except (ImportError, ValueError):
-        pass
+    except Exception as e:
+        logger.debug(f"ProviderRouter failed for VISION: {e}")
 
     raise RuntimeError(
-        "No vision provider available. Set ANTHROPIC_API_KEY or run within Claude Code."
+        "No vision provider available. Configure a vision provider "
+        "(e.g., anthropic, openai, ollama) or run within Claude Code."
     )
 
 

@@ -452,52 +452,54 @@ class TestShouldSkipScene:
 class TestGetDefaultVisionAnalyzer:
     """Tests for _get_default_vision_analyzer."""
 
-    def _make_vision_mock(self, available=True):
+    def _make_vision_mock(self):
         """Create a mock that satisfies the VisionAnalyzer runtime_checkable protocol."""
         mock = MagicMock()
-        mock.is_available.return_value = available
+        mock.is_available.return_value = True
         # Add analyze_images so isinstance(mock, VisionAnalyzer) is True
         mock.analyze_images = AsyncMock()
         return mock
 
-    def test_prefers_anthropic(self):
-        """Should prefer anthropic when available."""
-        mock_provider = self._make_vision_mock(available=True)
+    def test_returns_provider_from_router(self):
+        """Should return VisionAnalyzer from ProviderRouter."""
+        mock_provider = self._make_vision_mock()
+
+        mock_router = MagicMock()
+        mock_router.get_for_capability.return_value = mock_provider
 
         with patch(
-            "claudetube.providers.registry.get_provider",
-            return_value=mock_provider,
+            "claudetube.providers.router.ProviderRouter",
+            return_value=mock_router,
         ):
             result = _get_default_vision_analyzer()
             assert result is mock_provider
 
-    def test_falls_back_to_claude_code(self):
-        """Should fall back to claude-code when anthropic unavailable."""
-        anthropic_mock = self._make_vision_mock(available=False)
-        claude_code_mock = self._make_vision_mock(available=True)
-
-        def mock_get(name, **kwargs):
-            if name == "anthropic":
-                return anthropic_mock
-            if name == "claude-code":
-                return claude_code_mock
-            raise ValueError(f"Unknown: {name}")
-
-        with patch(
-            "claudetube.providers.registry.get_provider",
-            side_effect=mock_get,
-        ):
-            result = _get_default_vision_analyzer()
-            assert result is claude_code_mock
-
     def test_raises_when_no_provider(self):
-        """Should raise RuntimeError when no provider available."""
-        mock_provider = self._make_vision_mock(available=False)
+        """Should raise RuntimeError when router raises NoProviderError."""
+        from claudetube.providers.capabilities import Capability
+        from claudetube.providers.router import NoProviderError
+
+        mock_router = MagicMock()
+        mock_router.get_for_capability.side_effect = NoProviderError(Capability.VISION)
 
         with (
             patch(
-                "claudetube.providers.registry.get_provider",
-                return_value=mock_provider,
+                "claudetube.providers.router.ProviderRouter",
+                return_value=mock_router,
+            ),
+            pytest.raises(RuntimeError, match="No vision provider available"),
+        ):
+            _get_default_vision_analyzer()
+
+    def test_raises_on_router_exception(self):
+        """Should raise RuntimeError on unexpected router failures."""
+        mock_router = MagicMock()
+        mock_router.get_for_capability.side_effect = Exception("config error")
+
+        with (
+            patch(
+                "claudetube.providers.router.ProviderRouter",
+                return_value=mock_router,
             ),
             pytest.raises(RuntimeError, match="No vision provider available"),
         ):
