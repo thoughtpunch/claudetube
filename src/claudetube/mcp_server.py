@@ -7,6 +7,7 @@ Run as: claudetube-mcp (stdio transport)
 import asyncio
 import json
 import logging
+import logging.handlers
 import sys
 from pathlib import Path
 
@@ -41,10 +42,24 @@ from claudetube.providers.capabilities import PROVIDER_INFO, Capability
 from claudetube.providers.registry import list_all, list_available
 
 # All logging goes to stderr so stdout stays clean for JSON-RPC
+_log_dir = Path.home() / "Library" / "Logs" / "Claude"
+_log_dir.mkdir(parents=True, exist_ok=True)
+
+_stderr_handler = logging.StreamHandler(sys.stderr)
+_stderr_handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+
+_file_handler = logging.handlers.RotatingFileHandler(
+    _log_dir / "claudetube-mcp.log",
+    maxBytes=5 * 1024 * 1024,  # 5 MB
+    backupCount=3,
+)
+_file_handler.setFormatter(
+    logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+)
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(name)s: %(message)s",
-    stream=sys.stderr,
+    handlers=[_stderr_handler, _file_handler],
 )
 logger = logging.getLogger(__name__)
 
