@@ -26,14 +26,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,mcp]"
 
-      - name: Check formatting (black)
-        run: black --check src/ tests/
+      - name: Check formatting (ruff)
+        run: ruff format --check src/ tests/
 
-      - name: Check import ordering (isort)
-        run: isort --check-only --profile black src/ tests/
-
-      - name: Lint (flake8)
-        run: flake8 src/ tests/
+      - name: Lint (ruff)
+        run: ruff check src/ tests/
 
       - name: Run tests
         run: pytest tests/ -v
