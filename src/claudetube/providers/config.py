@@ -40,10 +40,49 @@ logger = logging.getLogger(__name__)
 # Pattern for ${ENV_VAR} interpolation
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
-# Known provider names that have dedicated config fields
+# Known provider names that have dedicated config fields (API-key providers)
 _KNOWN_PROVIDERS = frozenset(
     {"openai", "anthropic", "google", "deepgram", "assemblyai", "voyage"}
 )
+
+# All valid provider names (including local/built-in)
+_ALL_PROVIDERS = frozenset(
+    {
+        "openai",
+        "anthropic",
+        "google",
+        "deepgram",
+        "assemblyai",
+        "voyage",
+        "whisper-local",
+        "claude-code",
+        "ollama",
+        "local-embedder",
+    }
+)
+
+# Valid whisper model sizes
+_VALID_WHISPER_MODELS = frozenset({"tiny", "base", "small", "medium", "large"})
+
+# Valid top-level keys in the providers section
+_VALID_PROVIDERS_KEYS = _KNOWN_PROVIDERS | frozenset(
+    {"local", "preferences", "fallbacks"}
+)
+
+# Maps capability name to the Capability enum member name
+_CAPABILITY_FOR_PREFERENCE: dict[str, str] = {
+    "transcription": "TRANSCRIBE",
+    "vision": "VISION",
+    "video": "VIDEO",
+    "reasoning": "REASON",
+    "embedding": "EMBED",
+}
+
+_VALID_PREFERENCE_KEYS = frozenset(
+    {"transcription", "vision", "video", "reasoning", "embedding"}
+)
+
+_VALID_FALLBACK_KEYS = frozenset({"transcription", "vision", "reasoning"})
 
 # Map from provider name to legacy env var for API key
 _LEGACY_ENV_VARS: dict[str, str] = {
@@ -209,6 +248,251 @@ def _apply_legacy_env_vars(config: ProvidersConfig) -> None:
             pc.api_key = prefixed_value
 
 
+@dataclass
+class ConfigValidationResult:
+    """Result of validating a providers config dict.
+
+    Attributes:
+        errors: Fatal issues that prevent correct operation.
+        warnings: Non-fatal issues that may cause unexpected behavior.
+    """
+
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def is_valid(self) -> bool:
+        """True if no errors were found."""
+        return len(self.errors) == 0
+
+
+def _resolve_provider_name(name: str) -> str:
+    """Resolve a provider alias to its canonical name.
+
+    Uses the registry's alias mapping if available, otherwise returns
+    the lowercased name.
+    """
+    try:
+        from claudetube.providers.registry import PROVIDER_ALIASES
+
+        normalized = name.lower().strip()
+        return PROVIDER_ALIASES.get(normalized, normalized)
+    except ImportError:
+        return name.lower().strip()
+
+
+def _check_provider_capability(
+    provider_name: str, capability_name: str
+) -> str | None:
+    """Check if a provider supports a capability.
+
+    Returns an error message if the provider doesn't support the capability,
+    or None if it does (or if we can't check).
+    """
+    try:
+        from claudetube.providers.capabilities import PROVIDER_INFO, Capability
+
+        cap = getattr(Capability, capability_name, None)
+        if cap is None:
+            return None
+
+        canonical = _resolve_provider_name(provider_name)
+        info = PROVIDER_INFO.get(canonical)
+        if info is None:
+            return None
+
+        if not info.can(cap):
+            available_caps = ", ".join(
+                c.name.lower() for c in info.capabilities
+            )
+            return (
+                f"Provider '{provider_name}' does not support "
+                f"{capability_name.lower()}. "
+                f"Its capabilities: {available_caps or 'none'}"
+            )
+    except ImportError:
+        pass
+    return None
+
+
+def validate_providers_config(
+    config_dict: dict | None = None,
+) -> ConfigValidationResult:
+    """Validate a providers configuration dict.
+
+    Checks for:
+    - Unknown keys in the providers section
+    - Invalid provider names in preferences and fallbacks
+    - Capability mismatches (e.g., vision preference set to a transcription-only provider)
+    - Invalid whisper model sizes
+    - Invalid preference and fallback key names
+    - Structural issues (wrong types)
+
+    Args:
+        config_dict: Parsed YAML config dict (the full config, not just providers section).
+
+    Returns:
+        ConfigValidationResult with errors and warnings.
+    """
+    result = ConfigValidationResult()
+
+    if config_dict is None:
+        return result
+
+    if not isinstance(config_dict, dict):
+        result.errors.append(
+            "Config must be a YAML mapping (dict), "
+            f"got {type(config_dict).__name__}"
+        )
+        return result
+
+    providers_section = config_dict.get("providers")
+    if providers_section is None:
+        return result
+
+    if not isinstance(providers_section, dict):
+        result.errors.append(
+            "The 'providers' section must be a mapping (dict), "
+            f"got {type(providers_section).__name__}"
+        )
+        return result
+
+    # Check for unknown top-level keys
+    for key in providers_section:
+        if key not in _VALID_PROVIDERS_KEYS:
+            result.warnings.append(
+                f"Unknown key '{key}' in providers section. "
+                f"Valid keys: {', '.join(sorted(_VALID_PROVIDERS_KEYS))}"
+            )
+
+    # Validate provider configs (must be dicts)
+    for provider_name in _KNOWN_PROVIDERS:
+        if provider_name in providers_section:
+            raw = providers_section[provider_name]
+            if not isinstance(raw, dict):
+                result.errors.append(
+                    f"Config for provider '{provider_name}' must be a mapping (dict), "
+                    f"got {type(raw).__name__}. "
+                    f"Example: {provider_name}:\n"
+                    f"           api_key: ${{YOUR_API_KEY}}\n"
+                    f"           model: your-model"
+                )
+
+    # Validate local config
+    local = providers_section.get("local")
+    if local is not None:
+        if not isinstance(local, dict):
+            result.errors.append(
+                "The 'local' section must be a mapping (dict), "
+                f"got {type(local).__name__}"
+            )
+        else:
+            # Validate whisper model
+            whisper_model = local.get("whisper_model")
+            if whisper_model is not None:
+                model_str = str(whisper_model)
+                if model_str not in _VALID_WHISPER_MODELS:
+                    result.errors.append(
+                        f"Invalid whisper_model '{model_str}'. "
+                        f"Valid models: {', '.join(sorted(_VALID_WHISPER_MODELS))}"
+                    )
+
+            # Check for unknown local keys
+            valid_local_keys = {"whisper_model", "ollama_model"}
+            for key in local:
+                if key not in valid_local_keys:
+                    result.warnings.append(
+                        f"Unknown key '{key}' in local section. "
+                        f"Valid keys: {', '.join(sorted(valid_local_keys))}"
+                    )
+
+    # Validate preferences
+    prefs = providers_section.get("preferences")
+    if prefs is not None:
+        if not isinstance(prefs, dict):
+            result.errors.append(
+                "The 'preferences' section must be a mapping (dict), "
+                f"got {type(prefs).__name__}"
+            )
+        else:
+            for key in prefs:
+                if key not in _VALID_PREFERENCE_KEYS:
+                    result.warnings.append(
+                        f"Unknown preference '{key}'. "
+                        f"Valid preferences: {', '.join(sorted(_VALID_PREFERENCE_KEYS))}"
+                    )
+
+            for pref_key, cap_name in _CAPABILITY_FOR_PREFERENCE.items():
+                if pref_key not in prefs:
+                    continue
+                provider_name = str(prefs[pref_key])
+                canonical = _resolve_provider_name(provider_name)
+
+                # Check if it's a known provider
+                if canonical not in _ALL_PROVIDERS:
+                    result.warnings.append(
+                        f"Preference '{pref_key}' references unknown provider "
+                        f"'{provider_name}'. "
+                        f"Known providers: {', '.join(sorted(_ALL_PROVIDERS))}"
+                    )
+                    continue
+
+                # Check capability match
+                cap_err = _check_provider_capability(canonical, cap_name)
+                if cap_err:
+                    result.warnings.append(
+                        f"Preference '{pref_key}': {cap_err}"
+                    )
+
+    # Validate fallbacks
+    fallbacks = providers_section.get("fallbacks")
+    if fallbacks is not None:
+        if not isinstance(fallbacks, dict):
+            result.errors.append(
+                "The 'fallbacks' section must be a mapping (dict), "
+                f"got {type(fallbacks).__name__}"
+            )
+        else:
+            for key in fallbacks:
+                if key not in _VALID_FALLBACK_KEYS:
+                    result.warnings.append(
+                        f"Unknown fallback key '{key}'. "
+                        f"Valid fallback keys: {', '.join(sorted(_VALID_FALLBACK_KEYS))}"
+                    )
+
+            for fb_key, cap_name in _CAPABILITY_FOR_PREFERENCE.items():
+                if fb_key not in fallbacks or fb_key not in _VALID_FALLBACK_KEYS:
+                    continue
+                chain = fallbacks[fb_key]
+                if not isinstance(chain, list):
+                    result.errors.append(
+                        f"Fallback chain '{fb_key}' must be a list, "
+                        f"got {type(chain).__name__}. "
+                        f"Example: {fb_key}: [provider1, provider2]"
+                    )
+                    continue
+
+                for provider_name in chain:
+                    provider_str = str(provider_name)
+                    canonical = _resolve_provider_name(provider_str)
+                    if canonical not in _ALL_PROVIDERS:
+                        result.warnings.append(
+                            f"Fallback chain '{fb_key}' references unknown "
+                            f"provider '{provider_str}'. "
+                            f"Known providers: {', '.join(sorted(_ALL_PROVIDERS))}"
+                        )
+                    else:
+                        cap_err = _check_provider_capability(
+                            canonical, cap_name
+                        )
+                        if cap_err:
+                            result.warnings.append(
+                                f"Fallback chain '{fb_key}': {cap_err}"
+                            )
+
+    return result
+
+
 def load_providers_config(config_dict: dict | None = None) -> ProvidersConfig:
     """Load providers configuration from a config dict.
 
@@ -225,9 +509,15 @@ def load_providers_config(config_dict: dict | None = None) -> ProvidersConfig:
     if config_dict is None:
         config_dict = {}
 
+    # Validate and log issues
+    validation = validate_providers_config(config_dict)
+    for error in validation.errors:
+        logger.error("Config error: %s", error)
+    for warning in validation.warnings:
+        logger.warning("Config warning: %s", warning)
+
     providers_section = config_dict.get("providers", {})
     if not isinstance(providers_section, dict):
-        logger.warning("Invalid 'providers' section in config (expected dict)")
         providers_section = {}
 
     config = ProvidersConfig()
@@ -336,6 +626,8 @@ def clear_providers_config_cache() -> None:
 __all__ = [
     "ProviderConfig",
     "ProvidersConfig",
+    "ConfigValidationResult",
+    "validate_providers_config",
     "load_providers_config",
     "get_providers_config",
     "clear_providers_config_cache",

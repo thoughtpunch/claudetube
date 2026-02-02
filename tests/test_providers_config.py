@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from claudetube.providers.config import (
+    ConfigValidationResult,
     ProviderConfig,
     ProvidersConfig,
     _interpolate_env_vars,
@@ -10,6 +11,7 @@ from claudetube.providers.config import (
     clear_providers_config_cache,
     get_providers_config,
     load_providers_config,
+    validate_providers_config,
 )
 
 
@@ -673,3 +675,255 @@ class TestApiKeyNeverLogged:
             _interpolate_env_vars("${SECRET_KEY}")
         # Should NOT contain the actual value in logs
         assert "super-secret-value" not in caplog.text
+
+
+class TestConfigValidationResult:
+    """Tests for ConfigValidationResult dataclass."""
+
+    def test_empty_is_valid(self):
+        """Test empty result is valid."""
+        result = ConfigValidationResult()
+        assert result.is_valid is True
+        assert result.errors == []
+        assert result.warnings == []
+
+    def test_with_errors_not_valid(self):
+        """Test result with errors is not valid."""
+        result = ConfigValidationResult(errors=["something broke"])
+        assert result.is_valid is False
+
+    def test_warnings_only_still_valid(self):
+        """Test result with only warnings is still valid."""
+        result = ConfigValidationResult(warnings=["minor issue"])
+        assert result.is_valid is True
+
+
+class TestValidateProvidersConfig:
+    """Tests for validate_providers_config."""
+
+    def test_none_config_is_valid(self):
+        """Test None config passes validation."""
+        result = validate_providers_config(None)
+        assert result.is_valid is True
+
+    def test_empty_config_is_valid(self):
+        """Test empty dict passes validation."""
+        result = validate_providers_config({})
+        assert result.is_valid is True
+
+    def test_no_providers_section_is_valid(self):
+        """Test config without providers section passes."""
+        result = validate_providers_config({"cache_dir": "/tmp"})
+        assert result.is_valid is True
+
+    def test_valid_full_config(self):
+        """Test a fully valid config passes validation."""
+        yaml = {
+            "providers": {
+                "openai": {"api_key": "sk-test", "model": "gpt-4o"},
+                "anthropic": {"api_key": "sk-ant"},
+                "local": {"whisper_model": "small", "ollama_model": "llava:7b"},
+                "preferences": {
+                    "transcription": "whisper-local",
+                    "vision": "claude-code",
+                    "reasoning": "anthropic",
+                    "embedding": "voyage",
+                },
+                "fallbacks": {
+                    "vision": ["anthropic", "openai", "claude-code"],
+                    "reasoning": ["openai", "claude-code"],
+                    "transcription": ["openai", "whisper-local"],
+                },
+            }
+        }
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert result.warnings == []
+
+    def test_non_dict_config_is_error(self):
+        """Test non-dict config produces error."""
+        result = validate_providers_config("not a dict")
+        assert not result.is_valid
+        assert any("mapping" in e for e in result.errors)
+
+    def test_non_dict_providers_section_is_error(self):
+        """Test non-dict providers section produces error."""
+        result = validate_providers_config({"providers": "bad"})
+        assert not result.is_valid
+        assert any("providers" in e and "mapping" in e for e in result.errors)
+
+    def test_unknown_top_level_key_warns(self):
+        """Test unknown key in providers section produces warning."""
+        yaml = {"providers": {"unknown_provider": {"key": "val"}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert any("unknown_provider" in w for w in result.warnings)
+
+    def test_non_dict_provider_config_is_error(self):
+        """Test non-dict provider config produces error."""
+        yaml = {"providers": {"openai": "not-a-dict"}}
+        result = validate_providers_config(yaml)
+        assert not result.is_valid
+        assert any("openai" in e and "mapping" in e for e in result.errors)
+
+    def test_non_dict_local_is_error(self):
+        """Test non-dict local section produces error."""
+        yaml = {"providers": {"local": "bad"}}
+        result = validate_providers_config(yaml)
+        assert not result.is_valid
+        assert any("local" in e for e in result.errors)
+
+    def test_invalid_whisper_model_is_error(self):
+        """Test invalid whisper model produces error."""
+        yaml = {"providers": {"local": {"whisper_model": "huge"}}}
+        result = validate_providers_config(yaml)
+        assert not result.is_valid
+        assert any("whisper_model" in e and "huge" in e for e in result.errors)
+
+    def test_valid_whisper_models(self):
+        """Test all valid whisper model sizes pass validation."""
+        for model in ["tiny", "base", "small", "medium", "large"]:
+            yaml = {"providers": {"local": {"whisper_model": model}}}
+            result = validate_providers_config(yaml)
+            assert result.is_valid is True, f"Model '{model}' should be valid"
+
+    def test_unknown_local_key_warns(self):
+        """Test unknown key in local section produces warning."""
+        yaml = {"providers": {"local": {"unknown_setting": "val"}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert any("unknown_setting" in w for w in result.warnings)
+
+    def test_non_dict_preferences_is_error(self):
+        """Test non-dict preferences section produces error."""
+        yaml = {"providers": {"preferences": "bad"}}
+        result = validate_providers_config(yaml)
+        assert not result.is_valid
+        assert any("preferences" in e for e in result.errors)
+
+    def test_unknown_preference_key_warns(self):
+        """Test unknown preference key produces warning."""
+        yaml = {"providers": {"preferences": {"unknown_pref": "openai"}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert any("unknown_pref" in w for w in result.warnings)
+
+    def test_unknown_provider_in_preference_warns(self):
+        """Test unknown provider in preference produces warning."""
+        yaml = {"providers": {"preferences": {"vision": "nonexistent-ai"}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert any("nonexistent-ai" in w for w in result.warnings)
+
+    def test_capability_mismatch_in_preference_warns(self):
+        """Test provider without required capability in preference produces warning."""
+        # whisper-local can only transcribe, not do vision
+        yaml = {"providers": {"preferences": {"vision": "whisper-local"}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert any("whisper-local" in w and "vision" in w.lower() for w in result.warnings)
+
+    def test_transcription_pref_with_vision_provider_warns(self):
+        """Test setting transcription to a vision-only provider warns."""
+        # anthropic can't transcribe
+        yaml = {"providers": {"preferences": {"transcription": "anthropic"}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert any("anthropic" in w and "transcribe" in w.lower() for w in result.warnings)
+
+    def test_valid_preference_with_capability(self):
+        """Test valid preference-capability combination passes."""
+        yaml = {"providers": {"preferences": {"transcription": "openai"}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        # Should not have warnings about capability mismatch
+        assert not any("openai" in w and "transcribe" in w.lower() for w in result.warnings)
+
+    def test_non_dict_fallbacks_is_error(self):
+        """Test non-dict fallbacks section produces error."""
+        yaml = {"providers": {"fallbacks": "bad"}}
+        result = validate_providers_config(yaml)
+        assert not result.is_valid
+        assert any("fallbacks" in e for e in result.errors)
+
+    def test_unknown_fallback_key_warns(self):
+        """Test unknown fallback key produces warning."""
+        yaml = {"providers": {"fallbacks": {"embedding": ["voyage"]}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert any("embedding" in w for w in result.warnings)
+
+    def test_non_list_fallback_chain_is_error(self):
+        """Test non-list fallback chain produces error."""
+        yaml = {"providers": {"fallbacks": {"vision": "not-a-list"}}}
+        result = validate_providers_config(yaml)
+        assert not result.is_valid
+        assert any("vision" in e and "list" in e for e in result.errors)
+
+    def test_unknown_provider_in_fallback_chain_warns(self):
+        """Test unknown provider in fallback chain produces warning."""
+        yaml = {"providers": {"fallbacks": {"vision": ["anthropic", "fake-ai"]}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert any("fake-ai" in w for w in result.warnings)
+
+    def test_capability_mismatch_in_fallback_warns(self):
+        """Test fallback provider without required capability produces warning."""
+        # whisper-local in vision fallback doesn't make sense
+        yaml = {"providers": {"fallbacks": {"vision": ["whisper-local"]}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert any("whisper-local" in w for w in result.warnings)
+
+    def test_valid_fallback_chain(self):
+        """Test valid fallback chain passes."""
+        yaml = {
+            "providers": {
+                "fallbacks": {"vision": ["anthropic", "openai", "claude-code"]}
+            }
+        }
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        assert not any("vision" in w and "capability" in w.lower() for w in result.warnings)
+
+    def test_multiple_errors_collected(self):
+        """Test multiple errors are all collected."""
+        yaml = {
+            "providers": {
+                "openai": "bad",
+                "anthropic": "bad",
+                "local": {"whisper_model": "mega"},
+            }
+        }
+        result = validate_providers_config(yaml)
+        assert not result.is_valid
+        assert len(result.errors) >= 3
+
+    def test_validation_runs_during_load(self, monkeypatch, caplog):
+        """Test that load_providers_config runs validation."""
+        import logging
+
+        for var in [
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_API_KEY",
+            "DEEPGRAM_API_KEY",
+            "ASSEMBLYAI_API_KEY",
+            "VOYAGE_API_KEY",
+        ]:
+            monkeypatch.delenv(var, raising=False)
+            monkeypatch.delenv(f"CLAUDETUBE_{var}", raising=False)
+
+        yaml = {"providers": {"local": {"whisper_model": "mega"}}}
+        with caplog.at_level(logging.ERROR):
+            load_providers_config(yaml)
+        assert any("whisper_model" in r.message for r in caplog.records)
+
+    def test_provider_alias_resolved_in_preference(self):
+        """Test provider aliases are resolved during validation."""
+        # "gemini" is an alias for "google"
+        yaml = {"providers": {"preferences": {"video": "gemini"}}}
+        result = validate_providers_config(yaml)
+        assert result.is_valid is True
+        # Should not warn about unknown provider since gemini -> google
+        assert not any("unknown provider" in w.lower() for w in result.warnings)

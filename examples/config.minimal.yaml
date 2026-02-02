@@ -1,0 +1,24 @@
+# claudetube - Minimal Provider Configuration
+#
+# Place this file at:
+#   Project: .claudetube/config.yaml
+#   User:    ~/.config/claudetube/config.yaml
+#
+# claudetube works out of the box with zero configuration!
+# Defaults: whisper-local for transcription, claude-code for vision/reasoning.
+# Only add config if you want to use external AI providers.
+
+# Cache directory (optional - defaults to ~/.claude/video_cache)
+# cache_dir: ~/my-video-cache
+
+providers:
+  # Add API keys for providers you want to use.
+  # Keys can reference environment variables with ${VAR_NAME}.
+  openai:
+    api_key: ${OPENAI_API_KEY}
+
+  # Set your preferred provider for each capability.
+  preferences:
+    transcription: whisper-local    # Free, local (default)
+    vision: claude-code             # Uses host Claude (default)
+    reasoning: claude-code          # Uses host Claude (default)
