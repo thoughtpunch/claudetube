@@ -1,0 +1,49 @@
+# claudetube - Cloud Hybrid Configuration
+#
+# Mix of local and cloud providers for the best balance of cost,
+# speed, and quality. Uses local Whisper for transcription (free),
+# cloud APIs for vision and reasoning (higher quality).
+#
+# Place this file at:
+#   Project: .claudetube/config.yaml
+#   User:    ~/.config/claudetube/config.yaml
+
+providers:
+  # ──────────────────────────────────────────────────────
+  # API PROVIDER CREDENTIALS
+  # ──────────────────────────────────────────────────────
+  # Add keys for the cloud providers you want to use.
+  # Use ${ENV_VAR} syntax to reference environment variables.
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    model: gpt-4o                   # Used for vision and reasoning
+
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+    model: claude-sonnet-4-20250514       # Used as vision/reasoning fallback
+
+  # ──────────────────────────────────────────────────────
+  # LOCAL PROVIDER SETTINGS
+  # ──────────────────────────────────────────────────────
+  local:
+    whisper_model: small            # Local transcription (free)
+
+  # ──────────────────────────────────────────────────────
+  # CAPABILITY PREFERENCES
+  # ──────────────────────────────────────────────────────
+  # Transcription stays local (free), cloud for everything else.
+  preferences:
+    transcription: whisper-local    # Free local transcription
+    vision: openai                  # GPT-4o for image analysis
+    reasoning: openai               # GPT-4o for text reasoning
+    embedding: voyage               # Voyage AI for embeddings
+
+  # ──────────────────────────────────────────────────────
+  # FALLBACK CHAINS
+  # ──────────────────────────────────────────────────────
+  # If OpenAI fails (rate limit, outage), fall back through
+  # Anthropic, then to claude-code (always available in Claude Code).
+  fallbacks:
+    transcription: [openai, whisper-local]
+    vision: [anthropic, claude-code]
+    reasoning: [anthropic, claude-code]

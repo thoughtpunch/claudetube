@@ -1,0 +1,50 @@
+# claudetube - Local-Only Configuration
+#
+# Zero cloud dependencies. All processing runs on your machine.
+# Requires: Whisper (via faster-whisper), Ollama with a vision model.
+#
+# Place this file at:
+#   Project: .claudetube/config.yaml
+#   User:    ~/.config/claudetube/config.yaml
+
+# Store cache wherever you like (optional, defaults to ~/.claude/video_cache)
+# cache_dir: ~/video-cache
+
+providers:
+  # ──────────────────────────────────────────────────────
+  # LOCAL PROVIDER SETTINGS
+  # ──────────────────────────────────────────────────────
+  local:
+    # Whisper model for transcription. Larger = more accurate, slower.
+    #   tiny  → fastest, lowest accuracy (~1GB VRAM)
+    #   base  → fast, decent accuracy (~1GB VRAM)
+    #   small → good balance of speed/accuracy (~2GB VRAM)
+    #   medium → high accuracy (~5GB VRAM)
+    #   large → highest accuracy (~10GB VRAM)
+    whisper_model: small
+
+    # Ollama model for vision and reasoning.
+    # Must be a model with vision support. Examples:
+    #   llava:13b    → good general vision
+    #   llava:7b     → lighter, less accurate
+    #   bakllava     → alternative vision model
+    ollama_model: llava:13b
+
+  # ──────────────────────────────────────────────────────
+  # CAPABILITY PREFERENCES
+  # ──────────────────────────────────────────────────────
+  # All capabilities routed to local providers.
+  preferences:
+    transcription: whisper-local    # Local Whisper (free)
+    vision: ollama                  # Local Ollama with vision model (free)
+    reasoning: ollama               # Local Ollama for text reasoning (free)
+    embedding: local-embedder       # Local sentence-transformers (free)
+
+  # ──────────────────────────────────────────────────────
+  # FALLBACK CHAINS
+  # ──────────────────────────────────────────────────────
+  # All fallbacks stay local. No cloud calls under any circumstance.
+  fallbacks:
+    transcription: [whisper-local]
+    vision: [ollama]
+    reasoning: [ollama]

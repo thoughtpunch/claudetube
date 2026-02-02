@@ -1,0 +1,49 @@
+# claudetube - Gemini Native Video Configuration
+#
+# Uses Google Gemini for native video analysis — the only provider
+# that can process video files directly (not just frames). This
+# enables richer understanding of motion, transitions, and temporal
+# context without frame extraction.
+#
+# Requires: GOOGLE_API_KEY with Gemini API access.
+#
+# Place this file at:
+#   Project: .claudetube/config.yaml
+#   User:    ~/.config/claudetube/config.yaml
+
+providers:
+  # ──────────────────────────────────────────────────────
+  # API PROVIDER CREDENTIALS
+  # ──────────────────────────────────────────────────────
+  google:
+    api_key: ${GOOGLE_API_KEY}
+    model: gemini-2.0-flash         # Fast and capable; also try gemini-2.0-pro
+
+  # ──────────────────────────────────────────────────────
+  # LOCAL PROVIDER SETTINGS
+  # ──────────────────────────────────────────────────────
+  local:
+    whisper_model: small            # Local transcription (free)
+
+  # ──────────────────────────────────────────────────────
+  # CAPABILITY PREFERENCES
+  # ──────────────────────────────────────────────────────
+  # Google Gemini handles vision, video, and reasoning.
+  # Transcription stays local (cheaper than cloud transcription).
+  preferences:
+    transcription: whisper-local    # Free local transcription
+    vision: google                  # Gemini for image analysis
+    video: google                   # Gemini for native video analysis (unique!)
+    reasoning: google               # Gemini for text reasoning
+    embedding: voyage               # Voyage AI for embeddings
+
+  # ──────────────────────────────────────────────────────
+  # FALLBACK CHAINS
+  # ──────────────────────────────────────────────────────
+  # If Gemini fails, fall back to claude-code (always available
+  # in Claude Code). Note: claude-code cannot do native video
+  # analysis — it will use frame-based analysis instead.
+  fallbacks:
+    transcription: [whisper-local]
+    vision: [claude-code]
+    reasoning: [claude-code]
