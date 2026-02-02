@@ -11,6 +11,7 @@ from claudetube.operations.analysis_depth import (
     get_analysis_status,
 )
 from claudetube.operations.audio_description import (
+    AudioDescriptionGenerator,
     compile_scene_descriptions,
     get_scene_descriptions,
 )
@@ -92,4 +93,5 @@ __all__ = [
     "get_analysis_status",
     "compile_scene_descriptions",
     "get_scene_descriptions",
+    "AudioDescriptionGenerator",
 ]
