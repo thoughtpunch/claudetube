@@ -285,11 +285,12 @@ _VisualEntity = None
 _SemanticConcept = None
 _EntityExtractionResult = None
 _VisualDescription = None
+_PersonTrackingResult = None
 
 
 def _ensure_pydantic_models():
     """Ensure Pydantic models are defined."""
-    global _VisualEntity, _SemanticConcept, _EntityExtractionResult, _VisualDescription
+    global _VisualEntity, _SemanticConcept, _EntityExtractionResult, _VisualDescription, _PersonTrackingResult
 
     if _VisualEntity is not None:
         return  # Already defined
@@ -451,11 +452,61 @@ def _ensure_pydantic_models():
             default=None, description="Description of setting/environment"
         )
 
+    class PersonAppearanceModel(BaseModel):
+        """A single appearance of a person in a scene.
+
+        Attributes:
+            scene_id: Scene identifier where person appears.
+            timestamp: Timestamp in seconds from video start.
+            action: What the person is doing (optional).
+            confidence: Confidence score for the detection (0.0-1.0).
+        """
+
+        scene_id: int = Field(description="Scene identifier")
+        timestamp: float = Field(description="Timestamp in seconds from video start")
+        action: str | None = Field(
+            default=None, description="What the person is doing"
+        )
+        confidence: float = Field(
+            default=1.0, description="Confidence score (0.0-1.0)"
+        )
+
+    class PersonTrackModel(BaseModel):
+        """Track of a single person across the video.
+
+        Attributes:
+            person_id: Unique identifier for this person.
+            description: Visual description of the person.
+            appearances: List of scene appearances.
+        """
+
+        person_id: str = Field(description="Unique identifier for the person")
+        description: str = Field(
+            description="Visual description (e.g., 'man in blue shirt')"
+        )
+        appearances: list[PersonAppearanceModel] = Field(
+            default_factory=list, description="Scene appearances"
+        )
+
+    class PersonTrackingResultModel(BaseModel):
+        """Complete person tracking result - schema for structured output.
+
+        Used when asking LLMs to identify and track people across video scenes.
+
+        Attributes:
+            people: List of tracked people with their appearances.
+        """
+
+        people: list[PersonTrackModel] = Field(
+            default_factory=list, description="People tracked across scenes"
+        )
+
     # Store the models
     _VisualEntity = VisualEntityModel
     _SemanticConcept = SemanticConceptModel
     _EntityExtractionResult = EntityExtractionResultModel
     _VisualDescription = VisualDescriptionModel
+    _PersonTrackingResult = PersonTrackingResultModel
 
 
 # Accessor functions that lazy-load the models
@@ -533,6 +584,24 @@ def get_visual_description_model():
     return _VisualDescription
 
 
+def get_person_tracking_result_model():
+    """Get the PersonTrackingResult Pydantic model.
+
+    Returns:
+        PersonTrackingResult Pydantic model class.
+
+    Raises:
+        ImportError: If pydantic is not installed.
+    """
+    _ensure_pydantic_models()
+    if _PersonTrackingResult is None:
+        raise ImportError(
+            "pydantic is required for structured output schemas. "
+            "Install with: pip install pydantic"
+        )
+    return _PersonTrackingResult
+
+
 # For backwards compatibility and type hints, also provide class-style access
 # These will fail at import time if pydantic is not installed and the class is accessed
 
@@ -601,6 +670,18 @@ class VisualDescription(
     pass
 
 
+class PersonTrackingResult(
+    metaclass=_LazyModelMeta, model_getter=get_person_tracking_result_model
+):
+    """Complete person tracking result - schema for structured output.
+
+    This is a lazy-loading wrapper around the Pydantic model.
+    The actual model is loaded when first accessed.
+    """
+
+    pass
+
+
 __all__ = [
     # Transcription types (always available)
     "TranscriptionSegment",
@@ -610,9 +691,11 @@ __all__ = [
     "get_semantic_concept_model",
     "get_entity_extraction_result_model",
     "get_visual_description_model",
+    "get_person_tracking_result_model",
     # Lazy-loading model wrappers (require pydantic when used)
     "VisualEntity",
     "SemanticConcept",
     "EntityExtractionResult",
     "VisualDescription",
+    "PersonTrackingResult",
 ]

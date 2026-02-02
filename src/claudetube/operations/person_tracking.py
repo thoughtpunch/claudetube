@@ -4,12 +4,15 @@ Person tracking across video scenes.
 Identifies distinct people across scenes and tracks their appearances with timestamps.
 Follows the "Cheap First, Expensive Last" principle:
 1. CACHE - Return instantly if people.json already exists
-2. VISUAL - Use visual transcript data (already generated via Claude Haiku)
-3. COMPUTE - Only run face detection when visual data unavailable
+2. VISUAL - Use visual transcript data (already generated)
+3. AI_VIDEO - Use VideoAnalyzer (Gemini) for cross-scene tracking in one call
+4. AI_FRAMES - Use VisionAnalyzer for frame-by-frame analysis
+5. COMPUTE - Only run face detection as last resort
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -23,6 +26,8 @@ if TYPE_CHECKING:
 
     import numpy as np
 
+    from claudetube.providers.base import VideoAnalyzer, VisionAnalyzer
+
 from claudetube.cache.scenes import (
     SceneBoundary,
     get_visual_json_path,
@@ -33,6 +38,40 @@ from claudetube.config.loader import get_cache_dir
 from claudetube.utils.logging import log_timed
 
 logger = logging.getLogger(__name__)
+
+# Prompt for video-level person tracking (VideoAnalyzer / Gemini)
+VIDEO_PERSON_TRACKING_PROMPT = """\
+Identify and track all distinct people appearing in this video.
+
+For each person, provide:
+- person_id: A unique ID like "person_0", "person_1", etc.
+- description: A visual description (e.g., "man in blue shirt", "woman with glasses")
+- appearances: List of scenes where they appear, with:
+  - scene_id: Scene number (scenes are at these timestamps: {scene_boundaries})
+  - timestamp: Approximate timestamp in seconds
+  - action: What the person is doing (e.g., "speaking", "typing", "presenting")
+  - confidence: How confident you are (0.0-1.0)
+
+Track people consistently across scenes - the same person appearing in multiple
+scenes should have the same person_id and description.
+
+Be thorough but factual. Only report people you can clearly identify."""
+
+# Prompt for frame-level person tracking (VisionAnalyzer)
+FRAME_PERSON_TRACKING_PROMPT = """\
+Identify all people visible in these frames from scene {scene_id} \
+(timestamps {start_time:.1f}s - {end_time:.1f}s).
+
+For each person, provide:
+- person_id: A unique ID like "person_0", "person_1", etc.
+- description: A visual description (e.g., "man in blue shirt", "woman with glasses")
+- appearances: A single appearance entry with:
+  - scene_id: {scene_id}
+  - timestamp: {timestamp:.1f}
+  - action: What the person is doing
+  - confidence: How confident you are (0.0-1.0)
+
+{context}Be specific and factual. Only report people you can clearly see."""
 
 
 @dataclass
@@ -108,7 +147,7 @@ class PeopleTrackingData:
     """Container for all person tracking data for a video."""
 
     video_id: str
-    method: str  # "visual_transcript", "face_recognition", "hybrid"
+    method: str  # "visual_transcript", "face_recognition", "video_analyzer", "vision_analyzer"
     people: list[PersonTrack] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -128,6 +167,246 @@ class PeopleTrackingData:
         return cls(
             video_id=data["video_id"],
             method=data.get("method", "unknown"),
+            people=people,
+        )
+
+
+class PersonTrackingOperation:
+    """Track people across video scenes using AI providers.
+
+    Accepts a VideoAnalyzer for whole-video analysis (most efficient for
+    cross-scene tracking) and/or a VisionAnalyzer for frame-by-frame analysis.
+
+    Provider priority:
+    1. VideoAnalyzer (Gemini) - Track across entire video in one call
+    2. VisionAnalyzer - Frame-by-frame per-scene analysis
+
+    Args:
+        video_analyzer: Provider implementing VideoAnalyzer for native video analysis.
+            If available, tracks people across the entire video in a single call.
+        vision_analyzer: Provider implementing VisionAnalyzer for frame analysis.
+            Falls back to per-scene keyframe analysis.
+
+    Example:
+        >>> from claudetube.providers import get_provider
+        >>> google = get_provider("google")
+        >>> op = PersonTrackingOperation(video_analyzer=google, vision_analyzer=google)
+        >>> result = await op.execute(scenes=scenes, cache_dir=cache_dir)
+    """
+
+    def __init__(
+        self,
+        video_analyzer: VideoAnalyzer | None = None,
+        vision_analyzer: VisionAnalyzer | None = None,
+    ):
+        self.video_analyzer = video_analyzer
+        self.vision = vision_analyzer
+
+    def _build_video_prompt(self, scenes: list[SceneBoundary]) -> str:
+        """Build the video-level person tracking prompt.
+
+        Args:
+            scenes: List of scene boundaries for context.
+
+        Returns:
+            Formatted prompt string.
+        """
+        boundaries = ", ".join(
+            f"scene {s.scene_id}: {s.start_time:.1f}s-{s.end_time:.1f}s"
+            for s in scenes
+        )
+        return VIDEO_PERSON_TRACKING_PROMPT.format(scene_boundaries=boundaries)
+
+    def _build_frame_prompt(self, scene: SceneBoundary) -> str:
+        """Build the frame-level person tracking prompt.
+
+        Args:
+            scene: Scene boundary for context.
+
+        Returns:
+            Formatted prompt string.
+        """
+        context = ""
+        if scene.transcript_text:
+            context = f"Transcript context: {scene.transcript_text[:500]}\n\n"
+        return FRAME_PERSON_TRACKING_PROMPT.format(
+            scene_id=scene.scene_id,
+            start_time=scene.start_time,
+            end_time=scene.end_time,
+            timestamp=scene.start_time + scene.duration() / 2,
+            context=context,
+        )
+
+    async def _track_with_video(
+        self,
+        video_path: Path,
+        scenes: list[SceneBoundary],
+    ) -> PeopleTrackingData:
+        """Track people across the entire video using VideoAnalyzer.
+
+        Most efficient path - analyzes the whole video in one API call,
+        providing consistent person tracking across scenes.
+
+        Args:
+            video_path: Path to video file.
+            scenes: Scene boundaries for context.
+
+        Returns:
+            PeopleTrackingData with tracked people.
+        """
+        from claudetube.providers.types import get_person_tracking_result_model
+
+        schema = get_person_tracking_result_model()
+        prompt = self._build_video_prompt(scenes)
+
+        result = await self.video_analyzer.analyze_video(
+            video_path,
+            prompt,
+            schema=schema,
+        )
+
+        data = result if isinstance(result, dict) else json.loads(result)
+        return self._parse_tracking_result(data, method="video_analyzer")
+
+    async def _track_with_vision(
+        self,
+        scenes: list[SceneBoundary],
+        cache_dir: Path,
+    ) -> PeopleTrackingData:
+        """Track people scene-by-scene using VisionAnalyzer on keyframes.
+
+        Falls back to frame-by-frame analysis when VideoAnalyzer is unavailable.
+        Person IDs may not be fully consistent across scenes since each scene
+        is analyzed independently.
+
+        Args:
+            scenes: Scene boundaries.
+            cache_dir: Video cache directory.
+
+        Returns:
+            PeopleTrackingData with tracked people.
+        """
+        from claudetube.providers.types import get_person_tracking_result_model
+
+        schema = get_person_tracking_result_model()
+        all_people: dict[str, PersonTrack] = {}
+
+        for scene in scenes:
+            keyframes = list_scene_keyframes(cache_dir, scene.scene_id)
+            if not keyframes:
+                continue
+
+            prompt = self._build_frame_prompt(scene)
+
+            try:
+                result = await self.vision.analyze_images(
+                    keyframes,
+                    prompt,
+                    schema=schema,
+                )
+            except Exception as e:
+                logger.warning(f"Scene {scene.scene_id}: vision analysis failed: {e}")
+                continue
+
+            data = result if isinstance(result, dict) else json.loads(result)
+            scene_data = self._parse_tracking_result(data, method="vision_analyzer")
+
+            # Merge people by description similarity
+            for person in scene_data.people:
+                normalized = person.description.lower().strip()
+                if normalized in all_people:
+                    all_people[normalized].appearances.extend(person.appearances)
+                else:
+                    all_people[normalized] = person
+
+        # Re-assign consistent person IDs
+        people = list(all_people.values())
+        for i, person in enumerate(people):
+            person.person_id = f"person_{i}"
+
+        return PeopleTrackingData(
+            video_id="",
+            method="vision_analyzer",
+            people=people,
+        )
+
+    async def execute(
+        self,
+        scenes: list[SceneBoundary],
+        cache_dir: Path,
+        video_path: Path | None = None,
+    ) -> PeopleTrackingData:
+        """Track people using the best available AI provider.
+
+        Tries VideoAnalyzer first (whole-video analysis), then falls back
+        to VisionAnalyzer (per-scene frame analysis).
+
+        Args:
+            scenes: List of scene boundaries.
+            cache_dir: Video cache directory.
+            video_path: Path to video file (required for VideoAnalyzer).
+
+        Returns:
+            PeopleTrackingData with tracked people.
+        """
+        # 1. Try native video analysis (Gemini) - most efficient
+        if self.video_analyzer and video_path and video_path.exists():
+            try:
+                return await self._track_with_video(video_path, scenes)
+            except Exception as e:
+                logger.warning(f"Video-level tracking failed, falling back to vision: {e}")
+
+        # 2. Fall back to frame-by-frame vision analysis
+        if self.vision:
+            return await self._track_with_vision(scenes, cache_dir)
+
+        # No AI provider available
+        return PeopleTrackingData(
+            video_id="",
+            method="none",
+            people=[],
+        )
+
+    def _parse_tracking_result(
+        self,
+        data: dict,
+        method: str,
+    ) -> PeopleTrackingData:
+        """Parse AI provider response into PeopleTrackingData.
+
+        Args:
+            data: Dict from AI provider (matching PersonTrackingResult schema).
+            method: Tracking method identifier.
+
+        Returns:
+            PeopleTrackingData parsed from response.
+        """
+        people = []
+        for person_data in data.get("people", []):
+            appearances = []
+            for app_data in person_data.get("appearances", []):
+                # Handle both dict and Pydantic model responses
+                if hasattr(app_data, "model_dump"):
+                    app_data = app_data.model_dump()
+                appearances.append(PersonAppearance(
+                    scene_id=app_data.get("scene_id", 0),
+                    timestamp=app_data.get("timestamp", 0.0),
+                    action=app_data.get("action"),
+                    confidence=app_data.get("confidence", 1.0),
+                ))
+
+            if hasattr(person_data, "model_dump"):
+                person_data = person_data.model_dump()
+
+            people.append(PersonTrack(
+                person_id=person_data.get("person_id", f"person_{len(people)}"),
+                description=person_data.get("description", ""),
+                appearances=appearances,
+            ))
+
+        return PeopleTrackingData(
+            video_id="",
+            method=method,
             people=people,
         )
 
@@ -359,24 +638,92 @@ def _track_with_face_recognition(
     )
 
 
+def _get_video_path(cache_dir: Path) -> Path | None:
+    """Get the video file path from state.json.
+
+    Args:
+        cache_dir: Video cache directory.
+
+    Returns:
+        Path to video file, or None if unavailable.
+    """
+    state_file = cache_dir / "state.json"
+    if not state_file.exists():
+        return None
+
+    try:
+        state = json.loads(state_file.read_text())
+    except json.JSONDecodeError:
+        return None
+
+    # Try cached file first (for local videos)
+    cached_file = state.get("cached_file")
+    if cached_file:
+        video_path = cache_dir / cached_file
+        if video_path.exists():
+            return video_path
+
+    return None
+
+
+def _get_default_providers() -> tuple[VideoAnalyzer | None, VisionAnalyzer | None]:
+    """Get default video and vision providers for person tracking.
+
+    Tries google first (for VideoAnalyzer support), then anthropic, then claude-code.
+
+    Returns:
+        Tuple of (video_analyzer, vision_analyzer) - either may be None.
+    """
+    from claudetube.providers import get_provider
+    from claudetube.providers.base import VideoAnalyzer as VideoAnalyzerProtocol
+    from claudetube.providers.base import VisionAnalyzer as VisionAnalyzerProtocol
+
+    video: VideoAnalyzer | None = None
+    vision: VisionAnalyzer | None = None
+
+    for provider_name in ("google", "anthropic", "claude-code"):
+        try:
+            provider = get_provider(provider_name)
+            if not provider.is_available():
+                continue
+
+            if video is None and isinstance(provider, VideoAnalyzerProtocol):
+                video = provider
+            if vision is None and isinstance(provider, VisionAnalyzerProtocol):
+                vision = provider
+
+            if video is not None and vision is not None:
+                break
+        except (ImportError, ValueError):
+            continue
+
+    return video, vision
+
+
 def track_people(
     video_id: str,
     force: bool = False,
     use_face_recognition: bool = False,
     output_base: Path | None = None,
+    video_analyzer: VideoAnalyzer | None = None,
+    vision_analyzer: VisionAnalyzer | None = None,
 ) -> dict:
     """Track people across scenes in a video.
 
     Follows "Cheap First, Expensive Last" principle:
     1. CACHE - Return entities/people.json instantly if exists
     2. VISUAL - Use visual transcript data (already generated)
-    3. COMPUTE - Run face_recognition only if requested and visual data missing
+    3. AI_VIDEO - Use VideoAnalyzer (Gemini) for cross-scene tracking
+    4. AI_FRAMES - Use VisionAnalyzer for frame-by-frame analysis
+    5. COMPUTE - Run face_recognition only if requested and above methods yield nothing
 
     Args:
         video_id: Video ID
         force: Re-generate even if cached
         use_face_recognition: Use face_recognition library (expensive)
         output_base: Cache directory
+        video_analyzer: Optional VideoAnalyzer provider. If None, auto-selects.
+        vision_analyzer: Optional VisionAnalyzer provider. If None, auto-selects.
 
     Returns:
         Dict with tracking results
@@ -408,7 +755,39 @@ def track_people(
     tracking_data = _track_from_visual_transcripts(scenes_data.scenes, cache_dir)
     tracking_data.video_id = video_id
 
-    # 3. COMPUTE - Fall back to face recognition if no people found and requested
+    # 3. AI - Try AI providers if visual transcripts yielded no people
+    if not tracking_data.people:
+        # Lazily resolve providers only when needed
+        operation = None
+
+        try:
+            if video_analyzer is None and vision_analyzer is None:
+                video_analyzer, vision_analyzer = _get_default_providers()
+            if video_analyzer is not None or vision_analyzer is not None:
+                operation = PersonTrackingOperation(
+                    video_analyzer=video_analyzer,
+                    vision_analyzer=vision_analyzer,
+                )
+        except (ImportError, ValueError) as e:
+            logger.warning(f"Failed to create AI providers for person tracking: {e}")
+
+        if operation is not None:
+            video_path = _get_video_path(cache_dir)
+            log_timed("People tracking: using AI provider...", t0)
+
+            try:
+                tracking_data = asyncio.run(
+                    operation.execute(
+                        scenes=scenes_data.scenes,
+                        cache_dir=cache_dir,
+                        video_path=video_path,
+                    )
+                )
+                tracking_data.video_id = video_id
+            except Exception as e:
+                logger.error(f"AI person tracking failed: {e}")
+
+    # 4. COMPUTE - Fall back to face recognition if no people found and requested
     if not tracking_data.people and use_face_recognition:
         if _is_face_recognition_available():
             log_timed("People tracking: running face recognition (expensive)...", t0)

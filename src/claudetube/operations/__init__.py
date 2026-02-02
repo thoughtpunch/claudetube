@@ -44,6 +44,7 @@ from claudetube.operations.extract_frames import (
     extract_hq_frames_local,
 )
 from claudetube.operations.person_tracking import (
+    PersonTrackingOperation,
     get_people_tracking,
     track_people,
 )
@@ -93,6 +94,7 @@ __all__ = [
     "VisualTranscriptOperation",
     "generate_visual_transcript",
     "get_visual_transcript",
+    "PersonTrackingOperation",
     "get_people_tracking",
     "track_people",
     "detect_scene_changes",
