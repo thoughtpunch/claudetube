@@ -30,6 +30,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from enum import Enum, auto
 
 # Lazy import for pydantic to avoid hard dependency
 _pydantic_available: bool | None = None
@@ -255,6 +256,57 @@ class TranscriptionResult:
 
 
 # =============================================================================
+# Streaming Transcription Types
+# =============================================================================
+
+
+class StreamingEventType(Enum):
+    """Types of events emitted during streaming transcription.
+
+    Attributes:
+        PARTIAL: Interim result that may change as more audio is processed.
+        FINAL: Finalized segment that will not change.
+        COMPLETE: Transcription is complete; no more events will follow.
+        ERROR: An error occurred during streaming.
+    """
+
+    PARTIAL = auto()
+    FINAL = auto()
+    COMPLETE = auto()
+    ERROR = auto()
+
+
+@dataclass
+class StreamingTranscriptionEvent:
+    """A single event from a streaming transcription session.
+
+    Streaming transcription emits a sequence of events as audio is processed.
+    Partial events may be updated by subsequent events; final events represent
+    completed segments.
+
+    Attributes:
+        event_type: The type of streaming event.
+        segment: The transcription segment (None for COMPLETE/ERROR events).
+        is_final: Whether this segment is finalized (won't change).
+        accumulated_text: Running full transcript up to this point.
+        error: Error message if event_type is ERROR.
+
+    Example:
+        >>> async for event in provider.stream_transcribe(audio):
+        ...     if event.event_type == StreamingEventType.FINAL:
+        ...         print(f"[{event.segment.start:.1f}s] {event.segment.text}")
+        ...     elif event.event_type == StreamingEventType.COMPLETE:
+        ...         print(f"Done: {event.accumulated_text}")
+    """
+
+    event_type: StreamingEventType
+    segment: TranscriptionSegment | None = None
+    is_final: bool = False
+    accumulated_text: str = ""
+    error: str | None = None
+
+
+# =============================================================================
 # Pydantic Models for Structured Output
 # =============================================================================
 #
@@ -432,6 +484,9 @@ __all__ = [
     # Transcription types (always available)
     "TranscriptionSegment",
     "TranscriptionResult",
+    # Streaming transcription types
+    "StreamingEventType",
+    "StreamingTranscriptionEvent",
     # Pydantic model accessors (require pydantic)
     "get_visual_entity_model",
     "get_semantic_concept_model",

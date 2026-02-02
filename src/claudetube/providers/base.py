@@ -33,10 +33,14 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
     from pathlib import Path
 
     from claudetube.providers.capabilities import ProviderInfo
-    from claudetube.providers.types import TranscriptionResult
+    from claudetube.providers.types import (
+        StreamingTranscriptionEvent,
+        TranscriptionResult,
+    )
 
 
 class Provider(ABC):
@@ -134,6 +138,53 @@ class Transcriber(Protocol):
         Raises:
             FileNotFoundError: If audio file doesn't exist.
             TranscriptionError: If transcription fails.
+        """
+        ...
+
+
+@runtime_checkable
+class StreamingTranscriber(Protocol):
+    """Protocol for streaming audio transcription providers.
+
+    Providers implementing this protocol can transcribe audio in real-time,
+    yielding partial and final results as audio is processed. This is useful
+    for long-form content where partial results are needed before the full
+    transcription completes.
+
+    This protocol is implemented by:
+    - deepgram: Deepgram live transcription API
+
+    Example:
+        >>> transcriber: StreamingTranscriber = get_provider("deepgram")
+        >>> async for event in transcriber.stream_transcribe(Path("audio.mp3")):
+        ...     if event.is_final:
+        ...         print(f"[{event.segment.start:.1f}s] {event.segment.text}")
+    """
+
+    def stream_transcribe(
+        self,
+        audio: Path,
+        language: str | None = None,
+        **kwargs,
+    ) -> AsyncIterator[StreamingTranscriptionEvent]:
+        """Stream transcription events from an audio file.
+
+        Reads the audio file and streams it to the provider's real-time
+        transcription API, yielding events as segments are recognized.
+
+        Args:
+            audio: Path to audio file (mp3, wav, etc.).
+            language: Optional language code (e.g., "en", "es"). If None,
+                language is auto-detected.
+            **kwargs: Provider-specific options (e.g., model, diarize).
+
+        Yields:
+            StreamingTranscriptionEvent with PARTIAL, FINAL, COMPLETE, or
+            ERROR event types.
+
+        Raises:
+            FileNotFoundError: If audio file doesn't exist.
+            TranscriptionError: If streaming fails.
         """
         ...
 
@@ -340,6 +391,7 @@ __all__ = [
     "Provider",
     # Protocols
     "Transcriber",
+    "StreamingTranscriber",
     "VisionAnalyzer",
     "VideoAnalyzer",
     "Reasoner",
