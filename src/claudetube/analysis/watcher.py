@@ -179,9 +179,7 @@ class ActiveVideoWatcher:
 
         # Build lookup for fast access
         if self._scene_embeddings is not None:
-            self._embedding_lookup = {
-                e.scene_id: e for e in self._scene_embeddings
-            }
+            self._embedding_lookup = {e.scene_id: e for e in self._scene_embeddings}
 
         logger.info(
             f"ActiveVideoWatcher initialized for '{user_goal}' with "
@@ -298,9 +296,7 @@ class ActiveVideoWatcher:
 
             # Look up scene embedding if available
             scene_embedding = (
-                self._embedding_lookup.get(scene_id)
-                if self._embedding_lookup
-                else None
+                self._embedding_lookup.get(scene_id) if self._embedding_lookup else None
             )
 
             priority = calculate_attention_priority(

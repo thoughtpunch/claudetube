@@ -66,7 +66,7 @@ Use claudetube when a user shares a video URL and wants you to:
 - Analyze code, diagrams, or text shown in the video (use HQ frames)
 - Get timestamps for specific moments
 
-## MCP Tools Available (30 tools)
+## MCP Tools Available (40 tools)
 
 ### Core Processing
 
@@ -294,6 +294,79 @@ scene_id: Scene index (0-based)
 Get statistics about cache enrichment for a video.
 ```
 video_id: Video ID
+```
+
+### Narrative Structure
+
+#### `detect_narrative_structure_tool`
+Detect narrative structure (intro, main content, conclusion) and classify video type.
+```
+video_id: Video ID
+force: Re-detect even if cached (default: false)
+```
+
+#### `get_narrative_structure_tool`
+Get cached narrative structure for a video.
+```
+video_id: Video ID
+```
+
+### Change Detection
+
+#### `detect_changes_tool`
+Detect changes between consecutive scenes (visual, topic, content type).
+```
+video_id: Video ID
+force: Re-detect even if cached (default: false)
+```
+
+#### `get_changes_tool`
+Get cached scene change data for a video.
+```
+video_id: Video ID
+```
+
+#### `get_major_transitions_tool`
+Get only major transitions between scenes for a structural overview.
+```
+video_id: Video ID
+```
+
+### Code Evolution
+
+#### `track_code_evolution_tool`
+Track how code evolves across scenes in coding tutorials and live coding videos.
+```
+video_id: Video ID
+force: Re-track even if cached (default: false)
+```
+
+#### `get_code_evolution_tool`
+Get cached code evolution data for a video.
+```
+video_id: Video ID
+```
+
+#### `query_code_evolution_tool`
+Query code evolution for a specific file, function, or code pattern.
+```
+video_id: Video ID
+query: Filename, function name, or code pattern to search for
+```
+
+### Playlist Knowledge Graph
+
+#### `build_knowledge_graph_tool`
+Build a cross-video knowledge graph for a playlist (shared topics, prerequisites).
+```
+playlist_id: Playlist ID (from get_playlist results)
+```
+
+#### `get_playlist_video_context_tool`
+Get contextual information for a video within a playlist.
+```
+video_id: Video ID
+playlist_id: Playlist ID containing the video
 ```
 
 ### Providers

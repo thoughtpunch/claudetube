@@ -24,6 +24,7 @@ def _reset_singletons():
 # Singleton factories
 # ---------------------------------------------------------------------------
 
+
 class TestGetYtDlp:
     """Tests for _get_yt_dlp singleton."""
 
@@ -61,6 +62,7 @@ class TestGetFfmpeg:
 # ---------------------------------------------------------------------------
 # fetch_metadata
 # ---------------------------------------------------------------------------
+
 
 class TestFetchMetadata:
     """Tests for fetch_metadata()."""
@@ -100,6 +102,7 @@ class TestFetchMetadata:
 # ---------------------------------------------------------------------------
 # download_audio
 # ---------------------------------------------------------------------------
+
 
 class TestDownloadAudio:
     """Tests for download_audio()."""
@@ -142,6 +145,7 @@ class TestDownloadAudio:
 # download_thumbnail
 # ---------------------------------------------------------------------------
 
+
 class TestDownloadThumbnail:
     """Tests for download_thumbnail()."""
 
@@ -182,6 +186,7 @@ class TestDownloadThumbnail:
 # ---------------------------------------------------------------------------
 # fetch_subtitles
 # ---------------------------------------------------------------------------
+
 
 class TestFetchSubtitles:
     """Tests for fetch_subtitles()."""
@@ -228,6 +233,7 @@ class TestFetchSubtitles:
 # ---------------------------------------------------------------------------
 # download_video_segment
 # ---------------------------------------------------------------------------
+
 
 class TestDownloadVideoSegment:
     """Tests for download_video_segment()."""
@@ -294,6 +300,7 @@ class TestDownloadVideoSegment:
 # ---------------------------------------------------------------------------
 # extract_audio_local
 # ---------------------------------------------------------------------------
+
 
 class TestExtractAudioLocal:
     """Tests for extract_audio_local()."""

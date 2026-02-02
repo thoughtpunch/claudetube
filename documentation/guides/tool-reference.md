@@ -18,8 +18,8 @@ claudetube exposes functionality through three interfaces: **MCP tools** (for Cl
 | Extract entities | `extract_entities_tool` | `claudetube extract-entities <id>` | -- |
 | Visual transcripts | `generate_visual_transcripts` | -- | -- |
 | Track people | `track_people_tool` | -- | -- |
-| Deep analysis | `analyze_deep_tool` | -- | -- |
-| Focus analysis | `analyze_focus_tool` | -- | -- |
+| Deep analysis | `analyze_deep_tool` | -- | `/yt:deep <id>` |
+| Focus analysis | `analyze_focus_tool` | -- | `/yt:focus <id> <start> <end>` |
 | Analysis status | `get_analysis_status_tool` | -- | -- |
 | Record Q&A | `record_qa_tool` | -- | -- |
 | Search Q&A history | `search_qa_history_tool` | -- | -- |
@@ -36,6 +36,16 @@ claudetube exposes functionality through three interfaces: **MCP tools** (for Cl
 | Video connections | `get_video_connections_tool` | -- | -- |
 | Knowledge graph stats | `get_knowledge_graph_stats_tool` | -- | -- |
 | List providers | `list_providers_tool` | -- | -- |
+| Narrative structure | `detect_narrative_structure_tool` | -- | -- |
+| Get narrative structure | `get_narrative_structure_tool` | -- | -- |
+| Detect changes | `detect_changes_tool` | -- | -- |
+| Get changes | `get_changes_tool` | -- | -- |
+| Major transitions | `get_major_transitions_tool` | -- | -- |
+| Track code evolution | `track_code_evolution_tool` | -- | -- |
+| Get code evolution | `get_code_evolution_tool` | -- | -- |
+| Query code evolution | `query_code_evolution_tool` | -- | -- |
+| Build knowledge graph | `build_knowledge_graph_tool` | -- | -- |
+| Playlist video context | `get_playlist_video_context_tool` | -- | -- |
 | Validate config | -- | `claudetube validate-config` | -- |
 
 ## MCP Tools (Detail)
@@ -316,6 +326,105 @@ Show knowledge graph stats: indexed videos, entities, concepts.
 
 No parameters.
 
+### Narrative Structure
+
+#### `detect_narrative_structure_tool`
+Detect narrative structure: sections (intro, main content, conclusion, transitions) and video type classification.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `video_id` | str | required | Video ID |
+| `force` | bool | `False` | Re-detect even if cached |
+
+Results are cached in `structure/narrative.json`.
+
+#### `get_narrative_structure_tool`
+Get cached narrative structure for a video.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `video_id` | str | required | Video ID |
+
+Run `detect_narrative_structure_tool` first if no structure is cached.
+
+### Change Detection
+
+#### `detect_changes_tool`
+Detect changes between consecutive scenes: visual changes, topic shifts, content type transitions.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `video_id` | str | required | Video ID |
+| `force` | bool | `False` | Re-detect even if cached |
+
+Results are cached in `structure/changes.json`.
+
+#### `get_changes_tool`
+Get cached scene change data for a video.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `video_id` | str | required | Video ID |
+
+Run `detect_changes_tool` first if no changes are cached.
+
+#### `get_major_transitions_tool`
+Get only significant transitions (topic shifts, content type changes) for a quick structural overview.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `video_id` | str | required | Video ID |
+
+### Code Evolution
+
+#### `track_code_evolution_tool`
+Track how code evolves across scenes. Analyzes code snapshots from entity data to identify additions, modifications, and refactoring. Best for coding tutorials and live coding videos.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `video_id` | str | required | Video ID |
+| `force` | bool | `False` | Re-track even if cached |
+
+Results are cached in `entities/code_evolution.json`.
+
+#### `get_code_evolution_tool`
+Get cached code evolution data for a video.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `video_id` | str | required | Video ID |
+
+Run `track_code_evolution_tool` first if no evolution data is cached.
+
+#### `query_code_evolution_tool`
+Query code evolution for a specific file, function, or code pattern.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `video_id` | str | required | Video ID |
+| `query` | str | required | Filename, function name, or code pattern |
+
+### Playlist Knowledge Graph
+
+#### `build_knowledge_graph_tool`
+Build a cross-video knowledge graph for a playlist. Analyzes shared topics, entities, and prerequisite chains.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `playlist_id` | str | required | Playlist ID (from `get_playlist` results) |
+
+Requires the playlist to have been fetched with `get_playlist` first.
+
+#### `get_playlist_video_context_tool`
+Get contextual information for a video within a playlist: position, related topics, prerequisites, shared entities.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `video_id` | str | required | Video ID |
+| `playlist_id` | str | required | Playlist ID |
+
+Requires a knowledge graph to have been built with `build_knowledge_graph_tool`.
+
 ### Utility
 
 #### `list_cached_videos`
@@ -375,6 +484,8 @@ Slash commands are Claude Code shortcuts defined in `commands/`. They use a cach
 | `/yt:scenes` | `/yt:scenes <video_id>` | Scene/chapter structure |
 | `/yt:find` | `/yt:find <video_id> <query>` | Natural language moment search |
 | `/yt:watch` | `/yt:watch <video_id> <question>` | Active reasoning over video content |
+| `/yt:deep` | `/yt:deep <video_id>` | Deep analysis: OCR, entities, code detection |
+| `/yt:focus` | `/yt:focus <video_id> <start> <end>` | Exhaustive frame-by-frame section analysis |
 
 ## Python API
 

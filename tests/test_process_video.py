@@ -311,9 +311,7 @@ class TestProcessVideoWhisperPath:
                 parents=True, exist_ok=True
             ) or path.write_bytes(b"audio")
 
-            process_video(
-                FAKE_URL, output_base=cache_base, whisper_model="medium"
-            )
+            process_video(FAKE_URL, output_base=cache_base, whisper_model="medium")
 
         _, kwargs = mock_transcribe.call_args
         assert kwargs["model_size"] == "medium"

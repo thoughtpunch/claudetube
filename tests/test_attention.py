@@ -718,9 +718,7 @@ class TestCalculateRelevanceWithEmbeddings:
     ):
         """If goal_embedding is None, falls back to keyword matching."""
         scene = {"scene_id": 0, "transcript_text": "fix the bug"}
-        score = calculate_relevance(
-            scene, "fix the bug", similar_scene_embedding, None
-        )
+        score = calculate_relevance(scene, "fix the bug", similar_scene_embedding, None)
         # Should use keyword path
         assert score > 0.5
 
@@ -877,9 +875,7 @@ class TestCalculateAttentionPriorityWithEmbeddings:
         # With 100% relevance weight and similar embedding -> high score
         assert priority > 0.7
 
-    def test_previous_embeddings_affect_novelty(
-        self, simple_scenes, goal_embedding
-    ):
+    def test_previous_embeddings_affect_novelty(self, simple_scenes, goal_embedding):
         """Previous embeddings should affect novelty scoring."""
         scene = simple_scenes[2]
 

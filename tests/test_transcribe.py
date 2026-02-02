@@ -187,9 +187,7 @@ class TestTranscribeVideo:
         (video_dir / "audio.srt").write_text("1\n00:00:00,000 --> 00:00:01,500\nHi\n")
         (video_dir / "audio.txt").write_text("Hi")
 
-        result = await transcribe_video(
-            "abc123", output_base=tmp_path, force=False
-        )
+        result = await transcribe_video("abc123", output_base=tmp_path, force=False)
 
         assert result["success"] is True
         assert result["source"] == "cached"
@@ -226,7 +224,10 @@ class TestTranscribeVideo:
         result = await transcribe_video("abc123", output_base=tmp_path)
 
         assert result["success"] is False
-        assert "no URL available" in result["message"].lower() or "No audio file" in result["message"]
+        assert (
+            "no URL available" in result["message"].lower()
+            or "No audio file" in result["message"]
+        )
 
     @pytest.mark.asyncio
     async def test_no_audio_downloads_from_state_url(self, tmp_path):
@@ -272,6 +273,7 @@ class TestTranscribeVideo:
         transcriber = _make_transcriber(_make_result(provider="whisper-local"))
 
         with patch("claudetube.operations.transcribe.download_audio") as mock_dl:
+
             def fake_download(url, path):
                 path.write_bytes(b"fake audio")
                 return path
@@ -375,9 +377,7 @@ class TestTranscribeVideo:
         video_dir.mkdir(parents=True)
         (video_dir / "audio.mp3").write_bytes(b"fake audio")
 
-        transcriber = _make_transcriber(
-            _make_result(provider="whisper-local")
-        )
+        transcriber = _make_transcriber(_make_result(provider="whisper-local"))
 
         result = await transcribe_video(
             "abc123",

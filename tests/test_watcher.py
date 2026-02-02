@@ -650,14 +650,18 @@ class TestActiveVideoWatcherEmbeddings:
             SceneEmbedding(1, np.array([0.0, 0.0, 1.0, 0.0], dtype=np.float32), "test"),
             SceneEmbedding(2, np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32), "test"),
             SceneEmbedding(3, np.array([0.1, 0.1, 0.1, 0.9], dtype=np.float32), "test"),
-            SceneEmbedding(4, np.array([0.99, 0.01, 0.0, 0.0], dtype=np.float32), "test"),
+            SceneEmbedding(
+                4, np.array([0.99, 0.01, 0.0, 0.0], dtype=np.float32), "test"
+            ),
         ]
 
     @pytest.fixture
     def goal_embedding(self):
         return np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
-    def test_init_with_embeddings(self, sample_scenes, scene_embeddings, goal_embedding):
+    def test_init_with_embeddings(
+        self, sample_scenes, scene_embeddings, goal_embedding
+    ):
         watcher = ActiveVideoWatcher(
             video_id="test",
             user_goal="test query",

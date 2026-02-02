@@ -101,6 +101,8 @@ Claude will:
 | `/yt:scenes <id>` | Get scene structure and boundaries |
 | `/yt:find <id> <query>` | Find moments matching a query |
 | `/yt:watch <id> <question>` | Actively watch and reason about a video |
+| `/yt:deep <id>` | Deep analysis (OCR, entities, code detection) |
+| `/yt:focus <id> <start> <end>` | Exhaustive frame-by-frame analysis of a section |
 | `/yt:list` | List all cached videos |
 
 ## Python API
@@ -168,7 +170,7 @@ See [Configuration Guide](documentation/guides/configuration.md) for details.
 
 ## Architecture
 
-claudetube uses a **provider-based architecture** with a modular design. Video downloading is handled through `yt-dlp` (1,500+ sites), while AI capabilities (transcription, vision analysis, reasoning, embeddings) are served by a configurable provider system supporting 11 providers (OpenAI, Anthropic, Google, Deepgram, AssemblyAI, Ollama, Voyage, and more). The MCP server exposes 30 tools for video processing, scene analysis, entity extraction, knowledge graphs, and accessibility features. See [Architecture](documentation/architecture.md) for details.
+claudetube uses a **provider-based architecture** with a modular design. Video downloading is handled through `yt-dlp` (1,500+ sites), while AI capabilities (transcription, vision analysis, reasoning, embeddings) are served by a configurable provider system supporting 11 providers (OpenAI, Anthropic, Google, Deepgram, AssemblyAI, Ollama, Voyage, and more). The MCP server exposes 40 tools for video processing, scene analysis, entity extraction, knowledge graphs, and accessibility features. See [Architecture](documentation/architecture.md) for details.
 
 ## Development
 

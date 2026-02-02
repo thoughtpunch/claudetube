@@ -99,6 +99,7 @@ asyncio_mode = "auto"
 markers = [
     "deep_integration: deep integration test against real playlist (slow, requires network)",
     "integration: integration test against real provider APIs (requires API keys)",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
 
 [tool.coverage.run]

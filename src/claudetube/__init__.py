@@ -1,7 +1,7 @@
 """
 claudetube - Let Claude watch online videos.
 
-Process videos from 70+ sites for Claude Code:
+Process videos from 1,500+ sites for Claude Code:
 1. Download video (lowest quality for speed)
 2. Transcribe audio with faster-whisper (or use existing subtitles)
 3. Extract frames on-demand when visual context is needed
@@ -57,7 +57,7 @@ from claudetube.parsing.utils import (
     parse_input,
 )
 
-__version__ = "0.4.0"
+__version__ = "1.0.0rc1"
 
 __all__ = [
     # Core functions

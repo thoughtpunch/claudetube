@@ -150,16 +150,11 @@ Optional groups: `[mcp]`, `[openai]`, `[anthropic]`, `[google]`, `[deepgram]`,
 
 The following are tracked for resolution before v1.0.0 final:
 
-- 4 operations modules not exported from `operations/__init__.py`
-  (narrative_structure, code_evolution, playlist, knowledge_graph)
-- 3 implemented features lack MCP tools (code evolution, narrative structure,
-  change detection)
 - AudioDescriptionGenerator uses registry directly instead of ProviderRouter
 - Video type not auto-detected for attention model weighting
 - AD language hardcoded to English
 - Fragile async/sync bridge in OCR vision integration
 - Missing unit tests for download.py, transcribe.py, and URL-based processor flow
-- `/yt:deep` and `/yt:focus` slash commands not yet created
 
 See beads epic `claudetube-lgb` (Wire Up All Implemented Features) and
 `claudetube-axf` (Test Coverage and Quality Gates) for full tracking.

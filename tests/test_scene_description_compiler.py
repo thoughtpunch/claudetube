@@ -615,16 +615,12 @@ class TestCompileSceneDescriptionsLanguage:
             text_on_screen=[],
             actions=[],
         )
-        (scene_dir / "visual.json").write_text(
-            json.dumps(visual.to_dict(), indent=2)
-        )
+        (scene_dir / "visual.json").write_text(json.dumps(visual.to_dict(), indent=2))
 
         return cache, cache_dir
 
     def test_spanish_language_in_vtt(self, tmp_path):
-        cache, cache_dir = self._setup_video_with_language(
-            tmp_path, language="es"
-        )
+        cache, cache_dir = self._setup_video_with_language(tmp_path, language="es")
         result = compile_scene_descriptions("test123", output_base=tmp_path)
 
         assert result["status"] == "compiled"
@@ -632,9 +628,7 @@ class TestCompileSceneDescriptionsLanguage:
         assert "Language: es" in vtt_content
 
     def test_none_language_defaults_to_english(self, tmp_path):
-        cache, cache_dir = self._setup_video_with_language(
-            tmp_path, language=None
-        )
+        cache, cache_dir = self._setup_video_with_language(tmp_path, language=None)
         result = compile_scene_descriptions("test123", output_base=tmp_path)
 
         assert result["status"] == "compiled"
@@ -642,9 +636,7 @@ class TestCompileSceneDescriptionsLanguage:
         assert "Language: en" in vtt_content
 
     def test_unsupported_language_defaults_to_english(self, tmp_path):
-        cache, cache_dir = self._setup_video_with_language(
-            tmp_path, language="ko"
-        )
+        cache, cache_dir = self._setup_video_with_language(tmp_path, language="ko")
         result = compile_scene_descriptions("test123", output_base=tmp_path)
 
         assert result["status"] == "compiled"
@@ -652,9 +644,7 @@ class TestCompileSceneDescriptionsLanguage:
         assert "Language: en" in vtt_content
 
     def test_regional_variant_normalized_in_vtt(self, tmp_path):
-        cache, cache_dir = self._setup_video_with_language(
-            tmp_path, language="pt-BR"
-        )
+        cache, cache_dir = self._setup_video_with_language(tmp_path, language="pt-BR")
         result = compile_scene_descriptions("test123", output_base=tmp_path)
 
         assert result["status"] == "compiled"
