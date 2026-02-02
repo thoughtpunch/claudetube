@@ -22,6 +22,7 @@ from claudetube.cache.enrichment import (
     search_cached_qa,
 )
 from claudetube.cache.knowledge_graph import get_knowledge_graph, index_video_to_graph
+from claudetube.cache.manager import CacheManager
 from claudetube.cache.scenes import has_scenes, load_scenes_data
 from claudetube.config import get_cache_dir
 from claudetube.models.local_file import is_local_file
@@ -31,9 +32,12 @@ from claudetube.operations.extract_frames import (
 from claudetube.operations.extract_frames import (
     extract_hq_frames as get_hq_frames_at,
 )
+from claudetube.operations.factory import get_factory
 from claudetube.operations.processor import process_local_video, process_video
 from claudetube.operations.transcribe import transcribe_video as _transcribe_video
 from claudetube.parsing.utils import extract_video_id
+from claudetube.providers.capabilities import PROVIDER_INFO, Capability
+from claudetube.providers.registry import list_all, list_available
 
 # All logging goes to stderr so stdout stays clean for JSON-RPC
 logging.basicConfig(
@@ -240,23 +244,39 @@ async def transcribe_video(
     video_id_or_url: str,
     whisper_model: str = "small",
     force: bool = False,
+    provider: str | None = None,
 ) -> str:
-    """Transcribe a video's audio using Whisper.
+    """Transcribe a video's audio using Whisper or another transcription provider.
 
     Returns cached transcript immediately if available, otherwise runs
-    Whisper transcription. Use force=True to re-transcribe with a
-    different model.
+    transcription. Use force=True to re-transcribe with a different model
+    or provider.
 
     Args:
         video_id_or_url: Video ID or URL.
         whisper_model: Whisper model size (tiny/base/small/medium/large).
         force: Re-transcribe even if a cached transcript exists.
+        provider: Override transcription provider (e.g., "whisper-local", "openai",
+            "deepgram"). If None, uses configured preference.
     """
+    transcriber = None
+    if provider:
+        from claudetube.providers import get_provider
+
+        transcriber = get_provider(provider)
+    else:
+        try:
+            factory = get_factory()
+            transcriber = factory.get_transcriber(model_size=whisper_model)
+        except (RuntimeError, ImportError):
+            pass  # Fall back to default in _transcribe_video
+
     result = await _transcribe_video(
         video_id_or_url,
         whisper_model=whisper_model,
         force=force,
         output_base=get_cache_dir(),
+        transcriber=transcriber,
     )
 
     if not result["success"]:
@@ -531,25 +551,38 @@ async def generate_visual_transcripts(
     video_id: str,
     scene_id: int | None = None,
     force: bool = False,
+    provider: str | None = None,
 ) -> str:
     """Generate visual descriptions for video scenes.
 
-    Uses vision AI (Claude Haiku by default) to describe what's happening
-    visually in each scene. Results are cached in scene_{NNN}/visual.json.
+    Uses vision AI to describe what's happening visually in each scene.
+    Results are cached in scene_{NNN}/visual.json.
 
     Follows "Cheap First, Expensive Last" principle:
     - Returns cached descriptions instantly if available
     - Skips scenes with good transcript coverage (talking heads)
     - Only calls vision API when visual context adds value
 
-    Requires ANTHROPIC_API_KEY environment variable to be set.
-
     Args:
         video_id: Video ID of a previously processed video.
         scene_id: Optional specific scene ID (None = all scenes).
         force: Re-generate even if cached (default: False).
+        provider: Override vision provider (e.g., "anthropic", "openai", "google",
+            "claude-code"). If None, uses configured preference.
     """
     from claudetube.operations.visual_transcript import generate_visual_transcript
+
+    vision_analyzer = None
+    if provider:
+        from claudetube.providers import get_provider
+
+        vision_analyzer = get_provider(provider)
+    else:
+        try:
+            factory = get_factory()
+            vision_analyzer = factory.get_vision_analyzer()
+        except (RuntimeError, ImportError):
+            pass  # Fall back to default in generate_visual_transcript
 
     video_id = extract_video_id(video_id)
     result = await asyncio.to_thread(
@@ -558,6 +591,7 @@ async def generate_visual_transcripts(
         scene_id=scene_id,
         force=force,
         output_base=get_cache_dir(),
+        vision_analyzer=vision_analyzer,
     )
 
     return json.dumps(result, indent=2)
@@ -568,6 +602,7 @@ async def track_people_tool(
     video_id: str,
     force: bool = False,
     use_face_recognition: bool = False,
+    provider: str | None = None,
 ) -> str:
     """Track people across scenes in a video.
 
@@ -582,8 +617,29 @@ async def track_people_tool(
         force: Re-generate even if cached (default: False).
         use_face_recognition: Use face_recognition library for accurate tracking.
             Requires: pip install face_recognition (default: False).
+        provider: Override vision/video provider (e.g., "google", "anthropic",
+            "openai"). If None, uses configured preference.
     """
     from claudetube.operations.person_tracking import track_people
+
+    video_analyzer = None
+    vision_analyzer = None
+    if provider:
+        from claudetube.providers import get_provider
+        from claudetube.providers.base import VideoAnalyzer, VisionAnalyzer
+
+        p = get_provider(provider)
+        if isinstance(p, VideoAnalyzer):
+            video_analyzer = p
+        if isinstance(p, VisionAnalyzer):
+            vision_analyzer = p
+    else:
+        try:
+            factory = get_factory()
+            video_analyzer = factory.get_video_analyzer()
+            vision_analyzer = factory.get_vision_analyzer()
+        except (RuntimeError, ImportError):
+            pass
 
     video_id = extract_video_id(video_id)
     result = await asyncio.to_thread(
@@ -592,6 +648,8 @@ async def track_people_tool(
         force=force,
         use_face_recognition=use_face_recognition,
         output_base=get_cache_dir(),
+        video_analyzer=video_analyzer,
+        vision_analyzer=vision_analyzer,
     )
 
     return json.dumps(result, indent=2)
@@ -1065,6 +1123,57 @@ async def get_knowledge_graph_stats_tool() -> str:
     ]
 
     return json.dumps(stats, indent=2)
+
+
+@mcp.tool()
+async def list_providers_tool() -> str:
+    """List available AI providers and their capabilities.
+
+    Shows which providers are installed and configured, organized by
+    capability (transcription, vision, video, reasoning, embedding).
+    Also shows the currently configured preference for each capability.
+
+    Use this to understand what providers are available before overriding
+    the default with the provider parameter on other tools.
+    """
+    available = list_available()
+    all_providers = list_all()
+
+    # Build capability -> provider mapping
+    capabilities: dict[str, dict] = {}
+    for cap in Capability:
+        cap_providers = []
+        for name in all_providers:
+            info = PROVIDER_INFO.get(name)
+            if info and info.can(cap):
+                cap_providers.append({
+                    "name": name,
+                    "available": name in available,
+                })
+        capabilities[cap.name.lower()] = {
+            "providers": cap_providers,
+        }
+
+    # Add configured preferences
+    try:
+        factory = get_factory()
+        config = factory.config
+        capabilities["transcription"]["preferred"] = config.transcription_provider
+        capabilities["transcription"]["fallbacks"] = config.transcription_fallbacks
+        capabilities["vision"]["preferred"] = config.vision_provider
+        capabilities["vision"]["fallbacks"] = config.vision_fallbacks
+        capabilities["video"]["preferred"] = config.video_provider
+        capabilities["reason"]["preferred"] = config.reasoning_provider
+        capabilities["reason"]["fallbacks"] = config.reasoning_fallbacks
+        capabilities["embed"]["preferred"] = config.embedding_provider
+    except (RuntimeError, ImportError):
+        pass
+
+    return json.dumps({
+        "available_providers": available,
+        "all_providers": all_providers,
+        "capabilities": capabilities,
+    }, indent=2)
 
 
 def main():
