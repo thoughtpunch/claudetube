@@ -97,6 +97,7 @@ pythonpath = ["src"]
 asyncio_mode = "auto"
 markers = [
     "deep_integration: deep integration test against real playlist (slow, requires network)",
+    "integration: integration test against real provider APIs (requires API keys)",
 ]
 
 [tool.ruff]
