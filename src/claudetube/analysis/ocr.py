@@ -27,6 +27,29 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _run_async(coro):
+    """Run an async coroutine from synchronous code safely.
+
+    Works correctly whether called from:
+    - A plain sync context (no event loop running)
+    - Inside a running event loop (e.g., MCP server async context)
+
+    Avoids deprecated asyncio.get_event_loop() usage.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No event loop running — safe to use asyncio.run()
+        return asyncio.run(coro)
+    else:
+        # Already inside a running event loop — run in a separate thread
+        # to avoid "cannot call run() in a running loop" errors
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+
+
 @dataclass
 class TextRegion:
     """A detected text region in a frame."""
@@ -421,25 +444,70 @@ def extract_text_from_scene(
         # Enhance with vision if available and beneficial
         if vision_analyzer is not None and _should_use_vision(result):
             try:
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # Already in async context
-                        import concurrent.futures
+                vision_result = _run_async(
+                    extract_text_with_vision(frame_path, vision_analyzer)
+                )
 
-                        with concurrent.futures.ThreadPoolExecutor() as pool:
-                            vision_result = pool.submit(
-                                asyncio.run,
-                                extract_text_with_vision(frame_path, vision_analyzer),
-                            ).result()
-                    else:
-                        vision_result = loop.run_until_complete(
-                            extract_text_with_vision(frame_path, vision_analyzer)
-                        )
-                except RuntimeError:
-                    vision_result = asyncio.run(
-                        extract_text_with_vision(frame_path, vision_analyzer)
+                if vision_result.regions:
+                    logger.debug(
+                        f"Vision OCR enhanced {frame_path.name} "
+                        f"(was: {result.content_type})"
                     )
+                    result = vision_result
+            except Exception as e:
+                logger.warning(
+                    f"Vision OCR enhancement failed for {frame_path}, "
+                    f"keeping EasyOCR result: {e}"
+                )
+
+        results.append(result)
+
+    return results
+
+
+async def extract_text_from_scene_async(
+    scene_dir: Path,
+    keyframe_paths: list[Path] | None = None,
+    skip_low_likelihood: bool = True,
+    likelihood_threshold: float = 0.3,
+    vision_analyzer: VisionAnalyzer | None = None,
+) -> list[FrameOCRResult]:
+    """Async version of extract_text_from_scene.
+
+    Preferred when calling from an async context (e.g., MCP server handlers).
+    Avoids sync-to-async bridge overhead and fragility.
+
+    See extract_text_from_scene for full documentation.
+    """
+    # Find keyframes if not provided
+    if keyframe_paths is None:
+        keyframe_paths = list(scene_dir.glob("*.jpg")) + list(scene_dir.glob("*.png"))
+        keyframe_paths.sort()
+
+    results = []
+    for frame_path in keyframe_paths:
+        # Cheap first: check if likely to contain text
+        if skip_low_likelihood:
+            likelihood = estimate_text_likelihood(frame_path)
+            if likelihood < likelihood_threshold:
+                logger.debug(
+                    f"Skipping {frame_path.name} (text likelihood: {likelihood:.2f})"
+                )
+                continue
+
+        # Run EasyOCR first (cheap)
+        try:
+            result = extract_text_from_frame(frame_path)
+        except Exception as e:
+            logger.warning(f"OCR failed for {frame_path}: {e}")
+            continue
+
+        # Enhance with vision if available and beneficial
+        if vision_analyzer is not None and _should_use_vision(result):
+            try:
+                vision_result = await extract_text_with_vision(
+                    frame_path, vision_analyzer
+                )
 
                 if vision_result.regions:
                     logger.debug(

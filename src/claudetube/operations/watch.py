@@ -28,6 +28,10 @@ from claudetube.cache.scenes import has_scenes, load_scenes_data
 from claudetube.cache.storage import load_state
 from claudetube.config.loader import get_cache_dir
 from claudetube.operations.extract_frames import extract_frames
+from claudetube.operations.narrative_structure import (
+    classify_video_type,
+    get_narrative_json_path,
+)
 from claudetube.parsing.utils import extract_video_id
 
 logger = logging.getLogger(__name__)
@@ -289,6 +293,9 @@ def watch_video(
     if state and state.duration:
         video_duration = state.duration
 
+    # Auto-detect video_type for attention model weighting
+    video_type = _detect_video_type(cache_dir, scenes_data.scenes)
+
     # Create active watcher with attention priority model
     watcher = ActiveVideoWatcher(
         video_id=video_id,
@@ -296,6 +303,7 @@ def watch_video(
         scenes=scenes,
         cache_dir=cache_dir,
         video_duration=video_duration,
+        video_type=video_type,
     )
 
     # Active exploration loop
@@ -375,6 +383,46 @@ def watch_video(
         "scenes_examined": answer.get("scenes_examined", 0),
         "comprehension_verified": verification.get("ready_to_answer", False),
     }
+
+
+def _detect_video_type(cache_dir: Path, scenes: list) -> str:
+    """Auto-detect video type from cached narrative structure or scene classification.
+
+    Follows "Cheap First, Expensive Last":
+    1. Try loading cached narrative structure (structure/narrative.json)
+    2. If not cached, run classify_video_type() on available scenes
+    3. Fall back to 'unknown' if detection fails
+
+    Args:
+        cache_dir: Video cache directory.
+        scenes: List of SceneBoundary objects.
+
+    Returns:
+        Video type string (e.g. 'coding_tutorial', 'lecture', 'unknown').
+    """
+    # 1. Try cached narrative structure (cheapest path)
+    try:
+        narrative_path = get_narrative_json_path(cache_dir)
+        if narrative_path.exists():
+            data = json.loads(narrative_path.read_text())
+            video_type = data.get("video_type")
+            if video_type:
+                logger.debug(f"Auto-detected video_type from cache: {video_type}")
+                return video_type
+    except (json.JSONDecodeError, OSError) as e:
+        logger.debug(f"Failed to load cached narrative structure: {e}")
+
+    # 2. Run classify_video_type() on scenes (fast local heuristic)
+    try:
+        if scenes:
+            video_type = classify_video_type(scenes, [], cache_dir)
+            logger.debug(f"Auto-detected video_type from scenes: {video_type}")
+            return video_type
+    except Exception as e:
+        logger.debug(f"Failed to classify video type from scenes: {e}")
+
+    # 3. Fall back to 'unknown'
+    return "unknown"
 
 
 def _extract_key_phrases(text: str) -> list[str]:

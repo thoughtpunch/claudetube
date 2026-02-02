@@ -338,8 +338,9 @@ Output only valid JSON, no markdown code blocks."""
 def _find_provider_for_capability(capability_name: str) -> Provider | None:
     """Find the first available provider with a given capability.
 
-    Uses the provider registry to discover available providers and checks
-    capabilities via the ProviderInfo metadata.
+    Tries the ProviderRouter first (respecting config preferences, fallback
+    chains, and cost-based routing). Falls back to raw registry scanning
+    for backward compatibility if the router is unavailable or fails.
 
     Args:
         capability_name: Capability enum name (e.g., "VIDEO", "VISION", "TRANSCRIBE")
@@ -348,9 +349,21 @@ def _find_provider_for_capability(capability_name: str) -> Provider | None:
         A Provider instance or None if no available provider has the capability.
     """
     from claudetube.providers.capabilities import Capability
-    from claudetube.providers.registry import get_provider, list_available
 
     target = Capability[capability_name]
+
+    # 1. Try ProviderRouter (respects config preferences + fallback chains)
+    try:
+        from claudetube.providers.router import NoProviderError, ProviderRouter
+
+        router = ProviderRouter()
+        return router.get_for_capability(target)
+    except (NoProviderError, Exception):
+        pass
+
+    # 2. Fall back to raw registry scanning (backward compat)
+    from claudetube.providers.registry import get_provider, list_available
+
     for name in list_available():
         try:
             provider = get_provider(name)

@@ -271,6 +271,30 @@ class OperationFactory:
             reasoner=reasoner,
         )
 
+    def get_audio_description_generator(self):
+        """Create an AudioDescriptionGenerator with configured providers.
+
+        Uses VideoAnalyzer (native video, most efficient), VisionAnalyzer
+        (frame-by-frame fallback), and Transcriber for AD track transcription.
+        Any may be None if unavailable; the generator handles partial
+        availability gracefully.
+
+        Returns:
+            AudioDescriptionGenerator ready to use.
+        """
+        from claudetube.operations.audio_description import (
+            AudioDescriptionGenerator,
+        )
+
+        video_analyzer = self.get_video_analyzer()
+        vision = self.get_vision_analyzer()
+        transcriber = self.get_transcriber()
+        return AudioDescriptionGenerator(
+            video_provider=video_analyzer,
+            vision_provider=vision,
+            transcription_provider=transcriber,
+        )
+
     def get_person_tracking_operation(self):
         """Create a PersonTrackingOperation with configured providers.
 

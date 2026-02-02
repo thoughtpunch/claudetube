@@ -1323,7 +1323,10 @@ async def get_descriptions(
                     )
 
                 if ad_audio_path.exists():
-                    generator = AudioDescriptionGenerator()
+                    try:
+                        generator = get_factory().get_audio_description_generator()
+                    except Exception:
+                        generator = AudioDescriptionGenerator()
                     result = await generator.transcribe_ad_track(
                         video_id,
                         ad_audio_path,
@@ -1365,7 +1368,10 @@ async def get_descriptions(
 
     # 4. PROVIDER GENERATION — Use AI providers (expensive)
     try:
-        generator = AudioDescriptionGenerator()
+        try:
+            generator = get_factory().get_audio_description_generator()
+        except Exception:
+            generator = AudioDescriptionGenerator()
         result = await generator.generate(
             video_id,
             force=regenerate,
