@@ -160,6 +160,10 @@ class ProvidersConfig:
     vision_fallbacks: list[str] = field(default_factory=lambda: ["claude-code"])
     reasoning_fallbacks: list[str] = field(default_factory=lambda: ["claude-code"])
 
+    # Parallel fallback: try providers concurrently, return first success.
+    # Keyed by capability name (transcription, vision, reasoning, embedding).
+    parallel_fallback: dict[str, bool] = field(default_factory=dict)
+
     def get_provider_config(self, name: str) -> ProviderConfig:
         """Get config for a specific provider, creating default if needed.
 
@@ -588,6 +592,13 @@ def load_providers_config(config_dict: dict | None = None) -> ProvidersConfig:
             config.vision_fallbacks = [str(x) for x in fallbacks["vision"]]
         if "reasoning" in fallbacks and isinstance(fallbacks["reasoning"], list):
             config.reasoning_fallbacks = [str(x) for x in fallbacks["reasoning"]]
+
+    # Load parallel_fallback settings
+    parallel = providers_section.get("parallel_fallback", {})
+    if isinstance(parallel, dict):
+        for key, value in parallel.items():
+            if isinstance(value, bool):
+                config.parallel_fallback[str(key)] = value
 
     # Apply legacy env var fallbacks
     _apply_legacy_env_vars(config)

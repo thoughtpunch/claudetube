@@ -436,6 +436,28 @@ class ProviderRouter:
             )
         return provider
 
+    def _is_parallel_fallback(self, capability: Capability) -> bool:
+        """Check if parallel fallback is enabled for a capability.
+
+        Args:
+            capability: The capability to check.
+
+        Returns:
+            True if parallel fallback is configured for this capability.
+        """
+        # Map capability to config key names
+        cap_names: dict[Capability, list[str]] = {
+            Capability.TRANSCRIBE: ["transcription"],
+            Capability.VISION: ["vision"],
+            Capability.VIDEO: ["video"],
+            Capability.REASON: ["reasoning"],
+            Capability.EMBED: ["embedding"],
+        }
+        for name in cap_names.get(capability, []):
+            if self._config.parallel_fallback.get(name, False):
+                return True
+        return False
+
     async def call_with_fallback(
         self,
         capability: Capability,
@@ -449,6 +471,10 @@ class ProviderRouter:
         On failure (rate limits, API errors, import errors), retries with
         exponential backoff for 429 errors, then falls back to the next
         provider in the chain.
+
+        When ``parallel_fallback`` is enabled for the capability, all
+        providers in the chain are called concurrently and the first
+        successful result is returned. Remaining tasks are cancelled.
 
         Args:
             capability: The capability needed for this call.
@@ -476,6 +502,13 @@ class ProviderRouter:
         if not providers_to_try:
             raise NoProviderError(capability)
 
+        # Parallel mode: call all providers concurrently, return first success
+        if self._is_parallel_fallback(capability):
+            return await self._call_parallel(
+                capability, method, providers_to_try, *args, **kwargs
+            )
+
+        # Sequential mode (default)
         last_error: Exception | None = None
 
         for provider_name, provider in providers_to_try:
@@ -526,6 +559,121 @@ class ProviderRouter:
             capability,
             f"All providers failed for {capability.name}.{method}. "
             f"Last error: {last_error}",
+        )
+
+    async def _call_parallel(
+        self,
+        capability: Capability,
+        method: str,
+        providers: list[tuple[str, Provider]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Call multiple providers concurrently, return first successful result.
+
+        Launches all provider calls as concurrent tasks. When the first one
+        succeeds, its result is returned and all remaining tasks are cancelled.
+
+        Args:
+            capability: The capability being invoked.
+            method: Method name to call on each provider.
+            providers: List of (name, provider) tuples.
+            *args: Positional arguments for the method.
+            **kwargs: Keyword arguments for the method.
+
+        Returns:
+            Result from the first successful provider.
+
+        Raises:
+            NoProviderError: If all providers fail.
+        """
+        # Filter to providers that have the method
+        callable_providers = []
+        for name, provider in providers:
+            fn = getattr(provider, method, None)
+            if fn is not None:
+                callable_providers.append((name, fn))
+            else:
+                logger.warning(
+                    "Provider '%s' does not have method '%s'", name, method
+                )
+
+        if not callable_providers:
+            raise NoProviderError(capability)
+
+        logger.info(
+            "Parallel fallback: calling %d providers for %s.%s",
+            len(callable_providers),
+            capability.name,
+            method,
+        )
+
+        async def _try_provider(
+            name: str, fn: Any
+        ) -> tuple[str, Any]:
+            """Call a single provider and return (name, result)."""
+            logger.info("Parallel: calling %s.%s", name, method)
+            result = await fn(*args, **kwargs)
+            return name, result
+
+        # Create tasks for all providers
+        tasks = [
+            asyncio.create_task(
+                _try_provider(name, fn), name=f"parallel-{name}"
+            )
+            for name, fn in callable_providers
+        ]
+
+        # Wait for first success, collect errors
+        errors: list[tuple[str, Exception]] = []
+        try:
+            while tasks:
+                done, tasks_set = await asyncio.wait(
+                    tasks, return_when=asyncio.FIRST_COMPLETED
+                )
+                tasks = list(tasks_set)
+
+                for task in done:
+                    exc = task.exception()
+                    if exc is not None:
+                        # Extract provider name from task name
+                        provider_name = (
+                            task.get_name().removeprefix("parallel-")
+                        )
+                        logger.warning(
+                            "Parallel: provider '%s' failed: %s",
+                            provider_name,
+                            exc,
+                        )
+                        errors.append((provider_name, exc))
+                        continue
+
+                    # Success! Cancel remaining tasks and return
+                    winner_name, result = task.result()
+                    logger.info(
+                        "Parallel: '%s' succeeded first for %s.%s",
+                        winner_name,
+                        capability.name,
+                        method,
+                    )
+                    for remaining in tasks:
+                        remaining.cancel()
+                    return result
+        finally:
+            # Ensure all tasks are cleaned up
+            for task in tasks:
+                task.cancel()
+            # Suppress CancelledError from cancelled tasks
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        # All providers failed
+        last_name, last_error = errors[-1] if errors else ("unknown", None)
+        raise NoProviderError(
+            capability,
+            f"All {len(callable_providers)} parallel providers failed for "
+            f"{capability.name}.{method}. Last error from '{last_name}': "
+            f"{last_error}",
         )
 
     def _build_provider_list(

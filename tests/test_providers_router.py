@@ -13,6 +13,7 @@ Verifies that:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1361,6 +1362,236 @@ class TestCostBasedRouting:
         """Default cost_preference should be 'cost'."""
         config = ProvidersConfig()
         assert config.cost_preference == "cost"
+
+
+# =============================================================================
+# Parallel fallback tests
+# =============================================================================
+
+
+class TestParallelFallback:
+    """Tests for parallel provider calls."""
+
+    @pytest.mark.asyncio
+    async def test_parallel_returns_first_success(self):
+        """Parallel mode returns the first successful result."""
+        mock_slow = _make_mock_provider(
+            "anthropic",
+            frozenset({Capability.VISION}),
+        )
+        mock_fast = _make_mock_provider(
+            "openai",
+            frozenset({Capability.VISION}),
+        )
+
+        async def _slow_analyze(*args, **kwargs):
+            await asyncio.sleep(10)
+            return "slow result"
+
+        mock_slow.analyze_images = _slow_analyze
+        mock_fast.analyze_images = AsyncMock(return_value="fast result")
+
+        config = _make_config(
+            vision_provider="anthropic",
+            vision_fallbacks=["openai"],
+            cost_preference="quality",
+        )
+        config.parallel_fallback["vision"] = True
+        router = ProviderRouter(config=config)
+
+        def _mock_get(name, **kwargs):
+            if name == "anthropic":
+                return mock_slow
+            if name == "openai":
+                return mock_fast
+            raise ImportError(f"{name} not installed")
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            side_effect=_mock_get,
+        ):
+            result = await router.call_with_fallback(
+                Capability.VISION,
+                "analyze_images",
+                ["img.jpg"],
+                prompt="describe",
+            )
+
+        assert result == "fast result"
+
+    @pytest.mark.asyncio
+    async def test_parallel_all_fail_raises(self):
+        """Parallel mode raises NoProviderError when all providers fail."""
+        mock_p1 = _make_mock_provider(
+            "anthropic",
+            frozenset({Capability.VISION}),
+        )
+        mock_p2 = _make_mock_provider(
+            "openai",
+            frozenset({Capability.VISION}),
+        )
+
+        mock_p1.analyze_images = AsyncMock(
+            side_effect=RuntimeError("p1 error")
+        )
+        mock_p2.analyze_images = AsyncMock(
+            side_effect=RuntimeError("p2 error")
+        )
+
+        config = _make_config(
+            vision_provider="anthropic",
+            vision_fallbacks=["openai"],
+        )
+        config.parallel_fallback["vision"] = True
+        router = ProviderRouter(config=config)
+
+        def _mock_get(name, **kwargs):
+            if name == "anthropic":
+                return mock_p1
+            if name == "openai":
+                return mock_p2
+            raise ImportError(f"{name} not installed")
+
+        with (
+            patch(
+                "claudetube.providers.registry.get_provider",
+                side_effect=_mock_get,
+            ),
+            pytest.raises(NoProviderError) as exc_info,
+        ):
+            await router.call_with_fallback(
+                Capability.VISION,
+                "analyze_images",
+                ["img.jpg"],
+                prompt="describe",
+            )
+
+        assert "parallel" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_parallel_not_used_when_not_configured(self):
+        """Sequential fallback used when parallel_fallback not enabled."""
+        mock_primary = _make_mock_provider(
+            "anthropic",
+            frozenset({Capability.VISION}),
+        )
+        mock_primary.analyze_images = AsyncMock(return_value="primary result")
+
+        config = _make_config(
+            vision_provider="anthropic",
+            vision_fallbacks=["openai"],
+        )
+        # parallel_fallback NOT set for vision
+        router = ProviderRouter(config=config)
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            return_value=mock_primary,
+        ):
+            result = await router.call_with_fallback(
+                Capability.VISION,
+                "analyze_images",
+                ["img.jpg"],
+                prompt="describe",
+            )
+
+        assert result == "primary result"
+        mock_primary.analyze_images.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_parallel_cancels_remaining_on_success(self):
+        """Parallel mode cancels remaining tasks after first success."""
+        mock_fast = _make_mock_provider(
+            "openai",
+            frozenset({Capability.VISION}),
+        )
+        mock_fast.analyze_images = AsyncMock(return_value="fast result")
+
+        was_cancelled = False
+
+        async def _slow_analyze(*a, **kw):
+            nonlocal was_cancelled
+            try:
+                await asyncio.sleep(100)
+                return "slow result"
+            except asyncio.CancelledError:
+                was_cancelled = True
+                raise
+
+        mock_slow = _make_mock_provider(
+            "anthropic",
+            frozenset({Capability.VISION}),
+        )
+        mock_slow.analyze_images = _slow_analyze
+
+        config = _make_config(
+            vision_provider="anthropic",
+            vision_fallbacks=["openai"],
+            cost_preference="quality",
+        )
+        config.parallel_fallback["vision"] = True
+        router = ProviderRouter(config=config)
+
+        def _mock_get(name, **kwargs):
+            if name == "anthropic":
+                return mock_slow
+            if name == "openai":
+                return mock_fast
+            raise ImportError(f"{name} not installed")
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            side_effect=_mock_get,
+        ):
+            result = await router.call_with_fallback(
+                Capability.VISION,
+                "analyze_images",
+                ["img.jpg"],
+                prompt="describe",
+            )
+
+        assert result == "fast result"
+        assert was_cancelled
+
+    def test_is_parallel_fallback_checks_config(self):
+        """_is_parallel_fallback reads from config correctly."""
+        config = _make_config()
+        config.parallel_fallback["vision"] = True
+        config.parallel_fallback["reasoning"] = False
+        router = ProviderRouter(config=config)
+
+        assert router._is_parallel_fallback(Capability.VISION) is True
+        assert router._is_parallel_fallback(Capability.REASON) is False
+        assert router._is_parallel_fallback(Capability.TRANSCRIBE) is False
+
+    @pytest.mark.asyncio
+    async def test_parallel_single_provider_works(self):
+        """Parallel mode works with a single provider."""
+        mock_p = _make_mock_provider(
+            "anthropic",
+            frozenset({Capability.VISION}),
+        )
+        mock_p.analyze_images = AsyncMock(return_value="only result")
+
+        config = _make_config(
+            vision_provider="anthropic",
+            vision_fallbacks=[],
+        )
+        config.parallel_fallback["vision"] = True
+        router = ProviderRouter(config=config)
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            return_value=mock_p,
+        ):
+            result = await router.call_with_fallback(
+                Capability.VISION,
+                "analyze_images",
+                ["img.jpg"],
+                prompt="describe",
+            )
+
+        assert result == "only result"
 
 
 # =============================================================================
