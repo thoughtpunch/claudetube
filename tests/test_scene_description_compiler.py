@@ -6,9 +6,11 @@ from claudetube.cache.manager import CacheManager
 from claudetube.cache.scenes import SceneBoundary, ScenesData
 from claudetube.models.state import VideoState
 from claudetube.operations.audio_description import (
+    SUPPORTED_AD_LANGUAGES,
     _compile_vtt,
     _format_description,
     _format_vtt_timestamp,
+    _resolve_ad_language,
     compile_scene_descriptions,
     get_scene_descriptions,
 )
@@ -277,6 +279,59 @@ class TestCompileVtt:
         # Should still produce output from transcript fallback
         assert len(txt_lines) == 1
 
+    def test_language_parameter_in_header(self, tmp_path):
+        """Language parameter should appear in VTT header."""
+        scenes = [
+            SceneBoundary(
+                scene_id=0,
+                start_time=0.0,
+                end_time=30.0,
+                transcript_text="Hola mundo",
+            ),
+        ]
+        scenes_data = self._make_scenes_data(scenes)
+
+        visual = VisualDescription(
+            scene_id=0,
+            description="Presentador en escritorio.",
+            people=[],
+            objects=[],
+            text_on_screen=[],
+            actions=[],
+        )
+        self._write_visual_json(tmp_path, 0, visual)
+
+        vtt_lines, _ = _compile_vtt(scenes_data, tmp_path, language="es")
+
+        assert vtt_lines[0] == "WEBVTT"
+        assert vtt_lines[1] == "Kind: descriptions"
+        assert vtt_lines[2] == "Language: es"
+
+    def test_default_language_is_english(self, tmp_path):
+        """Default language should be 'en' when not specified."""
+        scenes = [
+            SceneBoundary(
+                scene_id=0,
+                start_time=0.0,
+                end_time=30.0,
+                transcript_text="Hello world",
+            ),
+        ]
+        scenes_data = self._make_scenes_data(scenes)
+
+        visual = VisualDescription(
+            scene_id=0,
+            description="Speaker at desk.",
+            people=[],
+            objects=[],
+            text_on_screen=[],
+            actions=[],
+        )
+        self._write_visual_json(tmp_path, 0, visual)
+
+        vtt_lines, _ = _compile_vtt(scenes_data, tmp_path)
+        assert vtt_lines[2] == "Language: en"
+
     def test_chapter_titles_included(self, tmp_path):
         scenes = [
             SceneBoundary(
@@ -466,6 +521,145 @@ class TestGetSceneDescriptions:
         assert "txt" in result
         assert "WEBVTT" in result["vtt"]
         assert "[00:00]" in result["txt"]
+
+
+class TestResolveAdLanguage:
+    """Tests for _resolve_ad_language helper."""
+
+    def test_none_returns_english(self):
+        assert _resolve_ad_language(None) == "en"
+
+    def test_empty_string_returns_english(self):
+        assert _resolve_ad_language("") == "en"
+
+    def test_english(self):
+        assert _resolve_ad_language("en") == "en"
+
+    def test_spanish(self):
+        assert _resolve_ad_language("es") == "es"
+
+    def test_french(self):
+        assert _resolve_ad_language("fr") == "fr"
+
+    def test_german(self):
+        assert _resolve_ad_language("de") == "de"
+
+    def test_japanese(self):
+        assert _resolve_ad_language("ja") == "ja"
+
+    def test_chinese(self):
+        assert _resolve_ad_language("zh") == "zh"
+
+    def test_portuguese(self):
+        assert _resolve_ad_language("pt") == "pt"
+
+    def test_regional_variant_normalized(self):
+        """pt-BR should resolve to pt."""
+        assert _resolve_ad_language("pt-BR") == "pt"
+
+    def test_chinese_variant_normalized(self):
+        """zh-Hans should resolve to zh."""
+        assert _resolve_ad_language("zh-Hans") == "zh"
+
+    def test_uppercase_normalized(self):
+        assert _resolve_ad_language("ES") == "es"
+
+    def test_unsupported_language_falls_back(self):
+        assert _resolve_ad_language("ko") == "en"
+
+    def test_supported_languages_set(self):
+        assert {"en", "es", "fr", "de", "ja", "zh", "pt"} == SUPPORTED_AD_LANGUAGES
+
+
+class TestCompileSceneDescriptionsLanguage:
+    """Tests for language-aware compilation in compile_scene_descriptions."""
+
+    def _setup_video_with_language(self, tmp_path, video_id="test123", language=None):
+        """Set up a cached video with language metadata."""
+        cache = CacheManager(tmp_path)
+        cache_dir = cache.ensure_cache_dir(video_id)
+
+        state = VideoState(
+            video_id=video_id,
+            scenes_processed=True,
+            scene_count=1,
+            language=language,
+        )
+        cache.save_state(video_id, state)
+
+        scenes_data = ScenesData(
+            video_id=video_id,
+            method="transcript",
+            scenes=[
+                SceneBoundary(
+                    scene_id=0,
+                    start_time=0.0,
+                    end_time=30.0,
+                    transcript_text="Content",
+                ),
+            ],
+        )
+        scenes_dir = cache_dir / "scenes"
+        scenes_dir.mkdir(parents=True, exist_ok=True)
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(scenes_data.to_dict(), indent=2)
+        )
+
+        scene_dir = scenes_dir / "scene_000"
+        scene_dir.mkdir(parents=True, exist_ok=True)
+        visual = VisualDescription(
+            scene_id=0,
+            description="Visual content.",
+            people=[],
+            objects=[],
+            text_on_screen=[],
+            actions=[],
+        )
+        (scene_dir / "visual.json").write_text(
+            json.dumps(visual.to_dict(), indent=2)
+        )
+
+        return cache, cache_dir
+
+    def test_spanish_language_in_vtt(self, tmp_path):
+        cache, cache_dir = self._setup_video_with_language(
+            tmp_path, language="es"
+        )
+        result = compile_scene_descriptions("test123", output_base=tmp_path)
+
+        assert result["status"] == "compiled"
+        vtt_content = (cache_dir / "audio.ad.vtt").read_text()
+        assert "Language: es" in vtt_content
+
+    def test_none_language_defaults_to_english(self, tmp_path):
+        cache, cache_dir = self._setup_video_with_language(
+            tmp_path, language=None
+        )
+        result = compile_scene_descriptions("test123", output_base=tmp_path)
+
+        assert result["status"] == "compiled"
+        vtt_content = (cache_dir / "audio.ad.vtt").read_text()
+        assert "Language: en" in vtt_content
+
+    def test_unsupported_language_defaults_to_english(self, tmp_path):
+        cache, cache_dir = self._setup_video_with_language(
+            tmp_path, language="ko"
+        )
+        result = compile_scene_descriptions("test123", output_base=tmp_path)
+
+        assert result["status"] == "compiled"
+        vtt_content = (cache_dir / "audio.ad.vtt").read_text()
+        assert "Language: en" in vtt_content
+
+    def test_regional_variant_normalized_in_vtt(self, tmp_path):
+        cache, cache_dir = self._setup_video_with_language(
+            tmp_path, language="pt-BR"
+        )
+        result = compile_scene_descriptions("test123", output_base=tmp_path)
+
+        assert result["status"] == "compiled"
+        vtt_content = (cache_dir / "audio.ad.vtt").read_text()
+        assert "Language: pt" in vtt_content
 
 
 class TestModuleExports:

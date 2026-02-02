@@ -34,7 +34,31 @@ if TYPE_CHECKING:
 
     from claudetube.providers.base import Provider
 
+# Languages supported for AD generation
+SUPPORTED_AD_LANGUAGES = {"en", "es", "fr", "de", "ja", "zh", "pt"}
+
 logger = logging.getLogger(__name__)
+
+
+def _resolve_ad_language(state_language: str | None) -> str:
+    """Resolve the language to use for audio descriptions.
+
+    Uses the video's detected language if it's in the supported set,
+    otherwise falls back to 'en'.
+
+    Args:
+        state_language: Language code from VideoState (may be None)
+
+    Returns:
+        A supported language code string.
+    """
+    if not state_language:
+        return "en"
+    # Normalize: take the base language (e.g., "pt-BR" -> "pt", "zh-Hans" -> "zh")
+    base = state_language.split("-")[0].lower()
+    if base in SUPPORTED_AD_LANGUAGES:
+        return base
+    return "en"
 
 
 def _format_vtt_timestamp(seconds: float) -> str:
@@ -112,12 +136,14 @@ def _format_description(
 def _compile_vtt(
     scenes_data: ScenesData,
     cache_dir: Path,
+    language: str = "en",
 ) -> tuple[list[str], list[str]]:
     """Compile scene data into VTT lines and plain text lines.
 
     Args:
         scenes_data: Loaded scenes data with boundaries
         cache_dir: Video cache directory
+        language: Language code for VTT header (default: "en")
 
     Returns:
         Tuple of (vtt_lines, txt_lines)
@@ -125,7 +151,7 @@ def _compile_vtt(
     vtt_lines = [
         "WEBVTT",
         "Kind: descriptions",
-        "Language: en",
+        f"Language: {language}",
         "",
     ]
     txt_lines = []
@@ -221,11 +247,17 @@ def compile_scene_descriptions(
     if not scenes_data.scenes:
         return {"error": "No scene boundaries found.", "video_id": video_id}
 
+    # Resolve language from video state
+    state = cache.get_state(video_id)
+    language = _resolve_ad_language(state.language if state else None)
+
     # 2. COMPILE - Format existing data into VTT
     log_timed(
-        f"Compiling audio descriptions for {len(scenes_data.scenes)} scenes...", t0
+        f"Compiling audio descriptions for {len(scenes_data.scenes)} scenes "
+        f"(language={language})...",
+        t0,
     )
-    vtt_lines, txt_lines = _compile_vtt(scenes_data, cache_dir)
+    vtt_lines, txt_lines = _compile_vtt(scenes_data, cache_dir, language=language)
 
     if not txt_lines:
         return {
@@ -239,8 +271,7 @@ def compile_scene_descriptions(
     vtt_path.write_text("\n".join(vtt_lines))
     txt_path.write_text("\n".join(txt_lines))
 
-    # Update state
-    state = cache.get_state(video_id)
+    # Update state (reuse state loaded earlier for language detection)
     if state:
         state.ad_complete = True
         state.ad_source = "scene_compilation"
@@ -480,6 +511,10 @@ class AudioDescriptionGenerator:
                 "video_id": video_id,
             }
 
+        # Resolve language from video state
+        state = cache.get_state(video_id)
+        language = _resolve_ad_language(state.language if state else None)
+
         # Determine generation strategy
         video_prov = self._get_video_provider()
         vision_prov = self._get_vision_provider()
@@ -493,6 +528,7 @@ class AudioDescriptionGenerator:
                 cache_dir,
                 video_prov,
                 t0,
+                language=language,
             )
         elif vision_prov is not None:
             log_timed(f"Using vision provider: {vision_prov.info.name}", t0)
@@ -503,6 +539,7 @@ class AudioDescriptionGenerator:
                 cache_dir,
                 vision_prov,
                 t0,
+                language=language,
             )
         else:
             log_timed("No AI providers available; falling back to compile-only", t0)
@@ -520,6 +557,7 @@ class AudioDescriptionGenerator:
         cache_dir: Path,
         provider: Provider,
         t0: float,
+        language: str = "en",
     ) -> dict:
         """Generate AD using native video analysis (e.g., Gemini).
 
@@ -553,6 +591,7 @@ class AudioDescriptionGenerator:
                     cache_dir,
                     vision_prov,
                     t0,
+                    language=language,
                 )
             return compile_scene_descriptions(video_id, force=True)
 
@@ -612,6 +651,7 @@ class AudioDescriptionGenerator:
             source="native_video",
             provider_name=provider.info.name,
             t0=t0,
+            language=language,
         )
 
     async def _generate_from_frames(
@@ -622,6 +662,7 @@ class AudioDescriptionGenerator:
         cache_dir: Path,
         provider: Provider,
         t0: float,
+        language: str = "en",
     ) -> dict:
         """Generate AD using frame-by-frame vision analysis.
 
@@ -700,6 +741,7 @@ class AudioDescriptionGenerator:
             source="frame_vision",
             provider_name=provider.info.name,
             t0=t0,
+            language=language,
         )
 
     async def transcribe_ad_track(
@@ -747,6 +789,10 @@ class AudioDescriptionGenerator:
                 "video_id": video_id,
             }
 
+        # Resolve language from video state
+        state = cache.get_state(video_id)
+        language = _resolve_ad_language(state.language if state else None)
+
         log_timed(f"Transcribing AD track with {provider.info.name}...", t0)
 
         try:
@@ -759,7 +805,7 @@ class AudioDescriptionGenerator:
         vtt_lines = [
             "WEBVTT",
             "Kind: descriptions",
-            "Language: en",
+            f"Language: {language}",
             "",
         ]
         txt_lines = []
@@ -780,8 +826,7 @@ class AudioDescriptionGenerator:
         vtt_path.write_text("\n".join(vtt_lines))
         txt_path.write_text("\n".join(txt_lines))
 
-        # Update state
-        state = cache.get_state(video_id)
+        # Update state (reuse state loaded earlier for language detection)
         if state:
             state.ad_complete = True
             state.ad_source = "source_track"
@@ -916,6 +961,7 @@ class AudioDescriptionGenerator:
         source: str,
         provider_name: str,
         t0: float,
+        language: str = "en",
     ) -> dict:
         """Compile generated descriptions into VTT/TXT and update state.
 
@@ -923,7 +969,7 @@ class AudioDescriptionGenerator:
         produce the final output files.
         """
         # Compile the VTT from all descriptions (generated + already-cached)
-        vtt_lines, txt_lines = _compile_vtt(scenes_data, cache_dir)
+        vtt_lines, txt_lines = _compile_vtt(scenes_data, cache_dir, language=language)
 
         if not txt_lines:
             return {
