@@ -35,6 +35,7 @@ from claudetube.operations.extract_frames import (
 from claudetube.operations.factory import get_factory
 from claudetube.operations.processor import process_local_video, process_video
 from claudetube.operations.transcribe import transcribe_video as _transcribe_video
+from claudetube.operations.watch import watch_video
 from claudetube.parsing.utils import extract_video_id
 from claudetube.providers.capabilities import PROVIDER_INFO, Capability
 from claudetube.providers.registry import list_all, list_available
@@ -1531,6 +1532,42 @@ async def get_knowledge_graph_stats_tool() -> str:
     ]
 
     return json.dumps(stats, indent=2)
+
+
+@mcp.tool()
+async def watch_video_tool(
+    video_id: str,
+    question: str,
+    max_iterations: int = 15,
+) -> str:
+    """Actively watch and reason about a video to answer a question.
+
+    Uses an intelligent watching strategy that:
+    1. Checks cached Q&A for previously answered questions
+    2. Identifies most relevant scenes via attention modeling
+    3. Examines them progressively (quick first, deep if needed)
+    4. Builds hypotheses and gathers evidence
+    5. Verifies comprehension before answering
+
+    This is the most thorough analysis mode - use when you need
+    detailed, evidence-backed answers about video content.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        question: Natural language question about the video.
+        max_iterations: Maximum scene examinations (default: 15).
+    """
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        watch_video,
+        video_id,
+        question,
+        max_iterations=max_iterations,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
 
 
 @mcp.tool()

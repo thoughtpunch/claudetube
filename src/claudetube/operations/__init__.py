@@ -73,6 +73,11 @@ from claudetube.operations.visual_transcript import (
     generate_visual_transcript,
     get_visual_transcript,
 )
+from claudetube.operations.watch import (
+    examine_scene_deep,
+    examine_scene_quick,
+    watch_video,
+)
 
 __all__ = [
     "process_video",
@@ -121,4 +126,7 @@ __all__ = [
     "OperationFactory",
     "get_factory",
     "clear_factory_cache",
+    "watch_video",
+    "examine_scene_quick",
+    "examine_scene_deep",
 ]
