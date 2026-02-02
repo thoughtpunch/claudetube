@@ -31,6 +31,12 @@ from claudetube.operations.download import (
     fetch_metadata,
     fetch_subtitles,
 )
+from claudetube.operations.entity_extraction import (
+    EntityExtractionOperation,
+    EntityExtractionSceneResult,
+    extract_entities_for_video,
+    get_extracted_entities,
+)
 from claudetube.operations.extract_frames import (
     extract_frames,
     extract_frames_local,
@@ -101,4 +107,8 @@ __all__ = [
     "compile_scene_descriptions",
     "get_scene_descriptions",
     "AudioDescriptionGenerator",
+    "EntityExtractionOperation",
+    "EntityExtractionSceneResult",
+    "extract_entities_for_video",
+    "get_extracted_entities",
 ]

@@ -189,6 +189,19 @@ def get_technical_json_path(cache_dir: Path, scene_id: int) -> Path:
     return get_scene_dir(cache_dir, scene_id) / "technical.json"
 
 
+def get_entities_json_path(cache_dir: Path, scene_id: int) -> Path:
+    """Get path to entities.json for a scene.
+
+    Args:
+        cache_dir: Video cache directory
+        scene_id: Scene index (0-based)
+
+    Returns:
+        Path to scene_{NNN}/entities.json
+    """
+    return get_scene_dir(cache_dir, scene_id) / "entities.json"
+
+
 def has_scenes(cache_dir: Path) -> bool:
     """Check if scenes have been processed for this video.
 
