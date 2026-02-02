@@ -11,7 +11,6 @@ Verifies:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -65,7 +64,7 @@ class TestListProvidersTool:
         data = json.loads(result)
 
         # Each capability should list providers with availability
-        for cap_name, cap_data in data["capabilities"].items():
+        for _cap_name, cap_data in data["capabilities"].items():
             assert "providers" in cap_data
             for p in cap_data["providers"]:
                 assert "name" in p
