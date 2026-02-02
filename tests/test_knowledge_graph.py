@@ -316,11 +316,34 @@ class TestGetVideoContext:
                 "inferred_type": "course",
             },
             "common_topics": [{"keyword": "python", "score": 2.5}],
-            "shared_entities": [{"text": "function", "type": "concept", "video_count": 3}],
+            "shared_entities": [
+                {"text": "function", "type": "concept", "video_count": 3}
+            ],
             "videos": [
-                {"video_id": "v1", "position": 0, "title": "First", "prerequisites": [], "next": "v2", "previous": None},
-                {"video_id": "v2", "position": 1, "title": "Second", "prerequisites": ["v1"], "next": "v3", "previous": "v1"},
-                {"video_id": "v3", "position": 2, "title": "Third", "prerequisites": ["v1", "v2"], "next": None, "previous": "v2"},
+                {
+                    "video_id": "v1",
+                    "position": 0,
+                    "title": "First",
+                    "prerequisites": [],
+                    "next": "v2",
+                    "previous": None,
+                },
+                {
+                    "video_id": "v2",
+                    "position": 1,
+                    "title": "Second",
+                    "prerequisites": ["v1"],
+                    "next": "v3",
+                    "previous": "v1",
+                },
+                {
+                    "video_id": "v3",
+                    "position": 2,
+                    "title": "Third",
+                    "prerequisites": ["v1", "v2"],
+                    "next": None,
+                    "previous": "v2",
+                },
             ],
             "cached_videos": ["v1"],
         }

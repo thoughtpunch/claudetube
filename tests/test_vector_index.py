@@ -314,6 +314,7 @@ class TestSearchScenesByText:
 
         # Mock missing sentence_transformers
         import sys
+
         original_modules = sys.modules.copy()
         sys.modules["sentence_transformers"] = None
 
@@ -389,7 +390,9 @@ class TestSearchScenesByTextProvider:
         # Check that no function named _embed_text_voyage exists
         for node in ast.walk(source):
             if isinstance(node, ast.FunctionDef) and node.name == "_embed_text_voyage":
-                pytest.fail("_embed_text_voyage still exists - should use provider pattern")
+                pytest.fail(
+                    "_embed_text_voyage still exists - should use provider pattern"
+                )
 
     def test_no_direct_sentence_transformers_import(self):
         """search_scenes_by_text should not import sentence_transformers directly."""
@@ -403,4 +406,6 @@ class TestSearchScenesByTextProvider:
         # Check that no function named _embed_text_local exists
         for node in ast.walk(source):
             if isinstance(node, ast.FunctionDef) and node.name == "_embed_text_local":
-                pytest.fail("_embed_text_local still exists - should use provider pattern")
+                pytest.fail(
+                    "_embed_text_local still exists - should use provider pattern"
+                )

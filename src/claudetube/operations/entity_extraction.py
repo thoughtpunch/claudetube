@@ -371,9 +371,7 @@ class EntityExtractionOperation:
         """
         # Run visual and semantic extraction concurrently
         tasks = []
-        has_video = bool(
-            self.video_analyzer and video_path and video_path.exists()
-        )
+        has_video = bool(self.video_analyzer and video_path and video_path.exists())
         has_visual = bool(self.vision and keyframes)
         has_reasoner = bool(self.reasoner and scene.transcript_text)
 
@@ -410,13 +408,17 @@ class EntityExtractionOperation:
             if isinstance(results[idx], dict):
                 visual_data = results[idx]
             elif isinstance(results[idx], Exception):
-                logger.warning(f"Scene {scene_id}: visual extraction failed: {results[idx]}")
+                logger.warning(
+                    f"Scene {scene_id}: visual extraction failed: {results[idx]}"
+                )
             idx += 1
         if has_reasoner:
             if isinstance(results[idx], list):
                 concepts = results[idx]
             elif isinstance(results[idx], Exception):
-                logger.warning(f"Scene {scene_id}: concept extraction failed: {results[idx]}")
+                logger.warning(
+                    f"Scene {scene_id}: concept extraction failed: {results[idx]}"
+                )
 
         # If VideoAnalyzer failed, fall back to VisionAnalyzer
         if video_failed and has_visual:
@@ -427,7 +429,12 @@ class EntityExtractionOperation:
 
         # Determine model name
         model_name = None
-        if use_video and not video_failed and self.video_analyzer and hasattr(self.video_analyzer, "info"):
+        if (
+            use_video
+            and not video_failed
+            and self.video_analyzer
+            and hasattr(self.video_analyzer, "info")
+        ):
             model_name = self.video_analyzer.info.name
         elif self.vision and hasattr(self.vision, "info"):
             model_name = self.vision.info.name
@@ -501,9 +508,9 @@ def _should_skip_entity_extraction(scene: SceneBoundary) -> bool:
     return duration < 2.0 and not has_transcript
 
 
-def _get_default_providers() -> (
-    tuple[VideoAnalyzer | None, VisionAnalyzer | None, Reasoner | None]
-):
+def _get_default_providers() -> tuple[
+    VideoAnalyzer | None, VisionAnalyzer | None, Reasoner | None
+]:
     """Get default video, vision, and reasoner providers.
 
     Tries google first (for VideoAnalyzer), then anthropic, then claude-code.
@@ -579,7 +586,10 @@ def extract_entities_for_video(
     cache_dir = cache.get_cache_dir(video_id)
 
     if not cache_dir.exists():
-        return {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+        return {
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        }
 
     # Load scenes data
     scenes_data = load_scenes_data(cache_dir)
@@ -627,13 +637,23 @@ def extract_entities_for_video(
         # Lazily create operation on first actual use
         if operation is None:
             try:
-                if video_analyzer is None and vision_analyzer is None and reasoner is None:
+                if (
+                    video_analyzer is None
+                    and vision_analyzer is None
+                    and reasoner is None
+                ):
                     video_analyzer, vision_analyzer, reasoner = _get_default_providers()
-                if video_analyzer is None and vision_analyzer is None and reasoner is None:
-                    errors.append({
-                        "scene_id": scene.scene_id,
-                        "error": "No AI provider available for entity extraction",
-                    })
+                if (
+                    video_analyzer is None
+                    and vision_analyzer is None
+                    and reasoner is None
+                ):
+                    errors.append(
+                        {
+                            "scene_id": scene.scene_id,
+                            "error": "No AI provider available for entity extraction",
+                        }
+                    )
                     continue
                 operation = EntityExtractionOperation(
                     video_analyzer=video_analyzer,

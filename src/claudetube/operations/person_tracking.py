@@ -138,7 +138,9 @@ class PersonTrack:
         return cls(
             person_id=data["person_id"],
             description=data.get("description", ""),
-            appearances=[PersonAppearance.from_dict(a) for a in data.get("appearances", [])],
+            appearances=[
+                PersonAppearance.from_dict(a) for a in data.get("appearances", [])
+            ],
         )
 
 
@@ -212,8 +214,7 @@ class PersonTrackingOperation:
             Formatted prompt string.
         """
         boundaries = ", ".join(
-            f"scene {s.scene_id}: {s.start_time:.1f}s-{s.end_time:.1f}s"
-            for s in scenes
+            f"scene {s.scene_id}: {s.start_time:.1f}s-{s.end_time:.1f}s" for s in scenes
         )
         return VIDEO_PERSON_TRACKING_PROMPT.format(scene_boundaries=boundaries)
 
@@ -354,7 +355,9 @@ class PersonTrackingOperation:
             try:
                 return await self._track_with_video(video_path, scenes)
             except Exception as e:
-                logger.warning(f"Video-level tracking failed, falling back to vision: {e}")
+                logger.warning(
+                    f"Video-level tracking failed, falling back to vision: {e}"
+                )
 
         # 2. Fall back to frame-by-frame vision analysis
         if self.vision:
@@ -388,21 +391,25 @@ class PersonTrackingOperation:
                 # Handle both dict and Pydantic model responses
                 if hasattr(app_data, "model_dump"):
                     app_data = app_data.model_dump()
-                appearances.append(PersonAppearance(
-                    scene_id=app_data.get("scene_id", 0),
-                    timestamp=app_data.get("timestamp", 0.0),
-                    action=app_data.get("action"),
-                    confidence=app_data.get("confidence", 1.0),
-                ))
+                appearances.append(
+                    PersonAppearance(
+                        scene_id=app_data.get("scene_id", 0),
+                        timestamp=app_data.get("timestamp", 0.0),
+                        action=app_data.get("action"),
+                        confidence=app_data.get("confidence", 1.0),
+                    )
+                )
 
             if hasattr(person_data, "model_dump"):
                 person_data = person_data.model_dump()
 
-            people.append(PersonTrack(
-                person_id=person_data.get("person_id", f"person_{len(people)}"),
-                description=person_data.get("description", ""),
-                appearances=appearances,
-            ))
+            people.append(
+                PersonTrack(
+                    person_id=person_data.get("person_id", f"person_{len(people)}"),
+                    description=person_data.get("description", ""),
+                    appearances=appearances,
+                )
+            )
 
         return PeopleTrackingData(
             video_id="",
@@ -563,7 +570,9 @@ def _track_with_face_recognition(
         import face_recognition
         import numpy as np
     except ImportError:
-        logger.error("face_recognition not installed. Run: pip install face_recognition")
+        logger.error(
+            "face_recognition not installed. Run: pip install face_recognition"
+        )
         return PeopleTrackingData(
             video_id=video_id,
             method="face_recognition",
@@ -594,7 +603,9 @@ def _track_with_face_recognition(
                 track = None
 
                 if known_encodings:
-                    distances = face_recognition.face_distance(known_encodings, encoding)
+                    distances = face_recognition.face_distance(
+                        known_encodings, encoding
+                    )
                     min_idx = int(np.argmin(distances))
 
                     if distances[min_idx] < tolerance:
@@ -618,7 +629,10 @@ def _track_with_face_recognition(
                 if visual_path.exists():
                     try:
                         visual_data = json.loads(visual_path.read_text())
-                        action = _extract_action_from_visual(visual_data, track.description) or "present"
+                        action = (
+                            _extract_action_from_visual(visual_data, track.description)
+                            or "present"
+                        )
                     except json.JSONDecodeError:
                         pass
 
@@ -627,7 +641,12 @@ def _track_with_face_recognition(
                         scene_id=scene.scene_id,
                         timestamp=scene_timestamp,
                         action=action,
-                        confidence=1.0 - (distances[min_idx] if known_encodings and distances[min_idx] < tolerance else 0),
+                        confidence=1.0
+                        - (
+                            distances[min_idx]
+                            if known_encodings and distances[min_idx] < tolerance
+                            else 0
+                        ),
                     )
                 )
 
@@ -733,14 +752,20 @@ def track_people(
     cache_dir = cache.get_cache_dir(video_id)
 
     if not cache_dir.exists():
-        return {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+        return {
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        }
 
     # 1. CACHE - Return instantly if already exists
     people_path = get_people_json_path(cache_dir)
     if not force and people_path.exists():
         try:
             data = json.loads(people_path.read_text())
-            log_timed(f"People tracking: loaded from cache ({data.get('people_count', 0)} people)", t0)
+            log_timed(
+                f"People tracking: loaded from cache ({data.get('people_count', 0)} people)",
+                t0,
+            )
             return data
         except json.JSONDecodeError:
             pass  # Re-generate if cached data is invalid
@@ -810,7 +835,9 @@ def track_people(
         state["people_tracking_complete"] = True
         state_file.write_text(json.dumps(state, indent=2))
 
-    log_timed(f"People tracking complete: {len(tracking_data.people)} people tracked", t0)
+    log_timed(
+        f"People tracking complete: {len(tracking_data.people)} people tracked", t0
+    )
 
     return result
 
@@ -838,7 +865,10 @@ def get_people_tracking(
 
     people_path = get_people_json_path(cache_dir)
     if not people_path.exists():
-        return {"error": "No people tracking data. Run track_people first.", "video_id": video_id}
+        return {
+            "error": "No people tracking data. Run track_people first.",
+            "video_id": video_id,
+        }
 
     try:
         data = json.loads(people_path.read_text())

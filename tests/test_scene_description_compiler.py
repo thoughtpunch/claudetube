@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from claudetube.cache.manager import CacheManager
 from claudetube.cache.scenes import SceneBoundary, ScenesData
 from claudetube.models.state import VideoState
@@ -82,7 +80,9 @@ class TestFormatDescription:
         assert "def main()" in result
 
     def test_without_visual_falls_back_to_transcript(self):
-        result = _format_description(None, "Hello everyone welcome to the tutorial.", None)
+        result = _format_description(
+            None, "Hello everyone welcome to the tutorial.", None
+        )
         assert "Speaker:" in result
         assert "Hello everyone" in result
 
@@ -126,7 +126,15 @@ class TestFormatDescription:
             description="Code shown.",
             people=[],
             objects=[],
-            text_on_screen=["line1", "line2", "line3", "line4", "line5", "line6", "line7"],
+            text_on_screen=[
+                "line1",
+                "line2",
+                "line3",
+                "line4",
+                "line5",
+                "line6",
+                "line7",
+            ],
             actions=[],
         )
         result = _format_description(visual, "", None)
@@ -148,21 +156,36 @@ class TestCompileVtt:
 
     def test_basic_compilation(self, tmp_path):
         scenes = [
-            SceneBoundary(scene_id=0, start_time=0.0, end_time=30.0, transcript_text="Hello world"),
-            SceneBoundary(scene_id=1, start_time=30.0, end_time=60.0, transcript_text="Next section"),
+            SceneBoundary(
+                scene_id=0, start_time=0.0, end_time=30.0, transcript_text="Hello world"
+            ),
+            SceneBoundary(
+                scene_id=1,
+                start_time=30.0,
+                end_time=60.0,
+                transcript_text="Next section",
+            ),
         ]
         scenes_data = self._make_scenes_data(scenes)
 
         # Write visual.json for scene 0
         visual = VisualDescription(
-            scene_id=0, description="Speaker at desk.", people=[], objects=[],
-            text_on_screen=[], actions=[],
+            scene_id=0,
+            description="Speaker at desk.",
+            people=[],
+            objects=[],
+            text_on_screen=[],
+            actions=[],
         )
         self._write_visual_json(tmp_path, 0, visual)
 
         visual2 = VisualDescription(
-            scene_id=1, description="Code editor shown.", people=[], objects=[],
-            text_on_screen=["def hello():"], actions=[],
+            scene_id=1,
+            description="Code editor shown.",
+            people=[],
+            objects=[],
+            text_on_screen=["def hello():"],
+            actions=[],
         )
         self._write_visual_json(tmp_path, 1, visual2)
 
@@ -182,7 +205,9 @@ class TestCompileVtt:
         """Scenes without visual.json should fall back to transcript."""
         scenes = [
             SceneBoundary(
-                scene_id=0, start_time=0.0, end_time=30.0,
+                scene_id=0,
+                start_time=0.0,
+                end_time=30.0,
                 transcript_text="Hello everyone, welcome to the tutorial on Python basics.",
             ),
         ]
@@ -196,7 +221,9 @@ class TestCompileVtt:
     def test_empty_scene_produces_no_cue(self, tmp_path):
         """Scene with no visual data and short transcript should be skipped."""
         scenes = [
-            SceneBoundary(scene_id=0, start_time=0.0, end_time=5.0, transcript_text="Hi."),
+            SceneBoundary(
+                scene_id=0, start_time=0.0, end_time=5.0, transcript_text="Hi."
+            ),
         ]
         scenes_data = self._make_scenes_data(scenes)
 
@@ -206,27 +233,35 @@ class TestCompileVtt:
 
     def test_vtt_timing_format(self, tmp_path):
         scenes = [
-            SceneBoundary(scene_id=0, start_time=65.5, end_time=130.0, transcript_text=""),
+            SceneBoundary(
+                scene_id=0, start_time=65.5, end_time=130.0, transcript_text=""
+            ),
         ]
         scenes_data = self._make_scenes_data(scenes)
 
         visual = VisualDescription(
-            scene_id=0, description="A diagram is shown.", people=[], objects=[],
-            text_on_screen=[], actions=[],
+            scene_id=0,
+            description="A diagram is shown.",
+            people=[],
+            objects=[],
+            text_on_screen=[],
+            actions=[],
         )
         self._write_visual_json(tmp_path, 0, visual)
 
         vtt_lines, _ = _compile_vtt(scenes_data, tmp_path)
 
         # Find the timing line
-        timing_line = [l for l in vtt_lines if "-->" in l][0]
+        timing_line = [line for line in vtt_lines if "-->" in line][0]
         assert timing_line == "00:01:05.500 --> 00:02:10.000"
 
     def test_invalid_visual_json_handled(self, tmp_path):
         """Invalid visual.json should not crash compilation."""
         scenes = [
             SceneBoundary(
-                scene_id=0, start_time=0.0, end_time=30.0,
+                scene_id=0,
+                start_time=0.0,
+                end_time=30.0,
                 transcript_text="Welcome to the introduction to machine learning concepts.",
             ),
         ]
@@ -245,15 +280,22 @@ class TestCompileVtt:
     def test_chapter_titles_included(self, tmp_path):
         scenes = [
             SceneBoundary(
-                scene_id=0, start_time=0.0, end_time=60.0,
-                title="Getting Started", transcript_text="",
+                scene_id=0,
+                start_time=0.0,
+                end_time=60.0,
+                title="Getting Started",
+                transcript_text="",
             ),
         ]
         scenes_data = self._make_scenes_data(scenes)
 
         visual = VisualDescription(
-            scene_id=0, description="Title card shown.", people=[], objects=[],
-            text_on_screen=[], actions=[],
+            scene_id=0,
+            description="Title card shown.",
+            people=[],
+            objects=[],
+            text_on_screen=[],
+            actions=[],
         )
         self._write_visual_json(tmp_path, 0, visual)
 
@@ -279,23 +321,41 @@ class TestCompileSceneDescriptions:
             video_id=video_id,
             method="transcript",
             scenes=[
-                SceneBoundary(scene_id=0, start_time=0.0, end_time=30.0, transcript_text="First scene"),
-                SceneBoundary(scene_id=1, start_time=30.0, end_time=60.0, transcript_text="Second scene"),
+                SceneBoundary(
+                    scene_id=0,
+                    start_time=0.0,
+                    end_time=30.0,
+                    transcript_text="First scene",
+                ),
+                SceneBoundary(
+                    scene_id=1,
+                    start_time=30.0,
+                    end_time=60.0,
+                    transcript_text="Second scene",
+                ),
             ],
         )
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir(parents=True, exist_ok=True)
-        (scenes_dir / "scenes.json").write_text(json.dumps(scenes_data.to_dict(), indent=2))
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(scenes_data.to_dict(), indent=2)
+        )
 
         # Create visual.json for both scenes
         for i in range(2):
             scene_dir = scenes_dir / f"scene_{i:03d}"
             scene_dir.mkdir(parents=True, exist_ok=True)
             visual = VisualDescription(
-                scene_id=i, description=f"Visual description for scene {i}.",
-                people=[], objects=[], text_on_screen=[], actions=[],
+                scene_id=i,
+                description=f"Visual description for scene {i}.",
+                people=[],
+                objects=[],
+                text_on_screen=[],
+                actions=[],
             )
-            (scene_dir / "visual.json").write_text(json.dumps(visual.to_dict(), indent=2))
+            (scene_dir / "visual.json").write_text(
+                json.dumps(visual.to_dict(), indent=2)
+            )
 
         return cache, cache_dir
 
@@ -354,7 +414,7 @@ class TestCompileSceneDescriptions:
 
     def test_error_when_no_scenes(self, tmp_path):
         cache = CacheManager(tmp_path)
-        cache_dir = cache.ensure_cache_dir("test123")
+        cache.ensure_cache_dir("test123")
         state = VideoState(video_id="test123")
         cache.save_state("test123", state)
 
@@ -372,7 +432,9 @@ class TestCompileSceneDescriptions:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir(parents=True, exist_ok=True)
         scenes_data = ScenesData(video_id="test123", method="transcript", scenes=[])
-        (scenes_dir / "scenes.json").write_text(json.dumps(scenes_data.to_dict(), indent=2))
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(scenes_data.to_dict(), indent=2)
+        )
 
         result = compile_scene_descriptions("test123", output_base=tmp_path)
         assert "error" in result
@@ -390,11 +452,13 @@ class TestGetSceneDescriptions:
 
     def test_returns_cached_content(self, tmp_path):
         cache = CacheManager(tmp_path)
-        cache_dir = cache.ensure_cache_dir("test123")
+        cache.ensure_cache_dir("test123")
 
         # Write AD files directly
         vtt_path, txt_path = cache.get_ad_paths("test123")
-        vtt_path.write_text("WEBVTT\n\n1\n00:00:00.000 --> 00:00:30.000\nTest description")
+        vtt_path.write_text(
+            "WEBVTT\n\n1\n00:00:00.000 --> 00:00:30.000\nTest description"
+        )
         txt_path.write_text("[00:00] Test description")
 
         result = get_scene_descriptions("test123", output_base=tmp_path)
@@ -409,8 +473,10 @@ class TestModuleExports:
 
     def test_compile_exported(self):
         from claudetube.operations import compile_scene_descriptions
+
         assert callable(compile_scene_descriptions)
 
     def test_get_exported(self):
         from claudetube.operations import get_scene_descriptions
+
         assert callable(get_scene_descriptions)

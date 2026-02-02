@@ -89,21 +89,27 @@ class TestIsAvailable:
 
     def test_available_with_api_key_arg(self):
         mock_genai = MagicMock()
-        with patch.dict("sys.modules", {"google": MagicMock(), "google.generativeai": mock_genai}):
+        with patch.dict(
+            "sys.modules", {"google": MagicMock(), "google.generativeai": mock_genai}
+        ):
             provider = GoogleProvider(api_key="test-key")
             assert provider.is_available() is True
 
     def test_available_with_env_var(self, monkeypatch):
         monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
         mock_genai = MagicMock()
-        with patch.dict("sys.modules", {"google": MagicMock(), "google.generativeai": mock_genai}):
+        with patch.dict(
+            "sys.modules", {"google": MagicMock(), "google.generativeai": mock_genai}
+        ):
             provider = GoogleProvider()
             assert provider.is_available() is True
 
     def test_not_available_without_key(self, monkeypatch):
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         mock_genai = MagicMock()
-        with patch.dict("sys.modules", {"google": MagicMock(), "google.generativeai": mock_genai}):
+        with patch.dict(
+            "sys.modules", {"google": MagicMock(), "google.generativeai": mock_genai}
+        ):
             provider = GoogleProvider()
             assert provider.is_available() is False
 
@@ -207,9 +213,7 @@ class TestAnalyzeImages:
         provider._genai = mock_genai
 
         with pytest.raises(FileNotFoundError, match="not found"):
-            await provider.analyze_images(
-                [tmp_path / "nonexistent.jpg"], "Describe"
-            )
+            await provider.analyze_images([tmp_path / "nonexistent.jpg"], "Describe")
 
     @pytest.mark.asyncio
     async def test_with_schema(self, tmp_path):
@@ -257,9 +261,7 @@ class TestAnalyzeImages:
         provider = GoogleProvider(api_key="test-key")
         provider._genai = mock_genai
 
-        await provider.analyze_images(
-            [img], "Describe", model="gemini-2.0-flash-lite"
-        )
+        await provider.analyze_images([img], "Describe", model="gemini-2.0-flash-lite")
 
         # Verify the model name was passed to GenerativeModel
         model_call_args = mock_genai.GenerativeModel.call_args
@@ -373,9 +375,7 @@ class TestAnalyzeVideo:
         provider._genai = mock_genai
 
         with pytest.raises(FileNotFoundError, match="not found"):
-            await provider.analyze_video(
-                tmp_path / "nonexistent.mp4", "Describe"
-            )
+            await provider.analyze_video(tmp_path / "nonexistent.mp4", "Describe")
 
     @pytest.mark.asyncio
     async def test_video_processing_failure(self, tmp_path):
@@ -452,9 +452,7 @@ class TestAnalyzeVideo:
         provider = GoogleProvider(api_key="test-key")
         provider._genai = mock_genai
 
-        result = await provider.analyze_video(
-            video, "Summarize", schema=mock_schema
-        )
+        result = await provider.analyze_video(video, "Summarize", schema=mock_schema)
 
         assert isinstance(result, dict)
         assert result["summary"] == "Tutorial"
@@ -644,9 +642,7 @@ class TestRegistryIntegration:
     def test_get_provider_with_kwargs(self):
         from claudetube.providers.registry import get_provider
 
-        provider = get_provider(
-            "google", model="gemini-pro", max_tokens=500
-        )
+        provider = get_provider("google", model="gemini-pro", max_tokens=500)
         assert isinstance(provider, GoogleProvider)
         assert provider._model == "gemini-pro"
         assert provider._max_tokens == 500

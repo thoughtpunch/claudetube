@@ -12,7 +12,6 @@ Verifies:
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,7 +19,6 @@ import pytest
 from claudetube.providers.base import Embedder
 from claudetube.providers.capabilities import Capability
 from claudetube.providers.voyage.client import VoyageProvider
-
 
 # =============================================================================
 # Instantiation and Info
@@ -137,7 +135,9 @@ class TestVoyageEmbedSync:
         provider = VoyageProvider(api_key="test-key")
         provider._client = mock_client
 
-        with patch.dict("sys.modules", {"PIL": MagicMock(), "PIL.Image": mock_pil_image}):
+        with patch.dict(
+            "sys.modules", {"PIL": MagicMock(), "PIL.Image": mock_pil_image}
+        ):
             result = provider.embed_sync("test text", images=[img_path])
 
         assert result == [0.4, 0.5, 0.6]
@@ -154,9 +154,7 @@ class TestVoyageEmbedSync:
             paths.append(p)
 
         mock_client = MagicMock()
-        mock_client.multimodal_embed.return_value = MagicMock(
-            embeddings=[[0.1]]
-        )
+        mock_client.multimodal_embed.return_value = MagicMock(embeddings=[[0.1]])
 
         mock_pil_image = MagicMock()
         mock_pil_module = MagicMock()
@@ -165,7 +163,9 @@ class TestVoyageEmbedSync:
         provider = VoyageProvider(api_key="test-key")
         provider._client = mock_client
 
-        with patch.dict("sys.modules", {"PIL": mock_pil_module, "PIL.Image": mock_pil_image}):
+        with patch.dict(
+            "sys.modules", {"PIL": mock_pil_module, "PIL.Image": mock_pil_image}
+        ):
             provider.embed_sync("text", images=paths)
 
         # Should only open 3 images
@@ -176,9 +176,7 @@ class TestVoyageEmbedSync:
         img_path.write_bytes(b"not an image")
 
         mock_client = MagicMock()
-        mock_client.multimodal_embed.return_value = MagicMock(
-            embeddings=[[0.7, 0.8]]
-        )
+        mock_client.multimodal_embed.return_value = MagicMock(embeddings=[[0.7, 0.8]])
 
         mock_pil_image = MagicMock()
         mock_pil_image.open.side_effect = OSError("bad image")
@@ -188,7 +186,9 @@ class TestVoyageEmbedSync:
         provider = VoyageProvider(api_key="test-key")
         provider._client = mock_client
 
-        with patch.dict("sys.modules", {"PIL": mock_pil_module, "PIL.Image": mock_pil_image}):
+        with patch.dict(
+            "sys.modules", {"PIL": mock_pil_module, "PIL.Image": mock_pil_image}
+        ):
             result = provider.embed_sync("text", images=[img_path])
 
         # Should still return an embedding (text-only fallback)

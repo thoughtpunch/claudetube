@@ -5,7 +5,7 @@ Frame extraction operations.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from claudetube.cache.manager import CacheManager
 from claudetube.config.loader import get_cache_dir
@@ -13,6 +13,9 @@ from claudetube.config.quality import QUALITY_LADDER, QUALITY_TIERS
 from claudetube.operations.download import download_video_segment
 from claudetube.tools.ffmpeg import FFmpegTool
 from claudetube.utils.logging import log_timed
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +107,10 @@ def extract_frames(
 
     # Extract frames
     ffmpeg = FFmpegTool()
-    log_timed(f"Extracting {quality} frames from {start_time}s to {start_time + duration}s...", t0)
+    log_timed(
+        f"Extracting {quality} frames from {start_time}s to {start_time + duration}s...",
+        t0,
+    )
 
     frames = ffmpeg.extract_frames_range(
         video_path=video_path,
@@ -214,7 +220,9 @@ def extract_hq_frames(
 
     # Extract HQ frames
     ffmpeg = FFmpegTool()
-    log_timed(f"Extracting HQ frames from {start_time}s to {start_time + duration}s...", t0)
+    log_timed(
+        f"Extracting HQ frames from {start_time}s to {start_time + duration}s...", t0
+    )
 
     frames = ffmpeg.extract_frames_range(
         video_path=hq_video_path,

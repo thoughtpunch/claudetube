@@ -39,25 +39,31 @@ class FakeVideoProvider(Provider):
     def is_available(self) -> bool:
         return True
 
-    async def analyze_video(self, video, prompt, schema=None, start_time=None, end_time=None, **kwargs):
-        return json.dumps({
-            "description": "A person demonstrates code on screen.",
-            "people": ["presenter"],
-            "objects": ["laptop", "projector"],
-            "text_on_screen": ["def hello():"],
-            "actions": ["typing"],
-            "setting": "conference room",
-        })
+    async def analyze_video(
+        self, video, prompt, schema=None, start_time=None, end_time=None, **kwargs
+    ):
+        return json.dumps(
+            {
+                "description": "A person demonstrates code on screen.",
+                "people": ["presenter"],
+                "objects": ["laptop", "projector"],
+                "text_on_screen": ["def hello():"],
+                "actions": ["typing"],
+                "setting": "conference room",
+            }
+        )
 
     async def analyze_images(self, images, prompt, schema=None, **kwargs):
-        return json.dumps({
-            "description": "Frame showing a code editor.",
-            "people": [],
-            "objects": ["code editor"],
-            "text_on_screen": ["import os"],
-            "actions": [],
-            "setting": "desktop",
-        })
+        return json.dumps(
+            {
+                "description": "Frame showing a code editor.",
+                "people": [],
+                "objects": ["code editor"],
+                "text_on_screen": ["import os"],
+                "actions": [],
+                "setting": "desktop",
+            }
+        )
 
 
 # Register the protocol implementations
@@ -79,14 +85,16 @@ class FakeVisionProvider(Provider):
         return True
 
     async def analyze_images(self, images, prompt, schema=None, **kwargs):
-        return json.dumps({
-            "description": "A diagram is shown on a whiteboard.",
-            "people": ["instructor"],
-            "objects": ["whiteboard", "marker"],
-            "text_on_screen": ["Step 1", "Step 2"],
-            "actions": ["pointing at diagram"],
-            "setting": "classroom",
-        })
+        return json.dumps(
+            {
+                "description": "A diagram is shown on a whiteboard.",
+                "people": ["instructor"],
+                "objects": ["whiteboard", "marker"],
+                "text_on_screen": ["Step 1", "Step 2"],
+                "actions": ["pointing at diagram"],
+                "setting": "classroom",
+            }
+        )
 
 
 VisionAnalyzer.register(FakeVisionProvider)
@@ -109,8 +117,12 @@ class FakeTranscriptionProvider(Provider):
         return TranscriptionResult(
             text="A person walks into frame and sits down at the desk.",
             segments=[
-                TranscriptionSegment(start=0.0, end=3.0, text="A person walks into frame."),
-                TranscriptionSegment(start=3.0, end=6.0, text="They sit down at the desk."),
+                TranscriptionSegment(
+                    start=0.0, end=3.0, text="A person walks into frame."
+                ),
+                TranscriptionSegment(
+                    start=3.0, end=6.0, text="They sit down at the desk."
+                ),
             ],
             language="en",
             duration=6.0,
@@ -145,11 +157,15 @@ def cache_with_scenes(tmp_path, video_id):
         method="transcript",
         scenes=[
             SceneBoundary(
-                scene_id=0, start_time=0.0, end_time=30.0,
+                scene_id=0,
+                start_time=0.0,
+                end_time=30.0,
                 transcript_text="Welcome to the tutorial.",
             ),
             SceneBoundary(
-                scene_id=1, start_time=30.0, end_time=60.0,
+                scene_id=1,
+                start_time=30.0,
+                end_time=60.0,
                 transcript_text="Now let's look at the code.",
             ),
         ],
@@ -170,8 +186,12 @@ def cache_with_scenes_and_visuals(cache_with_scenes, video_id):
         scene_dir = cache_dir / "scenes" / f"scene_{i:03d}"
         scene_dir.mkdir(parents=True, exist_ok=True)
         visual = VisualDescription(
-            scene_id=i, description=f"Description for scene {i}.",
-            people=[], objects=[], text_on_screen=[], actions=[],
+            scene_id=i,
+            description=f"Description for scene {i}.",
+            people=[],
+            objects=[],
+            text_on_screen=[],
+            actions=[],
         )
         (scene_dir / "visual.json").write_text(json.dumps(visual.to_dict(), indent=2))
 
@@ -208,12 +228,16 @@ class TestGenerateCache:
     """Tests for cache behavior in generate()."""
 
     @pytest.mark.asyncio
-    async def test_returns_cached_when_exists(self, tmp_path, video_id, cache_with_scenes):
+    async def test_returns_cached_when_exists(
+        self, tmp_path, video_id, cache_with_scenes
+    ):
         cache, cache_dir = cache_with_scenes
 
         # Write AD files directly
         vtt_path, txt_path = cache.get_ad_paths(video_id)
-        vtt_path.write_text("WEBVTT\n\n1\n00:00:00.000 --> 00:00:30.000\nCached description")
+        vtt_path.write_text(
+            "WEBVTT\n\n1\n00:00:00.000 --> 00:00:30.000\nCached description"
+        )
         txt_path.write_text("[00:00] Cached description")
 
         gen = AudioDescriptionGenerator()
@@ -223,7 +247,9 @@ class TestGenerateCache:
         assert "vtt_path" in result
 
     @pytest.mark.asyncio
-    async def test_force_bypasses_cache(self, tmp_path, video_id, cache_with_scenes_and_visuals):
+    async def test_force_bypasses_cache(
+        self, tmp_path, video_id, cache_with_scenes_and_visuals
+    ):
         cache, cache_dir = cache_with_scenes_and_visuals
 
         # Write AD files directly
@@ -237,7 +263,9 @@ class TestGenerateCache:
         fake_kf = tmp_path / "fake_kf.jpg"
         fake_kf.write_bytes(b"\xff\xd8\xff\xe0")  # minimal JPEG header
 
-        with patch.object(AudioDescriptionGenerator, "_get_scene_keyframes", return_value=[fake_kf]):
+        with patch.object(
+            AudioDescriptionGenerator, "_get_scene_keyframes", return_value=[fake_kf]
+        ):
             result = await gen.generate(video_id, force=True, output_base=tmp_path)
 
         assert result["status"] == "generated"
@@ -247,7 +275,9 @@ class TestGenerateNativeVideo:
     """Tests for native video generation path."""
 
     @pytest.mark.asyncio
-    async def test_uses_video_provider_when_available(self, tmp_path, video_id, cache_with_scenes):
+    async def test_uses_video_provider_when_available(
+        self, tmp_path, video_id, cache_with_scenes
+    ):
         cache, cache_dir = cache_with_scenes
 
         # Create a fake video source file
@@ -267,20 +297,26 @@ class TestGenerateNativeVideo:
         assert result["cue_count"] == 2
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_vision_when_no_video_source(self, tmp_path, video_id, cache_with_scenes):
+    async def test_falls_back_to_vision_when_no_video_source(
+        self, tmp_path, video_id, cache_with_scenes
+    ):
         """If video file not on disk, fall back to frame-by-frame."""
         cache, cache_dir = cache_with_scenes
 
         video_prov = FakeVideoProvider()
         vision_prov = FakeVisionProvider()
 
-        gen = AudioDescriptionGenerator(video_provider=video_prov, vision_provider=vision_prov)
+        gen = AudioDescriptionGenerator(
+            video_provider=video_prov, vision_provider=vision_prov
+        )
 
         # Mock keyframes to exist
         fake_kf = tmp_path / "fake_kf.jpg"
         fake_kf.write_bytes(b"\xff\xd8\xff\xe0")
 
-        with patch.object(AudioDescriptionGenerator, "_get_scene_keyframes", return_value=[fake_kf]):
+        with patch.object(
+            AudioDescriptionGenerator, "_get_scene_keyframes", return_value=[fake_kf]
+        ):
             result = await gen.generate(video_id, output_base=tmp_path)
 
         assert result["status"] == "generated"
@@ -301,7 +337,9 @@ class TestGenerateFromFrames:
         fake_kf = tmp_path / "fake_kf.jpg"
         fake_kf.write_bytes(b"\xff\xd8\xff\xe0")
 
-        with patch.object(AudioDescriptionGenerator, "_get_scene_keyframes", return_value=[fake_kf]):
+        with patch.object(
+            AudioDescriptionGenerator, "_get_scene_keyframes", return_value=[fake_kf]
+        ):
             result = await gen.generate(video_id, output_base=tmp_path)
 
         assert result["status"] == "generated"
@@ -310,7 +348,9 @@ class TestGenerateFromFrames:
         assert result["generated_count"] == 2
 
     @pytest.mark.asyncio
-    async def test_uses_cached_visual_json(self, tmp_path, video_id, cache_with_scenes_and_visuals):
+    async def test_uses_cached_visual_json(
+        self, tmp_path, video_id, cache_with_scenes_and_visuals
+    ):
         """Should use existing visual.json without calling provider."""
         cache, cache_dir = cache_with_scenes_and_visuals
 
@@ -340,7 +380,9 @@ class TestGenerateFromFrames:
         provider = FakeVisionProvider()
         gen = AudioDescriptionGenerator(vision_provider=provider)
 
-        with patch.object(AudioDescriptionGenerator, "_get_scene_keyframes", return_value=[]):
+        with patch.object(
+            AudioDescriptionGenerator, "_get_scene_keyframes", return_value=[]
+        ):
             result = await gen.generate(video_id, output_base=tmp_path)
 
         # All scenes should have errors about missing keyframes
@@ -351,13 +393,17 @@ class TestGenerateCompileOnlyFallback:
     """Tests for compile-only fallback when no AI providers available."""
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_compile(self, tmp_path, video_id, cache_with_scenes_and_visuals):
+    async def test_falls_back_to_compile(
+        self, tmp_path, video_id, cache_with_scenes_and_visuals
+    ):
         """No providers at all should compile from existing data."""
         gen = AudioDescriptionGenerator()
 
         # Patch out auto-discovery to return None
-        with patch.object(gen, "_get_video_provider", return_value=None), \
-             patch.object(gen, "_get_vision_provider", return_value=None):
+        with (
+            patch.object(gen, "_get_video_provider", return_value=None),
+            patch.object(gen, "_get_vision_provider", return_value=None),
+        ):
             result = await gen.generate(video_id, output_base=tmp_path)
 
         assert result["status"] == "compiled"
@@ -414,7 +460,9 @@ class TestTranscribeAdTrack:
 
         with patch.object(gen, "_get_transcription_provider", return_value=None):
             result = await gen.transcribe_ad_track(
-                video_id, Path("/fake/audio.mp3"), output_base=tmp_path,
+                video_id,
+                Path("/fake/audio.mp3"),
+                output_base=tmp_path,
             )
 
         assert "error" in result
@@ -427,9 +475,13 @@ class TestTranscribeAdTrack:
         state = VideoState(video_id=video_id)
         cache.save_state(video_id, state)
 
-        gen = AudioDescriptionGenerator(transcription_provider=FakeTranscriptionProvider())
+        gen = AudioDescriptionGenerator(
+            transcription_provider=FakeTranscriptionProvider()
+        )
         result = await gen.transcribe_ad_track(
-            video_id, Path("/nonexistent/audio.mp3"), output_base=tmp_path,
+            video_id,
+            Path("/nonexistent/audio.mp3"),
+            output_base=tmp_path,
         )
 
         assert "error" in result
@@ -440,14 +492,16 @@ class TestParseDescriptionResponse:
     """Tests for _parse_description_response static method."""
 
     def test_parses_json_string(self):
-        response = json.dumps({
-            "description": "A scene.",
-            "people": ["person"],
-            "objects": [],
-            "text_on_screen": [],
-            "actions": [],
-            "setting": "office",
-        })
+        response = json.dumps(
+            {
+                "description": "A scene.",
+                "people": ["person"],
+                "objects": [],
+                "text_on_screen": [],
+                "actions": [],
+                "setting": "office",
+            }
+        )
         scene = SceneBoundary(scene_id=0, start_time=0, end_time=10)
         result = AudioDescriptionGenerator._parse_description_response(response, scene)
 
@@ -481,7 +535,9 @@ class TestParseDescriptionResponse:
 
     def test_returns_none_on_invalid_json(self):
         scene = SceneBoundary(scene_id=0, start_time=0, end_time=10)
-        result = AudioDescriptionGenerator._parse_description_response("not json", scene)
+        result = AudioDescriptionGenerator._parse_description_response(
+            "not json", scene
+        )
         assert result is None
 
     def test_returns_none_on_none_response(self):
@@ -500,15 +556,29 @@ class TestFindProviderForCapability:
 
     def test_finds_matching_provider(self):
         fake_provider = FakeVideoProvider()
-        with patch("claudetube.providers.registry.list_available", return_value=["fake-video"]), \
-             patch("claudetube.providers.registry.get_provider", return_value=fake_provider):
+        with (
+            patch(
+                "claudetube.providers.registry.list_available",
+                return_value=["fake-video"],
+            ),
+            patch(
+                "claudetube.providers.registry.get_provider", return_value=fake_provider
+            ),
+        ):
             result = _find_provider_for_capability("VIDEO")
         assert result is fake_provider
 
     def test_skips_provider_without_capability(self):
         fake_vision = FakeVisionProvider()
-        with patch("claudetube.providers.registry.list_available", return_value=["fake-vision"]), \
-             patch("claudetube.providers.registry.get_provider", return_value=fake_vision):
+        with (
+            patch(
+                "claudetube.providers.registry.list_available",
+                return_value=["fake-vision"],
+            ),
+            patch(
+                "claudetube.providers.registry.get_provider", return_value=fake_vision
+            ),
+        ):
             result = _find_provider_for_capability("VIDEO")
         assert result is None
 
@@ -540,10 +610,12 @@ class TestModuleExports:
 
     def test_generator_exported_from_operations(self):
         from claudetube.operations import AudioDescriptionGenerator
+
         assert AudioDescriptionGenerator is not None
 
     def test_find_provider_importable(self):
         from claudetube.operations.audio_description import (
             _find_provider_for_capability,
         )
+
         assert callable(_find_provider_for_capability)

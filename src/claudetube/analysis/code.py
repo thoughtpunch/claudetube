@@ -364,9 +364,13 @@ def save_code_results(
     for r in results:
         for block in r.code_blocks:
             lang = block.language or "unknown"
-            data["summary"]["languages"][lang] = data["summary"]["languages"].get(lang, 0) + 1
+            data["summary"]["languages"][lang] = (
+                data["summary"]["languages"].get(lang, 0) + 1
+            )
         if r.ide_detected:
-            data["summary"]["ides"][r.ide_detected] = data["summary"]["ides"].get(r.ide_detected, 0) + 1
+            data["summary"]["ides"][r.ide_detected] = (
+                data["summary"]["ides"].get(r.ide_detected, 0) + 1
+            )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(data, indent=2))
@@ -389,9 +393,7 @@ def load_code_results(input_path: Path) -> list[FrameCodeResult] | None:
         data = json.loads(input_path.read_text())
         results = []
         for frame_data in data.get("frames", []):
-            code_blocks = [
-                CodeBlock(**b) for b in frame_data.get("code_blocks", [])
-            ]
+            code_blocks = [CodeBlock(**b) for b in frame_data.get("code_blocks", [])]
             results.append(
                 FrameCodeResult(
                     frame_path=frame_data["frame_path"],

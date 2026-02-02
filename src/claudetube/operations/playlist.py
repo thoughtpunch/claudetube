@@ -10,10 +10,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from claudetube.config.loader import get_cache_dir
 from claudetube.tools.yt_dlp import YtDlpTool
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +77,9 @@ def extract_playlist_metadata(playlist_url: str, timeout: int = 60) -> dict:
         "title": playlist_info.get("title", ""),
         "description": playlist_info.get("description", ""),
         "channel": playlist_info.get("channel", playlist_info.get("uploader", "")),
-        "channel_id": playlist_info.get("channel_id", playlist_info.get("uploader_id", "")),
+        "channel_id": playlist_info.get(
+            "channel_id", playlist_info.get("uploader_id", "")
+        ),
         "video_count": len(videos),
         "videos": [
             {
@@ -115,7 +120,15 @@ def classify_playlist_type(playlist_info: dict, videos: list[dict]) -> str:
     video_titles = [v.get("title", "").lower() for v in videos if v.get("title")]
 
     # Course detection
-    course_keywords = ["course", "tutorial", "lesson", "learn", "bootcamp", "workshop", "training"]
+    course_keywords = [
+        "course",
+        "tutorial",
+        "lesson",
+        "learn",
+        "bootcamp",
+        "workshop",
+        "training",
+    ]
     if any(kw in title or kw in description for kw in course_keywords):
         return "course"
 
@@ -136,7 +149,16 @@ def classify_playlist_type(playlist_info: dict, videos: list[dict]) -> str:
         return "series"
 
     # Conference detection
-    conference_keywords = ["conference", "summit", "meetup", "talks", "keynote", "pycon", "jsconf", "devcon"]
+    conference_keywords = [
+        "conference",
+        "summit",
+        "meetup",
+        "talks",
+        "keynote",
+        "pycon",
+        "jsconf",
+        "devcon",
+    ]
     if any(kw in title or kw in description for kw in conference_keywords):
         return "conference"
 
@@ -166,7 +188,9 @@ def save_playlist_metadata(playlist_data: dict, cache_base: Path | None = None) 
     return playlist_file
 
 
-def load_playlist_metadata(playlist_id: str, cache_base: Path | None = None) -> dict | None:
+def load_playlist_metadata(
+    playlist_id: str, cache_base: Path | None = None
+) -> dict | None:
     """Load cached playlist metadata.
 
     Args:
@@ -204,13 +228,15 @@ def list_cached_playlists(cache_base: Path | None = None) -> list[dict]:
     for playlist_file in sorted(playlists_dir.glob("*/playlist.json")):
         try:
             data = json.loads(playlist_file.read_text())
-            playlists.append({
-                "playlist_id": data.get("playlist_id", playlist_file.parent.name),
-                "title": data.get("title"),
-                "video_count": data.get("video_count", 0),
-                "inferred_type": data.get("inferred_type"),
-                "cache_dir": str(playlist_file.parent),
-            })
+            playlists.append(
+                {
+                    "playlist_id": data.get("playlist_id", playlist_file.parent.name),
+                    "title": data.get("title"),
+                    "video_count": data.get("video_count", 0),
+                    "inferred_type": data.get("inferred_type"),
+                    "cache_dir": str(playlist_file.parent),
+                }
+            )
         except (json.JSONDecodeError, OSError):
             continue
 

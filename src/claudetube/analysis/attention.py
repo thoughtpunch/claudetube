@@ -285,7 +285,9 @@ def calculate_novelty(
     if scene_embedding is not None and previous_embeddings:
         try:
             scene_emb = scene_embedding.embedding
-            prev_embs = [e.embedding for e in previous_embeddings if e.embedding is not None]
+            prev_embs = [
+                e.embedding for e in previous_embeddings if e.embedding is not None
+            ]
 
             if prev_embs:
                 # Calculate similarity to each previous scene
@@ -481,8 +483,11 @@ def get_structural_weight(
         weight += 0.25
 
     # Demo section bonus for tutorials (20-80% is typically where demos happen)
-    if video_type in ("coding_tutorial", "demo", "screencast") and 0.2 < position_ratio < 0.8:
-            weight += 0.1
+    if (
+        video_type in ("coding_tutorial", "demo", "screencast")
+        and 0.2 < position_ratio < 0.8
+    ):
+        weight += 0.1
 
     # Chapter start bonus (scene_id <= 2 is often a chapter start)
     if scene_id <= 2:
@@ -690,11 +695,13 @@ def rank_scenes_by_attention(
         )
         priority = max(0.0, min(1.0, priority))
 
-        results.append({
-            "scene_id": scene_id,
-            "priority": priority,
-            "factors": factors.to_dict(),
-        })
+        results.append(
+            {
+                "scene_id": scene_id,
+                "priority": priority,
+                "factors": factors.to_dict(),
+            }
+        )
 
     # Sort by priority descending
     results.sort(key=lambda x: x["priority"], reverse=True)

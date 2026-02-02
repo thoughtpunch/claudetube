@@ -1,14 +1,13 @@
 """Tests for entity tracking (objects and concepts across scenes)."""
 
 import json
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 # Check if sklearn is available for concept tests
 try:
-    from sklearn.feature_extraction.text import TfidfVectorizer
+    import sklearn.feature_extraction.text  # noqa: F401
+
     HAS_SKLEARN = True
 except ImportError:
     HAS_SKLEARN = False
@@ -294,7 +293,11 @@ class TestTrackObjectsFromScenes:
         """Object appearing in multiple scenes."""
         scenes = [
             {"scene_id": 0, "start_time": 0.0, "visual": {"objects": ["laptop"]}},
-            {"scene_id": 1, "start_time": 30.0, "visual": {"objects": ["laptop", "monitor"]}},
+            {
+                "scene_id": 1,
+                "start_time": 30.0,
+                "visual": {"objects": ["laptop", "monitor"]},
+            },
             {"scene_id": 2, "start_time": 60.0, "visual": {"objects": ["laptop"]}},
         ]
         objects = track_objects_from_scenes(scenes)
@@ -318,7 +321,11 @@ class TestTrackObjectsFromScenes:
     def test_empty_object_name_skipped(self):
         """Empty object names should be skipped."""
         scenes = [
-            {"scene_id": 0, "start_time": 0.0, "visual": {"objects": ["", "laptop", "  "]}},
+            {
+                "scene_id": 0,
+                "start_time": 0.0,
+                "visual": {"objects": ["", "laptop", "  "]},
+            },
         ]
         objects = track_objects_from_scenes(scenes)
         assert len(objects) == 1
@@ -335,7 +342,9 @@ class TestTrackConceptsFromScenes:
 
     def test_single_scene_insufficient(self):
         """Single scene with text is insufficient for TF-IDF."""
-        scenes = [{"scene_id": 0, "start_time": 0.0, "transcript_text": "Python programming"}]
+        scenes = [
+            {"scene_id": 0, "start_time": 0.0, "transcript_text": "Python programming"}
+        ]
         concepts = track_concepts_from_scenes(scenes)
         assert concepts == {}
 
@@ -343,9 +352,21 @@ class TestTrackConceptsFromScenes:
     def test_basic_concept_extraction(self):
         """Should extract concepts from multiple scenes."""
         scenes = [
-            {"scene_id": 0, "start_time": 0.0, "transcript_text": "Python programming language"},
-            {"scene_id": 1, "start_time": 30.0, "transcript_text": "Python functions and classes"},
-            {"scene_id": 2, "start_time": 60.0, "transcript_text": "Machine learning with Python"},
+            {
+                "scene_id": 0,
+                "start_time": 0.0,
+                "transcript_text": "Python programming language",
+            },
+            {
+                "scene_id": 1,
+                "start_time": 30.0,
+                "transcript_text": "Python functions and classes",
+            },
+            {
+                "scene_id": 2,
+                "start_time": 60.0,
+                "transcript_text": "Machine learning with Python",
+            },
         ]
         concepts = track_concepts_from_scenes(scenes, top_n=10)
         # "python" should be a top concept
@@ -355,9 +376,21 @@ class TestTrackConceptsFromScenes:
     def test_top_n_limit(self):
         """Should respect top_n limit."""
         scenes = [
-            {"scene_id": 0, "start_time": 0.0, "transcript_text": "Python Java Ruby Go Rust"},
-            {"scene_id": 1, "start_time": 30.0, "transcript_text": "Python Java Ruby frameworks"},
-            {"scene_id": 2, "start_time": 60.0, "transcript_text": "Python Java libraries tools"},
+            {
+                "scene_id": 0,
+                "start_time": 0.0,
+                "transcript_text": "Python Java Ruby Go Rust",
+            },
+            {
+                "scene_id": 1,
+                "start_time": 30.0,
+                "transcript_text": "Python Java Ruby frameworks",
+            },
+            {
+                "scene_id": 2,
+                "start_time": 60.0,
+                "transcript_text": "Python Java libraries tools",
+            },
         ]
         concepts = track_concepts_from_scenes(scenes, top_n=3)
         assert len(concepts) <= 3
@@ -365,8 +398,16 @@ class TestTrackConceptsFromScenes:
     def test_fallback_to_transcript_segment(self):
         """Should fallback to transcript_segment if transcript_text missing."""
         scenes = [
-            {"scene_id": 0, "start_time": 0.0, "transcript_segment": "Python programming"},
-            {"scene_id": 1, "start_time": 30.0, "transcript_segment": "Python development"},
+            {
+                "scene_id": 0,
+                "start_time": 0.0,
+                "transcript_segment": "Python programming",
+            },
+            {
+                "scene_id": 1,
+                "start_time": 30.0,
+                "transcript_segment": "Python development",
+            },
         ]
         concepts = track_concepts_from_scenes(scenes)
         # Should not crash with fallback
@@ -401,7 +442,8 @@ class TestTrackEntities:
         }
         concepts = {
             "python": TrackedConcept(
-                term="python", mentions=[ConceptMention(scene_id=0, timestamp=0.0, score=0.8)]
+                term="python",
+                mentions=[ConceptMention(scene_id=0, timestamp=0.0, score=0.8)],
             )
         }
         save_objects(tmp_path, objects, "test-video")

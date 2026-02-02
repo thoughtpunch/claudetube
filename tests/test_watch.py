@@ -61,7 +61,9 @@ class TestExamineSceneQuick:
     def test_visual_match(self):
         scene = _make_scene(
             transcript_text="",
-            visual={"description": "Code editor showing authentication module with error"},
+            visual={
+                "description": "Code editor showing authentication module with error"
+            },
         )
         findings = examine_scene_quick(scene, "authentication module error")
         assert any(f["type"] == "visual_match" for f in findings)
@@ -114,7 +116,10 @@ class TestExamineSceneQuick:
         transcript_findings = [f for f in findings if f["type"] == "transcript_match"]
         visual_findings = [f for f in findings if f["type"] == "visual_match"]
         if transcript_findings and visual_findings:
-            assert transcript_findings[0]["initial_confidence"] < visual_findings[0]["initial_confidence"]
+            assert (
+                transcript_findings[0]["initial_confidence"]
+                < visual_findings[0]["initial_confidence"]
+            )
 
 
 # --- examine_scene_deep tests ---
@@ -136,7 +141,9 @@ class TestExamineSceneDeep:
             transcript_text="Fixing the auth bug by changing the operator",
         )
         findings = examine_scene_deep(
-            scene, "What bug was fixed?", "test_video",
+            scene,
+            "What bug was fixed?",
+            "test_video",
         )
         assert len(findings) >= 1
         deep_findings = [f for f in findings if f["type"] == "deep_analysis"]
@@ -151,7 +158,9 @@ class TestExamineSceneDeep:
             transcript_text="The function was refactored to use async/await",
         )
         findings = examine_scene_deep(
-            scene, "What changed?", "test_video",
+            scene,
+            "What changed?",
+            "test_video",
         )
         transcript_findings = [f for f in findings if f["type"] == "deep_transcript"]
         assert len(transcript_findings) == 1
@@ -163,7 +172,9 @@ class TestExamineSceneDeep:
             transcript_text="Some content here",
         )
         findings = examine_scene_deep(
-            scene, "question", "test_video",
+            scene,
+            "question",
+            "test_video",
         )
         # Should still return transcript findings, not crash
         assert isinstance(findings, list)
@@ -177,7 +188,12 @@ class TestExamineSceneDeep:
         examine_scene_deep(scene, "question", "test_video")
         # Check that duration passed to extract_frames is capped
         call_kwargs = mock_extract.call_args
-        assert call_kwargs.kwargs.get("duration", call_kwargs[0][1] if len(call_kwargs[0]) > 1 else 10) <= 10
+        assert (
+            call_kwargs.kwargs.get(
+                "duration", call_kwargs[0][1] if len(call_kwargs[0]) > 1 else 10
+            )
+            <= 10
+        )
 
 
 # --- watch_video tests ---
@@ -216,10 +232,14 @@ class TestWatchVideo:
         scenes_dir.mkdir()
 
         # Create state.json
-        (video_dir / "state.json").write_text(json.dumps({
-            "video_id": video_id,
-            "title": "Test Video",
-        }))
+        (video_dir / "state.json").write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "title": "Test Video",
+                }
+            )
+        )
 
         # Create scenes.json
         scenes = {
@@ -297,18 +317,24 @@ class TestWatchVideo:
         # Create minimal scenes
         scenes_dir = video_dir / "scenes"
         scenes_dir.mkdir()
-        (scenes_dir / "scenes.json").write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{
-                "scene_id": 0,
-                "start_time": 0.0,
-                "end_time": 30.0,
-                "transcript_text": "Some content",
-                "transcript": [],
-            }],
-        }))
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [
+                        {
+                            "scene_id": 0,
+                            "start_time": 0.0,
+                            "end_time": 30.0,
+                            "transcript_text": "Some content",
+                            "transcript": [],
+                        }
+                    ],
+                }
+            )
+        )
 
         result = watch_video(
             video_id,
@@ -331,21 +357,27 @@ class TestWatchVideo:
         # Create many scenes
         scene_list = []
         for i in range(20):
-            scene_list.append({
-                "scene_id": i,
-                "start_time": float(i * 30),
-                "end_time": float((i + 1) * 30),
-                "title": f"Scene {i}",
-                "transcript_text": f"Content about topic {i} and some keyword stuff",
-                "transcript": [],
-            })
+            scene_list.append(
+                {
+                    "scene_id": i,
+                    "start_time": float(i * 30),
+                    "end_time": float((i + 1) * 30),
+                    "title": f"Scene {i}",
+                    "transcript_text": f"Content about topic {i} and some keyword stuff",
+                    "transcript": [],
+                }
+            )
 
-        (scenes_dir / "scenes.json").write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": len(scene_list),
-            "scenes": scene_list,
-        }))
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": len(scene_list),
+                    "scenes": scene_list,
+                }
+            )
+        )
 
         result = watch_video(
             video_id,

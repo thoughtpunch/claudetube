@@ -1,6 +1,5 @@
 """Tests for local file caching (symlink/copy)."""
 
-import os
 import platform
 from pathlib import Path
 from unittest.mock import patch
@@ -95,9 +94,14 @@ class TestCacheLocalFile:
         cache_dir = tmp_path / "cache"
 
         # Mock shutil.copy2 to fail
-        with patch("claudetube.cache.storage.shutil.copy2", side_effect=OSError("Copy failed")):
-            with pytest.raises(CacheError, match="Failed to copy"):
-                cache_local_file(source, cache_dir, copy=True)
+        with (
+            patch(
+                "claudetube.cache.storage.shutil.copy2",
+                side_effect=OSError("Copy failed"),
+            ),
+            pytest.raises(CacheError, match="Failed to copy"),
+        ):
+            cache_local_file(source, cache_dir, copy=True)
 
     @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-only test")
     def test_windows_fallback_to_copy(self, tmp_path):

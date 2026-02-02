@@ -214,9 +214,7 @@ class TranscriptionResult:
             >>> reconstructed = TranscriptionResult.from_dict(data)
             >>> assert reconstructed.text == result.text
         """
-        segments = [
-            TranscriptionSegment.from_dict(s) for s in data.get("segments", [])
-        ]
+        segments = [TranscriptionSegment.from_dict(s) for s in data.get("segments", [])]
         return cls(
             text=data["text"],
             segments=segments,
@@ -354,7 +352,9 @@ class _LazyModelMeta(type):
     """Metaclass for lazy-loading Pydantic models."""
 
     def __new__(mcs, name, bases, namespace, model_getter=None):
-        namespace["_model_getter"] = staticmethod(model_getter) if model_getter else None
+        namespace["_model_getter"] = (
+            staticmethod(model_getter) if model_getter else None
+        )
         return super().__new__(mcs, name, bases, namespace)
 
     def __call__(cls, *args, **kwargs):
@@ -380,7 +380,9 @@ class VisualEntity(metaclass=_LazyModelMeta, model_getter=get_visual_entity_mode
     pass
 
 
-class SemanticConcept(metaclass=_LazyModelMeta, model_getter=get_semantic_concept_model):
+class SemanticConcept(
+    metaclass=_LazyModelMeta, model_getter=get_semantic_concept_model
+):
     """A concept discussed in the content.
 
     This is a lazy-loading wrapper. The actual model is defined in

@@ -13,14 +13,41 @@ from pydantic import BaseModel, Field
 
 # Supported video file extensions (lowercase)
 SUPPORTED_VIDEO_EXTENSIONS = {
-    ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v",
-    ".mpeg", ".mpg", ".3gp", ".3g2", ".ogv", ".ts", ".mts", ".m2ts",
-    ".vob", ".divx", ".xvid", ".asf", ".rm", ".rmvb",
+    ".mp4",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".wmv",
+    ".flv",
+    ".webm",
+    ".m4v",
+    ".mpeg",
+    ".mpg",
+    ".3gp",
+    ".3g2",
+    ".ogv",
+    ".ts",
+    ".mts",
+    ".m2ts",
+    ".vob",
+    ".divx",
+    ".xvid",
+    ".asf",
+    ".rm",
+    ".rmvb",
 }
 
 # Supported audio file extensions (for audio-only processing)
 SUPPORTED_AUDIO_EXTENSIONS = {
-    ".mp3", ".wav", ".flac", ".aac", ".ogg", ".opus", ".m4a", ".wma", ".aiff",
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".aac",
+    ".ogg",
+    ".opus",
+    ".m4a",
+    ".wma",
+    ".aiff",
 }
 
 

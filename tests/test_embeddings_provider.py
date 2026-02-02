@@ -9,7 +9,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 from claudetube.analysis.embeddings import (
     SceneEmbedding,
@@ -19,7 +18,6 @@ from claudetube.analysis.embeddings import (
     get_embedding_dim,
     get_embedding_model,
 )
-
 
 # =============================================================================
 # get_embedding_model()
@@ -84,19 +82,34 @@ class TestBuildSceneText:
     """Tests for scene text construction."""
 
     def test_basic_scene_dict(self):
-        scene = {"scene_id": 1, "start_time": 0.0, "end_time": 10.0, "transcript_text": "Hello world"}
+        scene = {
+            "scene_id": 1,
+            "start_time": 0.0,
+            "end_time": 10.0,
+            "transcript_text": "Hello world",
+        }
         result = _build_scene_text(scene)
         assert "Scene 1" in result
         assert "AUDIO: Hello world" in result
 
     def test_with_visual_data(self):
-        scene = {"scene_id": 1, "start_time": 0.0, "end_time": 10.0, "transcript_text": ""}
+        scene = {
+            "scene_id": 1,
+            "start_time": 0.0,
+            "end_time": 10.0,
+            "transcript_text": "",
+        }
         visual = {"description": "A person speaking"}
         result = _build_scene_text(scene, visual_data=visual)
         assert "VISUAL: A person speaking" in result
 
     def test_with_technical_data(self):
-        scene = {"scene_id": 1, "start_time": 0.0, "end_time": 10.0, "transcript_text": ""}
+        scene = {
+            "scene_id": 1,
+            "start_time": 0.0,
+            "end_time": 10.0,
+            "transcript_text": "",
+        }
         technical = {"frames": [{"regions": [{"text": "def hello()"}]}]}
         result = _build_scene_text(scene, technical_data=technical)
         assert "TEXT ON SCREEN: def hello()" in result
@@ -114,9 +127,16 @@ class TestEmbedScene:
         mock_provider = MagicMock()
         mock_provider.embed_sync.return_value = [0.1, 0.2, 0.3]
 
-        with patch("claudetube.analysis.embeddings._get_embedder", return_value=mock_provider):
+        with patch(
+            "claudetube.analysis.embeddings._get_embedder", return_value=mock_provider
+        ):
             result = embed_scene(
-                scene={"scene_id": 5, "start_time": 0.0, "end_time": 10.0, "transcript_text": "hello"},
+                scene={
+                    "scene_id": 5,
+                    "start_time": 0.0,
+                    "end_time": 10.0,
+                    "transcript_text": "hello",
+                },
                 model="voyage",
             )
 
@@ -130,9 +150,16 @@ class TestEmbedScene:
         mock_provider = MagicMock()
         mock_provider.embed_sync.return_value = [0.0]
 
-        with patch("claudetube.analysis.embeddings._get_embedder", return_value=mock_provider):
+        with patch(
+            "claudetube.analysis.embeddings._get_embedder", return_value=mock_provider
+        ):
             embed_scene(
-                scene={"scene_id": 1, "start_time": 0.0, "end_time": 5.0, "transcript_text": "content"},
+                scene={
+                    "scene_id": 1,
+                    "start_time": 0.0,
+                    "end_time": 5.0,
+                    "transcript_text": "content",
+                },
                 model="voyage",
             )
 
@@ -147,9 +174,16 @@ class TestEmbedScene:
         mock_provider = MagicMock()
         mock_provider.embed_sync.return_value = [0.0]
 
-        with patch("claudetube.analysis.embeddings._get_embedder", return_value=mock_provider):
+        with patch(
+            "claudetube.analysis.embeddings._get_embedder", return_value=mock_provider
+        ):
             embed_scene(
-                scene={"scene_id": 1, "start_time": 0.0, "end_time": 5.0, "transcript_text": ""},
+                scene={
+                    "scene_id": 1,
+                    "start_time": 0.0,
+                    "end_time": 5.0,
+                    "transcript_text": "",
+                },
                 keyframe_paths=[str(img)],
                 model="voyage",
             )
@@ -164,10 +198,18 @@ class TestEmbedScene:
 
         with (
             patch.dict("os.environ", {"CLAUDETUBE_EMBEDDING_MODEL": "local"}),
-            patch("claudetube.analysis.embeddings._get_embedder", return_value=mock_provider) as mock_get,
+            patch(
+                "claudetube.analysis.embeddings._get_embedder",
+                return_value=mock_provider,
+            ) as mock_get,
         ):
             embed_scene(
-                scene={"scene_id": 1, "start_time": 0.0, "end_time": 5.0, "transcript_text": ""},
+                scene={
+                    "scene_id": 1,
+                    "start_time": 0.0,
+                    "end_time": 5.0,
+                    "transcript_text": "",
+                },
             )
 
         mock_get.assert_called_once_with("local")
@@ -183,7 +225,9 @@ class TestEmbedScene:
         mock_provider = MagicMock()
         mock_provider.embed_sync.return_value = [0.1, 0.2]
 
-        with patch("claudetube.analysis.embeddings._get_embedder", return_value=mock_provider):
+        with patch(
+            "claudetube.analysis.embeddings._get_embedder", return_value=mock_provider
+        ):
             result = embed_scene(scene=mock_scene, model="voyage")
 
         assert result.scene_id == 3
@@ -192,9 +236,16 @@ class TestEmbedScene:
         mock_provider = MagicMock()
         mock_provider.embed_sync.return_value = [0.1, 0.2, 0.3]
 
-        with patch("claudetube.analysis.embeddings._get_embedder", return_value=mock_provider):
+        with patch(
+            "claudetube.analysis.embeddings._get_embedder", return_value=mock_provider
+        ):
             result = embed_scene(
-                scene={"scene_id": 1, "start_time": 0.0, "end_time": 5.0, "transcript_text": ""},
+                scene={
+                    "scene_id": 1,
+                    "start_time": 0.0,
+                    "end_time": 5.0,
+                    "transcript_text": "",
+                },
                 model="voyage",
             )
 

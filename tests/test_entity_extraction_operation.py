@@ -16,7 +16,6 @@ Verifies:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -139,7 +138,9 @@ class TestEntityExtractionOperationInit:
         assert op.video_analyzer is None
         assert op.vision is None
 
-    def test_accepts_all(self, mock_video_analyzer, mock_vision_analyzer, mock_reasoner):
+    def test_accepts_all(
+        self, mock_video_analyzer, mock_vision_analyzer, mock_reasoner
+    ):
         op = EntityExtractionOperation(
             video_analyzer=mock_video_analyzer,
             vision_analyzer=mock_vision_analyzer,
@@ -158,7 +159,9 @@ class TestEntityExtractionOperationInit:
 class TestBuildPrompt:
     """Tests for prompt building."""
 
-    def test_visual_prompt_without_transcript(self, mock_vision_analyzer, sample_scene_no_transcript):
+    def test_visual_prompt_without_transcript(
+        self, mock_vision_analyzer, sample_scene_no_transcript
+    ):
         op = EntityExtractionOperation(vision_analyzer=mock_vision_analyzer)
         prompt = op._build_visual_prompt(sample_scene_no_transcript)
         assert "extract all entities" in prompt
@@ -179,7 +182,9 @@ class TestBuildPrompt:
         assert "Hello and welcome" in prompt
         assert "10.0" in prompt  # start_time
 
-    def test_concept_prompt_empty_transcript(self, mock_reasoner, sample_scene_no_transcript):
+    def test_concept_prompt_empty_transcript(
+        self, mock_reasoner, sample_scene_no_transcript
+    ):
         op = EntityExtractionOperation(reasoner=mock_reasoner)
         prompt = op._build_concept_prompt(sample_scene_no_transcript)
         assert "key concepts" in prompt
@@ -212,13 +217,28 @@ class TestExecute:
         """Vision-only extraction returns visual entities."""
         mock_vision_analyzer.analyze_images.return_value = {
             "objects": [
-                {"name": "laptop", "category": "object", "first_seen_sec": 10.0, "confidence": 0.9}
+                {
+                    "name": "laptop",
+                    "category": "object",
+                    "first_seen_sec": 10.0,
+                    "confidence": 0.9,
+                }
             ],
             "people": [
-                {"name": "presenter", "category": "person", "first_seen_sec": 10.0, "confidence": 0.95}
+                {
+                    "name": "presenter",
+                    "category": "person",
+                    "first_seen_sec": 10.0,
+                    "confidence": 0.95,
+                }
             ],
             "text_on_screen": [
-                {"name": "def main():", "category": "code", "first_seen_sec": 12.0, "confidence": 0.8}
+                {
+                    "name": "def main():",
+                    "category": "code",
+                    "first_seen_sec": 12.0,
+                    "confidence": 0.8,
+                }
             ],
             "concepts": [],
             "code_snippets": [],
@@ -276,7 +296,9 @@ class TestExecute:
     ):
         """Both providers run concurrently."""
         mock_vision_analyzer.analyze_images.return_value = {
-            "objects": [{"name": "laptop", "category": "object", "first_seen_sec": 10.0}],
+            "objects": [
+                {"name": "laptop", "category": "object", "first_seen_sec": 10.0}
+            ],
             "people": [],
             "text_on_screen": [],
             "concepts": [],
@@ -316,8 +338,11 @@ class TestExecute:
     ):
         """Pydantic schema is passed to analyze_images."""
         mock_vision_analyzer.analyze_images.return_value = {
-            "objects": [], "people": [], "text_on_screen": [],
-            "concepts": [], "code_snippets": [],
+            "objects": [],
+            "people": [],
+            "text_on_screen": [],
+            "concepts": [],
+            "code_snippets": [],
         }
 
         op = EntityExtractionOperation(vision_analyzer=mock_vision_analyzer)
@@ -334,13 +359,17 @@ class TestExecute:
         self, mock_vision_analyzer, sample_scene, sample_keyframes
     ):
         """Handles provider returning JSON string instead of dict."""
-        mock_vision_analyzer.analyze_images.return_value = json.dumps({
-            "objects": [{"name": "monitor", "category": "object", "first_seen_sec": 10.0}],
-            "people": [],
-            "text_on_screen": [],
-            "concepts": [],
-            "code_snippets": [],
-        })
+        mock_vision_analyzer.analyze_images.return_value = json.dumps(
+            {
+                "objects": [
+                    {"name": "monitor", "category": "object", "first_seen_sec": 10.0}
+                ],
+                "people": [],
+                "text_on_screen": [],
+                "concepts": [],
+                "code_snippets": [],
+            }
+        )
 
         op = EntityExtractionOperation(vision_analyzer=mock_vision_analyzer)
         result = await op.execute(
@@ -391,19 +420,22 @@ class TestExecute:
         info_mock.name = "google"
         type(analyzer).info = PropertyMock(return_value=info_mock)
         analyzer.analyze_images.return_value = {
-            "objects": [], "people": [], "text_on_screen": [],
-            "concepts": [], "code_snippets": [],
+            "objects": [],
+            "people": [],
+            "text_on_screen": [],
+            "concepts": [],
+            "code_snippets": [],
         }
 
         op = EntityExtractionOperation(vision_analyzer=analyzer)
-        result = await op.execute(scene_id=0, keyframes=sample_keyframes, scene=sample_scene)
+        result = await op.execute(
+            scene_id=0, keyframes=sample_keyframes, scene=sample_scene
+        )
 
         assert result.model_used == "google"
 
     @pytest.mark.asyncio
-    async def test_execute_model_name_from_reasoner_info(
-        self, sample_scene
-    ):
+    async def test_execute_model_name_from_reasoner_info(self, sample_scene):
         """Model name comes from reasoner info when no vision provider."""
         reasoner = AsyncMock()
         info_mock = MagicMock()
@@ -421,10 +453,17 @@ class TestExecute:
         self, mock_vision_analyzer, mock_reasoner, sample_scene, sample_keyframes
     ):
         """Vision failure doesn't prevent concept extraction."""
-        mock_vision_analyzer.analyze_images.side_effect = RuntimeError("Vision API error")
+        mock_vision_analyzer.analyze_images.side_effect = RuntimeError(
+            "Vision API error"
+        )
         mock_reasoner.reason.return_value = {
             "concepts": [
-                {"term": "Test", "definition": "A test", "importance": "primary", "first_mention_sec": 0.0}
+                {
+                    "term": "Test",
+                    "definition": "A test",
+                    "importance": "primary",
+                    "first_mention_sec": 0.0,
+                }
             ]
         }
 
@@ -453,12 +492,23 @@ class TestExecuteWithVideoAnalyzer:
 
     @pytest.mark.asyncio
     async def test_video_analyzer_used_when_available(
-        self, mock_video_analyzer, mock_vision_analyzer, sample_scene,
-        sample_keyframes, sample_video_path,
+        self,
+        mock_video_analyzer,
+        mock_vision_analyzer,
+        sample_scene,
+        sample_keyframes,
+        sample_video_path,
     ):
         """VideoAnalyzer is preferred over VisionAnalyzer."""
         mock_video_analyzer.analyze_video.return_value = {
-            "objects": [{"name": "laptop", "category": "object", "first_seen_sec": 10.0, "confidence": 0.9}],
+            "objects": [
+                {
+                    "name": "laptop",
+                    "category": "object",
+                    "first_seen_sec": 10.0,
+                    "confidence": 0.9,
+                }
+            ],
             "people": [],
             "text_on_screen": [],
             "concepts": [],
@@ -485,12 +535,18 @@ class TestExecuteWithVideoAnalyzer:
 
     @pytest.mark.asyncio
     async def test_video_analyzer_passes_time_range(
-        self, mock_video_analyzer, sample_scene, sample_video_path,
+        self,
+        mock_video_analyzer,
+        sample_scene,
+        sample_video_path,
     ):
         """VideoAnalyzer receives start_time and end_time."""
         mock_video_analyzer.analyze_video.return_value = {
-            "objects": [], "people": [], "text_on_screen": [],
-            "concepts": [], "code_snippets": [],
+            "objects": [],
+            "people": [],
+            "text_on_screen": [],
+            "concepts": [],
+            "code_snippets": [],
         }
 
         op = EntityExtractionOperation(video_analyzer=mock_video_analyzer)
@@ -507,13 +563,19 @@ class TestExecuteWithVideoAnalyzer:
 
     @pytest.mark.asyncio
     async def test_falls_back_to_vision_on_video_error(
-        self, mock_video_analyzer, mock_vision_analyzer, sample_scene,
-        sample_keyframes, sample_video_path,
+        self,
+        mock_video_analyzer,
+        mock_vision_analyzer,
+        sample_scene,
+        sample_keyframes,
+        sample_video_path,
     ):
         """When VideoAnalyzer fails, falls back to VisionAnalyzer."""
         mock_video_analyzer.analyze_video.side_effect = RuntimeError("Gemini API error")
         mock_vision_analyzer.analyze_images.return_value = {
-            "objects": [{"name": "monitor", "category": "object", "first_seen_sec": 10.0}],
+            "objects": [
+                {"name": "monitor", "category": "object", "first_seen_sec": 10.0}
+            ],
             "people": [],
             "text_on_screen": [],
             "concepts": [],
@@ -538,12 +600,17 @@ class TestExecuteWithVideoAnalyzer:
 
     @pytest.mark.asyncio
     async def test_no_video_path_uses_vision(
-        self, mock_video_analyzer, mock_vision_analyzer, sample_scene,
+        self,
+        mock_video_analyzer,
+        mock_vision_analyzer,
+        sample_scene,
         sample_keyframes,
     ):
         """Without video_path, VisionAnalyzer is used even when VideoAnalyzer is set."""
         mock_vision_analyzer.analyze_images.return_value = {
-            "objects": [{"name": "keyboard", "category": "object", "first_seen_sec": 10.0}],
+            "objects": [
+                {"name": "keyboard", "category": "object", "first_seen_sec": 10.0}
+            ],
             "people": [],
             "text_on_screen": [],
             "concepts": [],
@@ -567,12 +634,17 @@ class TestExecuteWithVideoAnalyzer:
 
     @pytest.mark.asyncio
     async def test_video_analyzer_with_reasoner(
-        self, mock_video_analyzer, mock_reasoner, sample_scene,
+        self,
+        mock_video_analyzer,
+        mock_reasoner,
+        sample_scene,
         sample_video_path,
     ):
         """VideoAnalyzer and Reasoner run concurrently."""
         mock_video_analyzer.analyze_video.return_value = {
-            "objects": [{"name": "laptop", "category": "object", "first_seen_sec": 10.0}],
+            "objects": [
+                {"name": "laptop", "category": "object", "first_seen_sec": 10.0}
+            ],
             "people": [],
             "text_on_screen": [],
             "concepts": [],
@@ -580,7 +652,12 @@ class TestExecuteWithVideoAnalyzer:
         }
         mock_reasoner.reason.return_value = {
             "concepts": [
-                {"term": "Python", "definition": "A language", "importance": "primary", "first_mention_sec": 10.0}
+                {
+                    "term": "Python",
+                    "definition": "A language",
+                    "importance": "primary",
+                    "first_mention_sec": 10.0,
+                }
             ]
         }
 
@@ -602,16 +679,23 @@ class TestExecuteWithVideoAnalyzer:
 
     @pytest.mark.asyncio
     async def test_video_analyzer_handles_string_response(
-        self, mock_video_analyzer, sample_scene, sample_video_path,
+        self,
+        mock_video_analyzer,
+        sample_scene,
+        sample_video_path,
     ):
         """VideoAnalyzer returning JSON string is parsed correctly."""
-        mock_video_analyzer.analyze_video.return_value = json.dumps({
-            "objects": [{"name": "mouse", "category": "object", "first_seen_sec": 10.0}],
-            "people": [],
-            "text_on_screen": [],
-            "concepts": [],
-            "code_snippets": [],
-        })
+        mock_video_analyzer.analyze_video.return_value = json.dumps(
+            {
+                "objects": [
+                    {"name": "mouse", "category": "object", "first_seen_sec": 10.0}
+                ],
+                "people": [],
+                "text_on_screen": [],
+                "concepts": [],
+                "code_snippets": [],
+            }
+        )
 
         op = EntityExtractionOperation(video_analyzer=mock_video_analyzer)
         result = await op.execute(
@@ -644,7 +728,9 @@ class TestBuildVideoPrompt:
         prompt = op._build_video_prompt(sample_scene)
         assert "Transcript context: Hello and welcome" in prompt
 
-    def test_video_prompt_without_transcript(self, mock_video_analyzer, sample_scene_no_transcript):
+    def test_video_prompt_without_transcript(
+        self, mock_video_analyzer, sample_scene_no_transcript
+    ):
         op = EntityExtractionOperation(video_analyzer=mock_video_analyzer)
         prompt = op._build_video_prompt(sample_scene_no_transcript)
         assert "Transcript context" not in prompt
@@ -811,7 +897,9 @@ class TestShouldSkipEntityExtraction:
 class TestGetDefaultProviders:
     """Tests for _get_default_providers."""
 
-    def _make_provider_mock(self, available=True, has_video=False, has_vision=True, has_reasoner=True):
+    def _make_provider_mock(
+        self, available=True, has_video=False, has_vision=True, has_reasoner=True
+    ):
         """Create a mock provider with specified capabilities."""
         mock = MagicMock()
         mock.is_available.return_value = available
@@ -892,30 +980,40 @@ class TestExtractEntitiesForVideoIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{
-                "scene_id": 0,
-                "start_time": 0.0,
-                "end_time": 10.0,
-            }],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [
+                        {
+                            "scene_id": 0,
+                            "start_time": 0.0,
+                            "end_time": 10.0,
+                        }
+                    ],
+                }
+            )
+        )
 
         # Create cached entities.json
         scene_dir = scenes_dir / "scene_000"
         scene_dir.mkdir()
         entities_json = scene_dir / "entities.json"
-        entities_json.write_text(json.dumps({
-            "scene_id": 0,
-            "objects": [{"name": "laptop"}],
-            "people": [],
-            "text_on_screen": [],
-            "concepts": [],
-            "code_snippets": [],
-            "model_used": "anthropic",
-        }))
+        entities_json.write_text(
+            json.dumps(
+                {
+                    "scene_id": 0,
+                    "objects": [{"name": "laptop"}],
+                    "people": [],
+                    "text_on_screen": [],
+                    "concepts": [],
+                    "code_snippets": [],
+                    "model_used": "anthropic",
+                }
+            )
+        )
 
         result = extract_entities_for_video(
             video_id=video_id,
@@ -935,17 +1033,23 @@ class TestExtractEntitiesForVideoIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{
-                "scene_id": 0,
-                "start_time": 0.0,
-                "end_time": 1.0,
-                # No transcript_text = skip
-            }],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [
+                        {
+                            "scene_id": 0,
+                            "start_time": 0.0,
+                            "end_time": 1.0,
+                            # No transcript_text = skip
+                        }
+                    ],
+                }
+            )
+        )
 
         result = extract_entities_for_video(
             video_id=video_id,
@@ -985,17 +1089,23 @@ class TestExtractEntitiesForVideoIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{
-                "scene_id": 0,
-                "start_time": 0.0,
-                "end_time": 30.0,
-                "transcript_text": "Hello world",
-            }],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [
+                        {
+                            "scene_id": 0,
+                            "start_time": 0.0,
+                            "end_time": 30.0,
+                            "transcript_text": "Hello world",
+                        }
+                    ],
+                }
+            )
+        )
 
         # Create a mock reasoner that returns concepts
         mock_reasoner = AsyncMock()
@@ -1046,24 +1156,32 @@ class TestGetExtractedEntities:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
+                }
+            )
+        )
 
         scene_dir = scenes_dir / "scene_000"
         scene_dir.mkdir()
         entities_json = scene_dir / "entities.json"
-        entities_json.write_text(json.dumps({
-            "scene_id": 0,
-            "objects": [{"name": "laptop"}],
-            "people": [],
-            "text_on_screen": [],
-            "concepts": [],
-            "code_snippets": [],
-        }))
+        entities_json.write_text(
+            json.dumps(
+                {
+                    "scene_id": 0,
+                    "objects": [{"name": "laptop"}],
+                    "people": [],
+                    "text_on_screen": [],
+                    "concepts": [],
+                    "code_snippets": [],
+                }
+            )
+        )
 
         result = get_extracted_entities(video_id, output_base=tmp_path)
 
@@ -1079,28 +1197,36 @@ class TestGetExtractedEntities:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 2,
-            "scenes": [
-                {"scene_id": 0, "start_time": 0.0, "end_time": 10.0},
-                {"scene_id": 1, "start_time": 10.0, "end_time": 20.0},
-            ],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 2,
+                    "scenes": [
+                        {"scene_id": 0, "start_time": 0.0, "end_time": 10.0},
+                        {"scene_id": 1, "start_time": 10.0, "end_time": 20.0},
+                    ],
+                }
+            )
+        )
 
         # Only scene 0 has entities
         scene_dir = scenes_dir / "scene_000"
         scene_dir.mkdir()
         entities_json = scene_dir / "entities.json"
-        entities_json.write_text(json.dumps({
-            "scene_id": 0,
-            "objects": [],
-            "people": [],
-            "text_on_screen": [],
-            "concepts": [],
-            "code_snippets": [],
-        }))
+        entities_json.write_text(
+            json.dumps(
+                {
+                    "scene_id": 0,
+                    "objects": [],
+                    "people": [],
+                    "text_on_screen": [],
+                    "concepts": [],
+                    "code_snippets": [],
+                }
+            )
+        )
 
         result = get_extracted_entities(video_id, output_base=tmp_path)
 

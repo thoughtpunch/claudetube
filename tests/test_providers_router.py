@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from claudetube.providers.capabilities import Capability, CostTier, ProviderInfo
+from claudetube.providers.capabilities import Capability, ProviderInfo
 from claudetube.providers.config import ProvidersConfig
 from claudetube.providers.router import (
     NoProviderError,
@@ -153,9 +153,7 @@ class TestProviderRouterInit:
 
     def test_with_default_config(self):
         """ProviderRouter loads default config when None is passed."""
-        with patch(
-            "claudetube.providers.config.get_providers_config"
-        ) as mock_get:
+        with patch("claudetube.providers.config.get_providers_config") as mock_get:
             mock_get.return_value = _make_config()
             router = ProviderRouter(config=None)
             mock_get.assert_called_once()
@@ -677,12 +675,8 @@ class TestCallWithFallback:
     async def test_falls_back_on_error(self, mock_providers):
         """call_with_fallback tries next provider on error."""
         mock_primary, mock_fallback, mock_claude = mock_providers
-        mock_primary.analyze_images = AsyncMock(
-            side_effect=RuntimeError("API error")
-        )
-        mock_fallback.analyze_images = AsyncMock(
-            return_value="fallback result"
-        )
+        mock_primary.analyze_images = AsyncMock(side_effect=RuntimeError("API error"))
+        mock_fallback.analyze_images = AsyncMock(return_value="fallback result")
 
         config = _make_config(
             vision_provider="anthropic",
@@ -878,9 +872,7 @@ class TestCallWithFallback:
             "claude-code",
             frozenset({Capability.VISION}),
         )
-        mock_fallback.analyze_images = AsyncMock(
-            return_value="fallback result"
-        )
+        mock_fallback.analyze_images = AsyncMock(return_value="fallback result")
 
         config = _make_config(
             vision_provider="anthropic",
@@ -964,9 +956,7 @@ class TestLogging:
                 "claudetube.providers.registry.get_provider",
                 side_effect=_mock_get,
             ),
-            caplog.at_level(
-                logging.WARNING, logger="claudetube.providers.router"
-            ),
+            caplog.at_level(logging.WARNING, logger="claudetube.providers.router"),
         ):
             router.get_for_capability(Capability.VISION)
 
@@ -1121,15 +1111,9 @@ class TestFullRoutingFlow:
     @pytest.mark.asyncio
     async def test_call_with_fallback_complete_chain(self):
         """call_with_fallback tries entire chain before raising."""
-        mock_p1 = _make_mock_provider(
-            "anthropic", frozenset({Capability.REASON})
-        )
-        mock_p2 = _make_mock_provider(
-            "openai", frozenset({Capability.REASON})
-        )
-        mock_p3 = _make_mock_provider(
-            "claude-code", frozenset({Capability.REASON})
-        )
+        mock_p1 = _make_mock_provider("anthropic", frozenset({Capability.REASON}))
+        mock_p2 = _make_mock_provider("openai", frozenset({Capability.REASON}))
+        mock_p3 = _make_mock_provider("claude-code", frozenset({Capability.REASON}))
 
         mock_p1.reason = AsyncMock(side_effect=RuntimeError("p1 error"))
         mock_p2.reason = AsyncMock(side_effect=RuntimeError("p2 error"))
@@ -1298,7 +1282,9 @@ class TestCostBasedRouting:
         sorted_names = router._sort_by_cost(names)
 
         # whisper-local (FREE) < unknown (MODERATE) < anthropic (EXPENSIVE)
-        assert sorted_names.index("whisper-local") < sorted_names.index("unknown-provider")
+        assert sorted_names.index("whisper-local") < sorted_names.index(
+            "unknown-provider"
+        )
         assert sorted_names.index("unknown-provider") < sorted_names.index("anthropic")
 
     def test_sort_by_cost_stable_within_same_tier(self):
@@ -1431,12 +1417,8 @@ class TestParallelFallback:
             frozenset({Capability.VISION}),
         )
 
-        mock_p1.analyze_images = AsyncMock(
-            side_effect=RuntimeError("p1 error")
-        )
-        mock_p2.analyze_images = AsyncMock(
-            side_effect=RuntimeError("p2 error")
-        )
+        mock_p1.analyze_images = AsyncMock(side_effect=RuntimeError("p1 error"))
+        mock_p2.analyze_images = AsyncMock(side_effect=RuntimeError("p2 error"))
 
         config = _make_config(
             vision_provider="anthropic",

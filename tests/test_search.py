@@ -515,7 +515,16 @@ class TestMergeResults:
         from claudetube.analysis.search import SearchMoment, _merge_results
 
         results = [
-            SearchMoment(i, i, float(i * 30), float((i + 1) * 30), 0.5, "preview", f"{i}:00", "text")
+            SearchMoment(
+                i,
+                i,
+                float(i * 30),
+                float((i + 1) * 30),
+                0.5,
+                "preview",
+                f"{i}:00",
+                "text",
+            )
             for i in range(10)
         ]
 
@@ -587,9 +596,7 @@ class TestExpandQuery:
 
         mock_reasoner = AsyncMock()
         mock_reasoner.reason.return_value = (
-            "fix the bug\n"
-            "debugging code\n"
-            "resolving errors"
+            "fix the bug\ndebugging code\nresolving errors"
         )
 
         result = await expand_query("fix the bug", mock_reasoner)
@@ -604,9 +611,7 @@ class TestExpandQuery:
         from claudetube.analysis.search import expand_query
 
         mock_reasoner = AsyncMock()
-        mock_reasoner.reason.return_value = "\n".join(
-            [f"term {i}" for i in range(10)]
-        )
+        mock_reasoner.reason.return_value = "\n".join([f"term {i}" for i in range(10)])
 
         result = await expand_query("query", mock_reasoner)
 
@@ -648,12 +653,7 @@ class TestExpandQuery:
         from claudetube.analysis.search import expand_query
 
         mock_reasoner = AsyncMock()
-        mock_reasoner.reason.return_value = (
-            "  term one  \n"
-            "  term two  \n"
-            "  \n"
-            "term three"
-        )
+        mock_reasoner.reason.return_value = "  term one  \n  term two  \n  \nterm three"
 
         result = await expand_query("query", mock_reasoner)
 
@@ -769,9 +769,7 @@ class TestFindMomentsWithReasoner:
 
         mock_reasoner = AsyncMock()
         mock_reasoner.reason.return_value = (
-            "neural networks\n"
-            "deep learning models\n"
-            "AI training"
+            "neural networks\ndeep learning models\nAI training"
         )
 
         results = find_moments(

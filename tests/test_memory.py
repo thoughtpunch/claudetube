@@ -1,10 +1,5 @@
 """Tests for video memory management."""
 
-import json
-from pathlib import Path
-
-import pytest
-
 from claudetube.cache import (
     CacheManager,
     Observation,
@@ -260,9 +255,15 @@ class TestVideoMemory:
         cache_dir.mkdir()
 
         memory = VideoMemory("video123", cache_dir)
-        memory.record_qa(question="What is React?", answer="A JavaScript library", scenes=[1])
-        memory.record_qa(question="How to use hooks?", answer="Import from react", scenes=[2])
-        memory.record_qa(question="What about Vue?", answer="Another framework", scenes=[3])
+        memory.record_qa(
+            question="What is React?", answer="A JavaScript library", scenes=[1]
+        )
+        memory.record_qa(
+            question="How to use hooks?", answer="Import from react", scenes=[2]
+        )
+        memory.record_qa(
+            question="What about Vue?", answer="Another framework", scenes=[3]
+        )
 
         # Search by question
         results = memory.search_qa_history("React")

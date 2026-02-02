@@ -84,7 +84,9 @@ class TrackedObject:
     def from_dict(cls, data: dict) -> TrackedObject:
         """Create from dictionary."""
         obj = cls(name=data["name"])
-        obj.appearances = [ObjectAppearance.from_dict(a) for a in data.get("appearances", [])]
+        obj.appearances = [
+            ObjectAppearance.from_dict(a) for a in data.get("appearances", [])
+        ]
         return obj
 
 
@@ -98,12 +100,18 @@ class ConceptMention:
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
-        return {"scene_id": self.scene_id, "timestamp": self.timestamp, "score": self.score}
+        return {
+            "scene_id": self.scene_id,
+            "timestamp": self.timestamp,
+            "score": self.score,
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> ConceptMention:
         """Create from dictionary."""
-        return cls(scene_id=data["scene_id"], timestamp=data["timestamp"], score=data["score"])
+        return cls(
+            scene_id=data["scene_id"], timestamp=data["timestamp"], score=data["score"]
+        )
 
 
 @dataclass
@@ -144,7 +152,9 @@ class TrackedConcept:
     def from_dict(cls, data: dict) -> TrackedConcept:
         """Create from dictionary."""
         concept = cls(term=data["term"])
-        concept.mentions = [ConceptMention.from_dict(m) for m in data.get("mentions", [])]
+        concept.mentions = [
+            ConceptMention.from_dict(m) for m in data.get("mentions", [])
+        ]
         return concept
 
 
@@ -184,7 +194,10 @@ def load_objects(cache_dir: Path) -> dict[str, TrackedObject] | None:
 
     try:
         data = json.loads(path.read_text())
-        return {name: TrackedObject.from_dict(obj) for name, obj in data.get("objects", {}).items()}
+        return {
+            name: TrackedObject.from_dict(obj)
+            for name, obj in data.get("objects", {}).items()
+        }
     except (json.JSONDecodeError, KeyError):
         return None
 
@@ -209,7 +222,9 @@ def load_concepts(cache_dir: Path) -> dict[str, TrackedConcept] | None:
         return None
 
 
-def save_objects(cache_dir: Path, objects: dict[str, TrackedObject], video_id: str) -> None:
+def save_objects(
+    cache_dir: Path, objects: dict[str, TrackedObject], video_id: str
+) -> None:
     """Save objects to entities/objects.json."""
     path = get_objects_json_path(cache_dir)
     data = {
@@ -220,7 +235,9 @@ def save_objects(cache_dir: Path, objects: dict[str, TrackedObject], video_id: s
     path.write_text(json.dumps(data, indent=2))
 
 
-def save_concepts(cache_dir: Path, concepts: dict[str, TrackedConcept], video_id: str) -> None:
+def save_concepts(
+    cache_dir: Path, concepts: dict[str, TrackedConcept], video_id: str
+) -> None:
     """Save concepts to entities/concepts.json."""
     path = get_concepts_json_path(cache_dir)
     data = {
@@ -331,7 +348,10 @@ def track_concepts_from_scenes(
         if text.strip():
             texts.append(text)
             scene_info.append(
-                {"scene_id": scene.get("scene_id", 0), "start_time": scene.get("start_time", 0.0)}
+                {
+                    "scene_id": scene.get("scene_id", 0),
+                    "start_time": scene.get("start_time", 0.0),
+                }
             )
 
     if len(texts) < 2:
@@ -375,12 +395,13 @@ def track_concepts_from_scenes(
                 )
 
     # Sort by frequency and take top_n
-    sorted_concepts = sorted(concept_mentions.items(), key=lambda x: len(x[1]), reverse=True)[
-        :top_n
-    ]
+    sorted_concepts = sorted(
+        concept_mentions.items(), key=lambda x: len(x[1]), reverse=True
+    )[:top_n]
 
     return {
-        term: TrackedConcept(term=term, mentions=mentions) for term, mentions in sorted_concepts
+        term: TrackedConcept(term=term, mentions=mentions)
+        for term, mentions in sorted_concepts
     }
 
 
@@ -421,7 +442,9 @@ def track_entities(
             logger.info(f"Loaded cached entities for {video_id}")
             return {
                 "video_id": video_id,
-                "objects": {name: obj.to_dict() for name, obj in cached_objects.items()},
+                "objects": {
+                    name: obj.to_dict() for name, obj in cached_objects.items()
+                },
                 "concepts": {term: c.to_dict() for term, c in cached_concepts.items()},
                 "from_cache": True,
             }
@@ -441,7 +464,9 @@ def track_entities(
         }
 
         # Load visual.json if available
-        visual_path = cache_dir / "scenes" / f"scene_{scene.scene_id:03d}" / "visual.json"
+        visual_path = (
+            cache_dir / "scenes" / f"scene_{scene.scene_id:03d}" / "visual.json"
+        )
         if visual_path.exists():
             try:
                 visual_data = json.loads(visual_path.read_text())

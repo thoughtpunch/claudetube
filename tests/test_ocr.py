@@ -120,7 +120,9 @@ class TestClassifyContentType:
 
             regions = [
                 TextRegion("def hello():", 0.9, {"x1": 0, "y1": 0, "x2": 80, "y2": 20}),
-                TextRegion("    return True", 0.9, {"x1": 0, "y1": 20, "x2": 80, "y2": 40}),
+                TextRegion(
+                    "    return True", 0.9, {"x1": 0, "y1": 20, "x2": 80, "y2": 40}
+                ),
             ]
 
             content_type = classify_content_type(regions, img_path)
@@ -210,9 +212,19 @@ class TestSaveLoadOCRResults:
         )
 
         results = [
-            FrameOCRResult("/f1.jpg", 0, [TextRegion("x", 0.9, {"x1": 0, "y1": 0, "x2": 1, "y2": 1})], "code"),
+            FrameOCRResult(
+                "/f1.jpg",
+                0,
+                [TextRegion("x", 0.9, {"x1": 0, "y1": 0, "x2": 1, "y2": 1})],
+                "code",
+            ),
             FrameOCRResult("/f2.jpg", 0, [], "talking_head"),
-            FrameOCRResult("/f3.jpg", 0, [TextRegion("y", 0.9, {"x1": 0, "y1": 0, "x2": 1, "y2": 1})], "code"),
+            FrameOCRResult(
+                "/f3.jpg",
+                0,
+                [TextRegion("y", 0.9, {"x1": 0, "y1": 0, "x2": 1, "y2": 1})],
+                "code",
+            ),
         ]
 
         output_path = tmp_path / "technical.json"

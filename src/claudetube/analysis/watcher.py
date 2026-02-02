@@ -225,8 +225,7 @@ class ActiveVideoWatcher:
         """
         candidates = []
         previous_scenes = [
-            s for s in self.scenes
-            if self._get_scene_id(s) in self.examined
+            s for s in self.scenes if self._get_scene_id(s) in self.examined
         ]
 
         for scene in self.scenes:
@@ -243,11 +242,13 @@ class ActiveVideoWatcher:
                 video_duration=self.video_duration,
             )
 
-            candidates.append({
-                "scene_id": scene_id,
-                "priority": priority,
-                "scene": scene,
-            })
+            candidates.append(
+                {
+                    "scene_id": scene_id,
+                    "priority": priority,
+                    "scene": scene,
+                }
+            )
 
         return sorted(candidates, key=lambda x: x["priority"], reverse=True)
 
@@ -264,8 +265,7 @@ class ActiveVideoWatcher:
         """
         self.examined.add(scene_id)
         logger.info(
-            f"Updating understanding from scene {scene_id}: "
-            f"{len(findings)} findings"
+            f"Updating understanding from scene {scene_id}: {len(findings)} findings"
         )
 
         for finding in findings:
@@ -323,17 +323,90 @@ class ActiveVideoWatcher:
 
         # Filter common words
         stop_words = {
-            "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "being", "have", "has", "had", "do", "does", "did", "will",
-            "would", "could", "should", "may", "might", "must", "shall",
-            "can", "to", "of", "in", "for", "on", "with", "at", "by",
-            "from", "as", "into", "through", "during", "before", "after",
-            "above", "below", "between", "under", "again", "further",
-            "then", "once", "here", "there", "when", "where", "why",
-            "how", "all", "each", "few", "more", "most", "other", "some",
-            "such", "no", "nor", "not", "only", "own", "same", "so",
-            "than", "too", "very", "just", "and", "but", "if", "or",
-            "because", "until", "while", "this", "that", "these", "those",
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "shall",
+            "can",
+            "to",
+            "of",
+            "in",
+            "for",
+            "on",
+            "with",
+            "at",
+            "by",
+            "from",
+            "as",
+            "into",
+            "through",
+            "during",
+            "before",
+            "after",
+            "above",
+            "below",
+            "between",
+            "under",
+            "again",
+            "further",
+            "then",
+            "once",
+            "here",
+            "there",
+            "when",
+            "where",
+            "why",
+            "how",
+            "all",
+            "each",
+            "few",
+            "more",
+            "most",
+            "other",
+            "some",
+            "such",
+            "no",
+            "nor",
+            "not",
+            "only",
+            "own",
+            "same",
+            "so",
+            "than",
+            "too",
+            "very",
+            "just",
+            "and",
+            "but",
+            "if",
+            "or",
+            "because",
+            "until",
+            "while",
+            "this",
+            "that",
+            "these",
+            "those",
         }
         desc_words -= stop_words
         claim_words -= stop_words
@@ -377,9 +450,11 @@ class ActiveVideoWatcher:
         multi_scene_bonus = min(0.2, len(scenes_with_evidence) * 0.05)
 
         # Average individual confidence scores
-        avg_individual = sum(
-            e.get("initial_confidence", 0.3) for e in hyp.evidence
-        ) / evidence_count if evidence_count else 0
+        avg_individual = (
+            sum(e.get("initial_confidence", 0.3) for e in hyp.evidence) / evidence_count
+            if evidence_count
+            else 0
+        )
 
         confidence = base_confidence + multi_scene_bonus + (avg_individual * 0.3)
 
@@ -491,8 +566,7 @@ class ActiveVideoWatcher:
 
         watcher.examined = set(state.get("examined", []))
         watcher.hypotheses = [
-            Hypothesis.from_dict(h)
-            for h in state.get("hypotheses", [])
+            Hypothesis.from_dict(h) for h in state.get("hypotheses", [])
         ]
 
         return watcher

@@ -231,11 +231,13 @@ class TestActiveVideoWatcher:
             confidence_threshold=0.5,
         )
         # Add a high-confidence hypothesis
-        watcher.hypotheses.append(Hypothesis(
-            claim="Found it!",
-            evidence=[{"description": "Evidence"}],
-            confidence=0.6,
-        ))
+        watcher.hypotheses.append(
+            Hypothesis(
+                claim="Found it!",
+                evidence=[{"description": "Evidence"}],
+                confidence=0.6,
+            )
+        )
 
         action = watcher.decide_next_action()
         assert action.action == "answer"
@@ -273,11 +275,13 @@ class TestActiveVideoWatcher:
         )
 
         # Create initial hypothesis
-        watcher.hypotheses.append(Hypothesis(
-            claim="Bug in authentication code",
-            evidence=[],
-            confidence=0.0,  # Start with 0 confidence
-        ))
+        watcher.hypotheses.append(
+            Hypothesis(
+                claim="Bug in authentication code",
+                evidence=[],
+                confidence=0.0,  # Start with 0 confidence
+            )
+        )
 
         # Add supporting finding
         findings = [{"description": "authentication bug confirmed", "scene_id": 1}]
@@ -304,10 +308,12 @@ class TestActiveVideoWatcher:
             scenes=sample_scenes,
             confidence_threshold=0.8,
         )
-        watcher.hypotheses.append(Hypothesis(
-            claim="Maybe this",
-            confidence=0.5,
-        ))
+        watcher.hypotheses.append(
+            Hypothesis(
+                claim="Maybe this",
+                confidence=0.5,
+            )
+        )
         assert watcher.has_sufficient_confidence() is False
 
     def test_has_sufficient_confidence_true(self, sample_scenes):
@@ -317,10 +323,12 @@ class TestActiveVideoWatcher:
             scenes=sample_scenes,
             confidence_threshold=0.7,
         )
-        watcher.hypotheses.append(Hypothesis(
-            claim="Found it!",
-            confidence=0.75,
-        ))
+        watcher.hypotheses.append(
+            Hypothesis(
+                claim="Found it!",
+                confidence=0.75,
+            )
+        )
         assert watcher.has_sufficient_confidence() is True
 
     def test_formulate_answer_no_hypotheses(self, sample_scenes):
@@ -345,17 +353,21 @@ class TestActiveVideoWatcher:
         )
         watcher.examined = {0, 1}
 
-        watcher.hypotheses.append(Hypothesis(
-            claim="The bug is fixed at 1:00",
-            evidence=[
-                {"description": "Bug fix at 1:00", "timestamp": 60.0, "scene_id": 2}
-            ],
-            confidence=0.8,
-        ))
-        watcher.hypotheses.append(Hypothesis(
-            claim="Alternative interpretation",
-            confidence=0.4,
-        ))
+        watcher.hypotheses.append(
+            Hypothesis(
+                claim="The bug is fixed at 1:00",
+                evidence=[
+                    {"description": "Bug fix at 1:00", "timestamp": 60.0, "scene_id": 2}
+                ],
+                confidence=0.8,
+            )
+        )
+        watcher.hypotheses.append(
+            Hypothesis(
+                claim="Alternative interpretation",
+                confidence=0.4,
+            )
+        )
 
         answer = watcher.formulate_answer()
         assert answer["main_answer"] == "The bug is fixed at 1:00"
@@ -375,10 +387,12 @@ class TestActiveVideoWatcher:
             video_duration=150.0,
         )
         watcher.examined = {0, 2}
-        watcher.hypotheses.append(Hypothesis(
-            claim="Test hypothesis",
-            confidence=0.5,
-        ))
+        watcher.hypotheses.append(
+            Hypothesis(
+                claim="Test hypothesis",
+                confidence=0.5,
+            )
+        )
 
         state = watcher.get_state()
         assert state["video_id"] == "test123"
@@ -438,11 +452,13 @@ class TestActiveVideoWatcher:
             video_duration=200.0,
         )
         watcher.examined = {0, 1, 2}
-        watcher.hypotheses.append(Hypothesis(
-            claim="Original hypothesis",
-            evidence=[{"desc": "e1"}],
-            confidence=0.7,
-        ))
+        watcher.hypotheses.append(
+            Hypothesis(
+                claim="Original hypothesis",
+                evidence=[{"desc": "e1"}],
+                confidence=0.7,
+            )
+        )
 
         state = watcher.get_state()
         restored = ActiveVideoWatcher.from_state(state, scenes=sample_scenes)
@@ -527,24 +543,30 @@ class TestWatcherIntegration:
             # Simulate examining and finding evidence
             if action.scene_id == 3:
                 # Found the fix
-                watcher.update_understanding(action.scene_id, [
-                    {
-                        "description": "Bug is fixed at this point",
-                        "claim": "Bug fixed in scene 3",
-                        "initial_confidence": 0.7,
-                        "scene_id": 3,
-                    }
-                ])
+                watcher.update_understanding(
+                    action.scene_id,
+                    [
+                        {
+                            "description": "Bug is fixed at this point",
+                            "claim": "Bug fixed in scene 3",
+                            "initial_confidence": 0.7,
+                            "scene_id": 3,
+                        }
+                    ],
+                )
             elif action.scene_id == 2:
                 # Found the fix approach
-                watcher.update_understanding(action.scene_id, [
-                    {
-                        "description": "Fix involves adding null check",
-                        "claim": "Null check is the fix",
-                        "initial_confidence": 0.5,
-                        "scene_id": 2,
-                    }
-                ])
+                watcher.update_understanding(
+                    action.scene_id,
+                    [
+                        {
+                            "description": "Fix involves adding null check",
+                            "claim": "Null check is the fix",
+                            "initial_confidence": 0.5,
+                            "scene_id": 2,
+                        }
+                    ],
+                )
             else:
                 # Less relevant scene
                 watcher.update_understanding(action.scene_id, [])
@@ -558,8 +580,7 @@ class TestWatcherIntegration:
     def test_stops_at_max_examinations(self):
         """Test that watcher stops after max examinations."""
         scenes = [
-            {"scene_id": i, "transcript_text": f"Scene {i} content"}
-            for i in range(20)
+            {"scene_id": i, "transcript_text": f"Scene {i} content"} for i in range(20)
         ]
 
         watcher = ActiveVideoWatcher(

@@ -77,7 +77,9 @@ class TestListProvidersTool:
         result = await list_providers_tool()
         data = json.loads(result)
 
-        embed_providers = [p["name"] for p in data["capabilities"]["embed"]["providers"]]
+        embed_providers = [
+            p["name"] for p in data["capabilities"]["embed"]["providers"]
+        ]
         assert "voyage" in embed_providers
 
     @pytest.mark.asyncio
@@ -131,7 +133,9 @@ class TestTranscribeVideoProvider:
 
         with (
             patch("claudetube.mcp_server.get_factory") as mock_factory,
-            patch("claudetube.mcp_server._transcribe_video", new_callable=AsyncMock) as mock_tv,
+            patch(
+                "claudetube.mcp_server._transcribe_video", new_callable=AsyncMock
+            ) as mock_tv,
         ):
             mock_factory.return_value.get_transcriber.return_value = mock_transcriber
             mock_tv.return_value = {
@@ -157,8 +161,12 @@ class TestTranscribeVideoProvider:
         mock_provider = MagicMock()
 
         with (
-            patch("claudetube.providers.registry.get_provider", return_value=mock_provider),
-            patch("claudetube.mcp_server._transcribe_video", new_callable=AsyncMock) as mock_tv,
+            patch(
+                "claudetube.providers.registry.get_provider", return_value=mock_provider
+            ),
+            patch(
+                "claudetube.mcp_server._transcribe_video", new_callable=AsyncMock
+            ) as mock_tv,
         ):
             mock_tv.return_value = {
                 "success": True,
@@ -191,7 +199,9 @@ class TestVisualTranscriptsProvider:
         mock_provider = MagicMock()
 
         with (
-            patch("claudetube.providers.registry.get_provider", return_value=mock_provider),
+            patch(
+                "claudetube.providers.registry.get_provider", return_value=mock_provider
+            ),
             patch(
                 "claudetube.operations.visual_transcript.generate_visual_transcript",
                 return_value={"status": "ok"},
@@ -220,7 +230,9 @@ class TestTrackPeopleProvider:
         mock_provider = MagicMock(spec=VisionAnalyzer)
 
         with (
-            patch("claudetube.providers.registry.get_provider", return_value=mock_provider),
+            patch(
+                "claudetube.providers.registry.get_provider", return_value=mock_provider
+            ),
             patch(
                 "claudetube.operations.person_tracking.track_people",
                 return_value={"status": "ok"},

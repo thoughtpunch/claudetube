@@ -63,14 +63,16 @@ def examine_scene_quick(scene: dict, question: str) -> list[dict]:
             preview = transcript[:200].strip()
             if len(transcript) > 200:
                 preview += "..."
-            findings.append({
-                "type": "transcript_match",
-                "description": f"Transcript mentions relevant content: {preview}",
-                "claim": preview,
-                "timestamp": scene.get("start_time", 0),
-                "scene_id": scene.get("scene_id", 0),
-                "initial_confidence": 0.5,
-            })
+            findings.append(
+                {
+                    "type": "transcript_match",
+                    "description": f"Transcript mentions relevant content: {preview}",
+                    "claim": preview,
+                    "timestamp": scene.get("start_time", 0),
+                    "scene_id": scene.get("scene_id", 0),
+                    "initial_confidence": 0.5,
+                }
+            )
 
     # Check cached visual description
     visual = scene.get("visual", {})
@@ -86,14 +88,16 @@ def examine_scene_quick(scene: dict, question: str) -> list[dict]:
         visual_words = set(visual_lower.split())
         overlap = question_words & visual_words
         if len(overlap) >= 2:
-            findings.append({
-                "type": "visual_match",
-                "description": f"Visual content relevant: {visual_desc[:200]}",
-                "claim": visual_desc[:200],
-                "timestamp": scene.get("start_time", 0),
-                "scene_id": scene.get("scene_id", 0),
-                "initial_confidence": 0.6,
-            })
+            findings.append(
+                {
+                    "type": "visual_match",
+                    "description": f"Visual content relevant: {visual_desc[:200]}",
+                    "claim": visual_desc[:200],
+                    "timestamp": scene.get("start_time", 0),
+                    "scene_id": scene.get("scene_id", 0),
+                    "initial_confidence": 0.6,
+                }
+            )
 
     # Check title relevance
     title = scene.get("title", "")
@@ -102,14 +106,16 @@ def examine_scene_quick(scene: dict, question: str) -> list[dict]:
         title_words = set(title_lower.split())
         overlap = question_words & title_words
         if len(overlap) >= 1:
-            findings.append({
-                "type": "title_match",
-                "description": f"Scene title relevant: {title}",
-                "claim": title,
-                "timestamp": scene.get("start_time", 0),
-                "scene_id": scene.get("scene_id", 0),
-                "initial_confidence": 0.4,
-            })
+            findings.append(
+                {
+                    "type": "title_match",
+                    "description": f"Scene title relevant: {title}",
+                    "claim": title,
+                    "timestamp": scene.get("start_time", 0),
+                    "scene_id": scene.get("scene_id", 0),
+                    "initial_confidence": 0.4,
+                }
+            )
 
     return findings
 
@@ -156,35 +162,42 @@ def examine_scene_deep(
             quality="medium",
         )
     except Exception as e:
-        logger.warning(f"Frame extraction failed for scene {scene.get('scene_id')}: {e}")
+        logger.warning(
+            f"Frame extraction failed for scene {scene.get('scene_id')}: {e}"
+        )
         frames = []
 
     if frames:
-        findings.append({
-            "type": "deep_analysis",
-            "description": (
-                f"Extracted {len(frames)} frames from scene "
-                f"{scene.get('scene_id')} ({format_timestamp(start_time)}-"
-                f"{format_timestamp(end_time)})"
-            ),
-            "claim": scene.get("transcript_text", "")[:200] or "Visual content examined",
-            "timestamp": start_time,
-            "scene_id": scene.get("scene_id", 0),
-            "frame_paths": [str(f) for f in frames],
-            "initial_confidence": 0.7,
-        })
+        findings.append(
+            {
+                "type": "deep_analysis",
+                "description": (
+                    f"Extracted {len(frames)} frames from scene "
+                    f"{scene.get('scene_id')} ({format_timestamp(start_time)}-"
+                    f"{format_timestamp(end_time)})"
+                ),
+                "claim": scene.get("transcript_text", "")[:200]
+                or "Visual content examined",
+                "timestamp": start_time,
+                "scene_id": scene.get("scene_id", 0),
+                "frame_paths": [str(f) for f in frames],
+                "initial_confidence": 0.7,
+            }
+        )
 
     # Also include transcript findings from deep examination
     transcript = scene.get("transcript_text", "")
     if transcript:
-        findings.append({
-            "type": "deep_transcript",
-            "description": f"Full transcript examined: {transcript[:300]}",
-            "claim": transcript[:300],
-            "timestamp": start_time,
-            "scene_id": scene.get("scene_id", 0),
-            "initial_confidence": 0.6,
-        })
+        findings.append(
+            {
+                "type": "deep_transcript",
+                "description": f"Full transcript examined: {transcript[:300]}",
+                "claim": transcript[:300],
+                "timestamp": start_time,
+                "scene_id": scene.get("scene_id", 0),
+                "initial_confidence": 0.6,
+            }
+        )
 
     return findings
 
@@ -215,7 +228,10 @@ def watch_video(
     cache_dir = base / video_id
 
     if not cache_dir.exists():
-        return {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+        return {
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        }
 
     # Check for cached Q&A first (cheapest path)
     try:
@@ -227,7 +243,9 @@ def watch_video(
                 "question": question,
                 "answer": best["answer"],
                 "confidence": 0.9,
-                "evidence": [{"observation": "Previously answered question", "timestamp": None}],
+                "evidence": [
+                    {"observation": "Previously answered question", "timestamp": None}
+                ],
                 "source": "cached_qa",
                 "scenes_examined": 0,
                 "examination_log": [],
@@ -304,7 +322,10 @@ def watch_video(
         # Execute the examination
         if action.action == "examine_deep":
             findings = examine_scene_deep(
-                target_scene, question, video_id, output_base=base,
+                target_scene,
+                question,
+                video_id,
+                output_base=base,
             )
         else:
             findings = examine_scene_quick(target_scene, question)
@@ -312,13 +333,15 @@ def watch_video(
         # Update watcher's understanding
         watcher.update_understanding(action.scene_id, findings)
 
-        examination_log.append({
-            "iteration": i,
-            "scene_id": action.scene_id,
-            "depth": action.action,
-            "timestamp": format_timestamp(target_scene.get("start_time", 0)),
-            "findings_count": len(findings),
-        })
+        examination_log.append(
+            {
+                "iteration": i,
+                "scene_id": action.scene_id,
+                "depth": action.action,
+                "timestamp": format_timestamp(target_scene.get("start_time", 0)),
+                "findings_count": len(findings),
+            }
+        )
 
     # Formulate final answer
     answer = watcher.formulate_answer()
@@ -333,7 +356,10 @@ def watch_video(
     # Record Q&A for future caching
     try:
         record_qa_interaction(
-            video_id, cache_dir, question, answer.get("main_answer", ""),
+            video_id,
+            cache_dir,
+            question,
+            answer.get("main_answer", ""),
         )
     except Exception as e:
         logger.debug(f"Failed to record Q&A: {e}")

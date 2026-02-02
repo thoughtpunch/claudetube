@@ -108,9 +108,7 @@ class ProviderRouter:
             config = get_providers_config()
         self._config = config
 
-    def _get_preferred_provider_name(
-        self, capability: Capability
-    ) -> str | None:
+    def _get_preferred_provider_name(self, capability: Capability) -> str | None:
         """Get the preferred provider name for a capability from config.
 
         Args:
@@ -161,15 +159,12 @@ class ProviderRouter:
         try:
             provider = get_provider(name)
         except (ImportError, ValueError) as e:
-            logger.warning(
-                "Failed to load provider '%s': %s", name, e
-            )
+            logger.warning("Failed to load provider '%s': %s", name, e)
             return None
 
         if not provider.is_available():
             logger.warning(
-                "Provider '%s' is not available (missing API key or "
-                "dependencies)",
+                "Provider '%s' is not available (missing API key or dependencies)",
                 name,
             )
             return None
@@ -238,8 +233,7 @@ class ProviderRouter:
                 )
                 return provider
             logger.warning(
-                "Preferred provider '%s' for %s not available, "
-                "trying fallbacks",
+                "Preferred provider '%s' for %s not available, trying fallbacks",
                 preferred_name,
                 capability.name,
             )
@@ -268,10 +262,7 @@ class ProviderRouter:
             )
 
         # 3. Claude Code as ultimate fallback (VISION and REASON only)
-        if (
-            capability in _CLAUDE_CODE_CAPABILITIES
-            and "claude-code" not in tried
-        ):
+        if capability in _CLAUDE_CODE_CAPABILITIES and "claude-code" not in tried:
             tried.add("claude-code")
             provider = self._try_load_provider("claude-code")
             if provider is not None:
@@ -357,8 +348,7 @@ class ProviderRouter:
         video_name = self._config.video_provider
         if video_name is None:
             logger.info(
-                "No video provider configured (only Gemini supports "
-                "native video)"
+                "No video provider configured (only Gemini supports native video)"
             )
             return None
 
@@ -377,9 +367,7 @@ class ProviderRouter:
             )
             return None
 
-        logger.info(
-            "Selected video provider '%s'", video_name
-        )
+        logger.info("Selected video provider '%s'", video_name)
         return provider
 
     def get_reasoner(self) -> Reasoner:
@@ -404,8 +392,7 @@ class ProviderRouter:
         if not isinstance(provider, Reasoner):
             raise NoProviderError(
                 Capability.REASON,
-                f"Provider '{provider.info.name}' does not implement "
-                f"Reasoner protocol",
+                f"Provider '{provider.info.name}' does not implement Reasoner protocol",
             )
         return provider
 
@@ -431,8 +418,7 @@ class ProviderRouter:
         if not isinstance(provider, Embedder):
             raise NoProviderError(
                 Capability.EMBED,
-                f"Provider '{provider.info.name}' does not implement "
-                f"Embedder protocol",
+                f"Provider '{provider.info.name}' does not implement Embedder protocol",
             )
         return provider
 
@@ -537,8 +523,7 @@ class ProviderRouter:
                     if _is_rate_limit_error(e) and attempt < _RATE_LIMIT_RETRIES:
                         delay = _RATE_LIMIT_BASE_DELAY * (2**attempt)
                         logger.warning(
-                            "Rate limited on '%s', retrying in %.1fs "
-                            "(attempt %d/%d)",
+                            "Rate limited on '%s', retrying in %.1fs (attempt %d/%d)",
                             provider_name,
                             delay,
                             attempt + 1,
@@ -594,9 +579,7 @@ class ProviderRouter:
             if fn is not None:
                 callable_providers.append((name, fn))
             else:
-                logger.warning(
-                    "Provider '%s' does not have method '%s'", name, method
-                )
+                logger.warning("Provider '%s' does not have method '%s'", name, method)
 
         if not callable_providers:
             raise NoProviderError(capability)
@@ -608,9 +591,7 @@ class ProviderRouter:
             method,
         )
 
-        async def _try_provider(
-            name: str, fn: Any
-        ) -> tuple[str, Any]:
+        async def _try_provider(name: str, fn: Any) -> tuple[str, Any]:
             """Call a single provider and return (name, result)."""
             logger.info("Parallel: calling %s.%s", name, method)
             result = await fn(*args, **kwargs)
@@ -618,9 +599,7 @@ class ProviderRouter:
 
         # Create tasks for all providers
         tasks = [
-            asyncio.create_task(
-                _try_provider(name, fn), name=f"parallel-{name}"
-            )
+            asyncio.create_task(_try_provider(name, fn), name=f"parallel-{name}")
             for name, fn in callable_providers
         ]
 
@@ -637,9 +616,7 @@ class ProviderRouter:
                     exc = task.exception()
                     if exc is not None:
                         # Extract provider name from task name
-                        provider_name = (
-                            task.get_name().removeprefix("parallel-")
-                        )
+                        provider_name = task.get_name().removeprefix("parallel-")
                         logger.warning(
                             "Parallel: provider '%s' failed: %s",
                             provider_name,

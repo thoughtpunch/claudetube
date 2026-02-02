@@ -298,11 +298,7 @@ class GoogleProvider(Provider, VisionAnalyzer, VideoAnalyzer, Reasoner):
         model_name = kwargs.pop("model", self._model)
         max_tokens = kwargs.pop("max_tokens", self._max_tokens)
 
-        if (
-            start_time is not None
-            and end_time is not None
-            and start_time > end_time
-        ):
+        if start_time is not None and end_time is not None and start_time > end_time:
             raise ValueError(
                 f"start_time ({start_time}) must be <= end_time ({end_time})"
             )
@@ -379,9 +375,7 @@ class GoogleProvider(Provider, VisionAnalyzer, VideoAnalyzer, Reasoner):
 
         if len(contents) == 1:
             # Single message: use generate_content directly
-            response = await self._generate_async(
-                model, contents[0]["parts"]
-            )
+            response = await self._generate_async(model, contents[0]["parts"])
         else:
             # Multi-turn: use chat
             chat = model.start_chat(history=contents[:-1])

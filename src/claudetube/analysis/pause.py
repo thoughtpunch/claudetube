@@ -156,7 +156,9 @@ def detect_pause_boundaries(
 
         if gap > MIN_PAUSE_SECONDS:
             # Calculate confidence: 0.5 base + 0.03 per second, max 0.8
-            confidence = min(BASE_CONFIDENCE + (gap * CONFIDENCE_PER_SECOND), MAX_CONFIDENCE)
+            confidence = min(
+                BASE_CONFIDENCE + (gap * CONFIDENCE_PER_SECOND), MAX_CONFIDENCE
+            )
 
             boundaries.append(
                 Boundary(

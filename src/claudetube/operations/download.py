@@ -5,10 +5,13 @@ Download operations for videos and metadata.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from claudetube.tools.ffmpeg import FFmpegTool
 from claudetube.tools.yt_dlp import YtDlpTool
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

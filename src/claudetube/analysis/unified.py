@@ -217,7 +217,9 @@ def _merge_group(group: list[Boundary]) -> Boundary:
 
     # Boost confidence: +0.1 for each additional signal
     num_signals = len(group)
-    boosted_confidence = min(best.confidence + (num_signals - 1) * CONFIDENCE_BOOST, MAX_CONFIDENCE)
+    boosted_confidence = min(
+        best.confidence + (num_signals - 1) * CONFIDENCE_BOOST, MAX_CONFIDENCE
+    )
 
     # Use best trigger text (highest confidence source)
     trigger_text = best.trigger_text

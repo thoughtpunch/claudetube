@@ -163,8 +163,12 @@ class TestExtractCodeBlocks:
             frame_path="/test.jpg",
             timestamp=10.0,
             regions=[
-                TextRegion("def process():", 0.9, {"x1": 10, "y1": 10, "x2": 100, "y2": 30}),
-                TextRegion("    return data", 0.9, {"x1": 10, "y1": 35, "x2": 100, "y2": 55}),
+                TextRegion(
+                    "def process():", 0.9, {"x1": 10, "y1": 10, "x2": 100, "y2": 30}
+                ),
+                TextRegion(
+                    "    return data", 0.9, {"x1": 10, "y1": 35, "x2": 100, "y2": 55}
+                ),
             ],
             content_type="code",
         )
@@ -184,8 +188,14 @@ class TestExtractCodeBlocks:
             frame_path="/test.jpg",
             timestamp=10.0,
             regions=[
-                TextRegion("Hello everyone welcome", 0.9, {"x1": 10, "y1": 10, "x2": 200, "y2": 30}),
-                TextRegion("to my channel", 0.9, {"x1": 10, "y1": 35, "x2": 100, "y2": 55}),
+                TextRegion(
+                    "Hello everyone welcome",
+                    0.9,
+                    {"x1": 10, "y1": 10, "x2": 200, "y2": 30},
+                ),
+                TextRegion(
+                    "to my channel", 0.9, {"x1": 10, "y1": 35, "x2": 100, "y2": 55}
+                ),
             ],
             content_type="talking_head",
         )
@@ -209,7 +219,9 @@ class TestDetectIDE:
             regions=[
                 TextRegion("EXPLORER", 0.9, {"x1": 10, "y1": 10, "x2": 80, "y2": 30}),
                 TextRegion("TERMINAL", 0.9, {"x1": 10, "y1": 500, "x2": 80, "y2": 520}),
-                TextRegion("PROBLEMS", 0.9, {"x1": 100, "y1": 500, "x2": 180, "y2": 520}),
+                TextRegion(
+                    "PROBLEMS", 0.9, {"x1": 100, "y1": 500, "x2": 180, "y2": 520}
+                ),
             ],
             content_type="code",
         )
@@ -226,7 +238,9 @@ class TestDetectIDE:
             frame_path="/test.jpg",
             timestamp=10.0,
             regions=[
-                TextRegion("Some random text", 0.9, {"x1": 10, "y1": 10, "x2": 100, "y2": 30}),
+                TextRegion(
+                    "Some random text", 0.9, {"x1": 10, "y1": 10, "x2": 100, "y2": 30}
+                ),
             ],
             content_type="code",
         )
@@ -252,7 +266,12 @@ class TestSaveLoadCodeResults:
                 frame_path="/test1.jpg",
                 timestamp=10.0,
                 code_blocks=[
-                    CodeBlock("def foo(): pass", "python", 0.9, {"x1": 0, "y1": 0, "x2": 100, "y2": 50}),
+                    CodeBlock(
+                        "def foo(): pass",
+                        "python",
+                        0.9,
+                        {"x1": 0, "y1": 0, "x2": 100, "y2": 50},
+                    ),
                 ],
                 ide_detected="vscode",
             ),
@@ -289,17 +308,21 @@ class TestSaveLoadCodeResults:
 
         results = [
             FrameCodeResult(
-                "/f1.jpg", 0,
+                "/f1.jpg",
+                0,
                 [CodeBlock("x", "python", 0.9, {"x1": 0, "y1": 0, "x2": 1, "y2": 1})],
-                "vscode"
+                "vscode",
             ),
             FrameCodeResult(
-                "/f2.jpg", 0,
+                "/f2.jpg",
+                0,
                 [
-                    CodeBlock("y", "javascript", 0.9, {"x1": 0, "y1": 0, "x2": 1, "y2": 1}),
+                    CodeBlock(
+                        "y", "javascript", 0.9, {"x1": 0, "y1": 0, "x2": 1, "y2": 1}
+                    ),
                     CodeBlock("z", "python", 0.9, {"x1": 0, "y1": 0, "x2": 1, "y2": 1}),
                 ],
-                "vscode"
+                "vscode",
             ),
             FrameCodeResult("/f3.jpg", 0, [], None),
         ]

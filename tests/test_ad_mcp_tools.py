@@ -113,7 +113,9 @@ class TestGetDescriptions:
     @pytest.mark.asyncio
     @patch("claudetube.operations.audio_description.compile_scene_descriptions")
     @patch("claudetube.mcp_server.has_scenes")
-    async def test_compiles_from_scenes(self, mock_has_scenes, mock_compile, cached_video):
+    async def test_compiles_from_scenes(
+        self, mock_has_scenes, mock_compile, cached_video
+    ):
         """Compiles AD from scene data when no cache exists."""
         from claudetube.mcp_server import get_descriptions
 
@@ -201,7 +203,9 @@ class TestDescribeMoment:
     @pytest.mark.asyncio
     @patch("claudetube.mcp_server.get_factory")
     @patch("claudetube.mcp_server.get_hq_frames_at")
-    async def test_returns_frames_without_provider(self, mock_frames, mock_factory, cached_video):
+    async def test_returns_frames_without_provider(
+        self, mock_frames, mock_factory, cached_video
+    ):
         """Returns frame paths when no vision provider available."""
         from claudetube.mcp_server import describe_moment
 
@@ -217,7 +221,9 @@ class TestDescribeMoment:
     @pytest.mark.asyncio
     @patch("claudetube.mcp_server.get_factory")
     @patch("claudetube.mcp_server.get_hq_frames_at")
-    async def test_returns_description_with_provider(self, mock_frames, mock_factory, cached_video):
+    async def test_returns_description_with_provider(
+        self, mock_frames, mock_factory, cached_video
+    ):
         """Returns description when vision provider is available."""
         from claudetube.mcp_server import describe_moment
 
@@ -242,7 +248,9 @@ class TestDescribeMoment:
     @pytest.mark.asyncio
     @patch("claudetube.mcp_server.get_factory")
     @patch("claudetube.mcp_server.get_hq_frames_at")
-    async def test_passes_context_to_prompt(self, mock_frames, mock_factory, cached_video):
+    async def test_passes_context_to_prompt(
+        self, mock_frames, mock_factory, cached_video
+    ):
         """Context parameter is included in the vision prompt."""
         from claudetube.mcp_server import describe_moment
 

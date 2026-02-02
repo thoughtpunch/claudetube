@@ -207,7 +207,9 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
     ),
     "openai": ProviderInfo(
         name="openai",
-        capabilities=frozenset({Capability.TRANSCRIBE, Capability.VISION, Capability.REASON}),
+        capabilities=frozenset(
+            {Capability.TRANSCRIBE, Capability.VISION, Capability.REASON}
+        ),
         supports_structured_output=True,
         supports_streaming=True,
         max_audio_size_mb=25,
@@ -234,7 +236,9 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
     ),
     "google": ProviderInfo(
         name="google",
-        capabilities=frozenset({Capability.VISION, Capability.VIDEO, Capability.REASON}),
+        capabilities=frozenset(
+            {Capability.VISION, Capability.VIDEO, Capability.REASON}
+        ),
         supports_structured_output=True,
         supports_streaming=True,
         max_video_duration_sec=7200,  # 2 hours

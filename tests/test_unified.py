@@ -3,8 +3,6 @@
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from claudetube.analysis.linguistic import Boundary
 from claudetube.analysis.unified import (
     CONFIDENCE_BOOST,
@@ -354,8 +352,14 @@ Second segment after pause
     def test_vocabulary_shifts_included(self):
         """Should include vocabulary shifts in detection."""
         segments = [
-            {"start": 0.0, "text": "Python programming language functions classes modules"},
-            {"start": 35.0, "text": "Cooking recipes kitchen ingredients chef food dishes"},
+            {
+                "start": 0.0,
+                "text": "Python programming language functions classes modules",
+            },
+            {
+                "start": 35.0,
+                "text": "Cooking recipes kitchen ingredients chef food dishes",
+            },
         ]
         boundaries = detect_boundaries_cheap(transcript_segments=segments)
 

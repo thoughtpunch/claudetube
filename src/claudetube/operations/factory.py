@@ -100,9 +100,7 @@ class OperationFactory:
             try:
                 provider = self._get_or_create_provider(name, **kwargs)
             except (ImportError, ValueError, TypeError) as e:
-                logger.debug(
-                    "Skipping '%s' for %s: %s", name, capability.name, e
-                )
+                logger.debug("Skipping '%s' for %s: %s", name, capability.name, e)
                 continue
 
             if not provider.is_available():
@@ -113,9 +111,7 @@ class OperationFactory:
                 )
                 continue
 
-            logger.debug(
-                "Resolved '%s' for %s", name, capability.name
-            )
+            logger.debug("Resolved '%s' for %s", name, capability.name)
             return provider
 
         logger.warning("No provider found for %s", capability.name)

@@ -2,7 +2,6 @@
 
 import io
 import json
-import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -361,6 +360,7 @@ class TestProcessVideo:
     @patch("claudetube.operations.processor.fetch_metadata")
     def test_returns_error_when_metadata_fails(self, mock_meta, tmp_path):
         from claudetube.exceptions import MetadataError
+
         mock_meta.side_effect = MetadataError("Failed to fetch")
 
         result = process_video(
@@ -374,6 +374,7 @@ class TestProcessVideo:
     def test_error_result_includes_video_id(self, mock_meta, tmp_path):
         """Even on error, result should have video_id set."""
         from claudetube.exceptions import MetadataError
+
         mock_meta.side_effect = MetadataError("Failed")
 
         result = process_video(
@@ -393,6 +394,7 @@ class TestProcessVideo:
 
         with patch("claudetube.operations.processor.fetch_metadata") as mock_meta:
             from claudetube.exceptions import MetadataError
+
             mock_meta.side_effect = MetadataError("Failed")
             result = process_video("test12345678", output_base=tmp_path)
 

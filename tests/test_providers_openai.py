@@ -217,9 +217,7 @@ class TestTranscribe:
         mock_response.duration = 2.5
 
         mock_client = AsyncMock()
-        mock_client.audio.transcriptions.create = AsyncMock(
-            return_value=mock_response
-        )
+        mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenaiProvider()
         provider._client = mock_client
@@ -256,9 +254,7 @@ class TestTranscribe:
         mock_response.duration = 1.0
 
         mock_client = AsyncMock()
-        mock_client.audio.transcriptions.create = AsyncMock(
-            return_value=mock_response
-        )
+        mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenaiProvider()
         provider._client = mock_client
@@ -281,9 +277,7 @@ class TestTranscribe:
         mock_response.duration = 1.0
 
         mock_client = AsyncMock()
-        mock_client.audio.transcriptions.create = AsyncMock(
-            return_value=mock_response
-        )
+        mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenaiProvider()
         provider._client = mock_client
@@ -425,9 +419,7 @@ class TestAnalyzeImages:
         provider._client = AsyncMock()
 
         with pytest.raises(FileNotFoundError, match="not found"):
-            await provider.analyze_images(
-                [tmp_path / "nonexistent.jpg"], "Describe"
-            )
+            await provider.analyze_images([tmp_path / "nonexistent.jpg"], "Describe")
 
     @pytest.mark.asyncio
     async def test_max_images_capped(self, tmp_path):
@@ -659,14 +651,17 @@ class TestAudioChunking:
         # Write 30MB of data (over 25MB)
         audio.write_bytes(b"x" * (30 * 1024 * 1024))
 
-        with patch(
-            "claudetube.providers.openai.chunker.get_audio_duration",
-            new_callable=AsyncMock,
-            return_value=1200.0,  # 20 minutes
-        ), patch(
-            "asyncio.create_subprocess_exec",
-            new_callable=AsyncMock,
-        ) as mock_exec:
+        with (
+            patch(
+                "claudetube.providers.openai.chunker.get_audio_duration",
+                new_callable=AsyncMock,
+                return_value=1200.0,  # 20 minutes
+            ),
+            patch(
+                "asyncio.create_subprocess_exec",
+                new_callable=AsyncMock,
+            ) as mock_exec,
+        ):
             # Mock the ffmpeg subprocess
             mock_process = AsyncMock()
             mock_process.wait = AsyncMock()
@@ -722,9 +717,7 @@ class TestRegistryIntegration:
     def test_get_provider_with_kwargs(self):
         from claudetube.providers.registry import get_provider
 
-        provider = get_provider(
-            "openai", model="gpt-4o-mini", max_tokens=500
-        )
+        provider = get_provider("openai", model="gpt-4o-mini", max_tokens=500)
         assert isinstance(provider, OpenaiProvider)
         assert provider._model == "gpt-4o-mini"
         assert provider._max_tokens == 500

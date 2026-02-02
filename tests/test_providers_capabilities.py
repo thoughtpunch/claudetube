@@ -78,7 +78,12 @@ class TestCostTierEnum:
         """Cost tiers can be sorted by value."""
         tiers = [CostTier.EXPENSIVE, CostTier.FREE, CostTier.MODERATE, CostTier.CHEAP]
         sorted_tiers = sorted(tiers, key=lambda t: t.value)
-        assert sorted_tiers == [CostTier.FREE, CostTier.CHEAP, CostTier.MODERATE, CostTier.EXPENSIVE]
+        assert sorted_tiers == [
+            CostTier.FREE,
+            CostTier.CHEAP,
+            CostTier.MODERATE,
+            CostTier.EXPENSIVE,
+        ]
 
 
 class TestProviderInfo:
@@ -150,7 +155,9 @@ class TestProviderInfoCanMethod:
         """Create a ProviderInfo with multiple capabilities."""
         return ProviderInfo(
             name="multi-cap",
-            capabilities=frozenset({Capability.TRANSCRIBE, Capability.VISION, Capability.REASON}),
+            capabilities=frozenset(
+                {Capability.TRANSCRIBE, Capability.VISION, Capability.REASON}
+            ),
         )
 
     def test_can_with_present_capability(self, multi_cap_info):
@@ -179,13 +186,20 @@ class TestProviderInfoCanAllMethod:
         """Create a ProviderInfo with multiple capabilities."""
         return ProviderInfo(
             name="multi-cap",
-            capabilities=frozenset({Capability.TRANSCRIBE, Capability.VISION, Capability.REASON}),
+            capabilities=frozenset(
+                {Capability.TRANSCRIBE, Capability.VISION, Capability.REASON}
+            ),
         )
 
     def test_can_all_with_all_present(self, multi_cap_info):
         """can_all() returns True when all capabilities present."""
         assert multi_cap_info.can_all(Capability.TRANSCRIBE, Capability.VISION) is True
-        assert multi_cap_info.can_all(Capability.TRANSCRIBE, Capability.VISION, Capability.REASON) is True
+        assert (
+            multi_cap_info.can_all(
+                Capability.TRANSCRIBE, Capability.VISION, Capability.REASON
+            )
+            is True
+        )
 
     def test_can_all_with_some_absent(self, multi_cap_info):
         """can_all() returns False when any capability is absent."""
@@ -367,11 +381,13 @@ class TestPreDefinedProviderInfo:
     def test_free_providers_have_zero_cost(self):
         """Providers with FREE cost tier should have zero or no cost."""
         for name, info in PROVIDER_INFO.items():
-            if info.cost_tier == CostTier.FREE:
-                if info.cost_per_1m_input_tokens is not None:
-                    assert info.cost_per_1m_input_tokens == 0, (
-                        f"FREE provider '{name}' has non-zero input token cost"
-                    )
+            if (
+                info.cost_tier == CostTier.FREE
+                and info.cost_per_1m_input_tokens is not None
+            ):
+                assert info.cost_per_1m_input_tokens == 0, (
+                    f"FREE provider '{name}' has non-zero input token cost"
+                )
 
 
 class TestCapabilityExports:

@@ -4,8 +4,6 @@ Tests for code evolution tracking.
 
 import json
 
-import pytest
-
 from claudetube.operations.code_evolution import (
     CodeEvolutionData,
     CodeSnapshot,
@@ -233,18 +231,24 @@ class TestCodeEvolutionData:
             method="technical_json",
             code_units=[
                 CodeUnit(
-                    "function:foo", "function", "foo",
+                    "function:foo",
+                    "function",
+                    "foo",
                     [
                         CodeSnapshot(0, 0, "v1", "python", "shown", None),
                         CodeSnapshot(1, 10, "v2", "python", "modified", "+1"),
                     ],
                 ),
                 CodeUnit(
-                    "class:Bar", "class", "Bar",
+                    "class:Bar",
+                    "class",
+                    "Bar",
                     [CodeSnapshot(0, 0, "v1", "python", "shown", None)],
                 ),
                 CodeUnit(
-                    "function:baz", "function", "baz",
+                    "function:baz",
+                    "function",
+                    "baz",
                     [
                         CodeSnapshot(0, 0, "v1", "python", "shown", None),
                         CodeSnapshot(1, 10, "v2", "python", "modified", "+1"),
@@ -273,7 +277,9 @@ class TestCodeEvolutionData:
             method="technical_json",
             code_units=[
                 CodeUnit(
-                    "function:test", "function", "test",
+                    "function:test",
+                    "function",
+                    "test",
                     [CodeSnapshot(0, 0, "code", "python", "shown", None)],
                 ),
             ],
@@ -320,28 +326,44 @@ class TestTrackCodeEvolution:
         # Create scenes data
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
-        (scenes_dir / "scenes.json").write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scenes": [
-                {"scene_id": 0, "start_time": 0, "end_time": 30, "title": "Intro"},
-            ],
-        }))
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scenes": [
+                        {
+                            "scene_id": 0,
+                            "start_time": 0,
+                            "end_time": 30,
+                            "title": "Intro",
+                        },
+                    ],
+                }
+            )
+        )
 
         # Create scene directory with technical.json
         scene_dir = scenes_dir / "scene_000"
         scene_dir.mkdir()
-        (scene_dir / "technical.json").write_text(json.dumps({
-            "version": 1,
-            "frames": [
+        (scene_dir / "technical.json").write_text(
+            json.dumps(
                 {
-                    "timestamp": 10.0,
-                    "code_blocks": [
-                        {"content": "def hello():\n    print('hi')", "language": "python"},
+                    "version": 1,
+                    "frames": [
+                        {
+                            "timestamp": 10.0,
+                            "code_blocks": [
+                                {
+                                    "content": "def hello():\n    print('hi')",
+                                    "language": "python",
+                                },
+                            ],
+                        },
                     ],
-                },
-            ],
-        }))
+                }
+            )
+        )
 
         # First call - generates data
         result1 = track_code_evolution(video_id, output_base=tmp_path)

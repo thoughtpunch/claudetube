@@ -335,10 +335,13 @@ class TestOperationConstruction:
         config = _default_config()
         factory = OperationFactory(config)
 
-        with patch(
-            "claudetube.operations.factory.get_provider",
-            side_effect=ImportError("not installed"),
-        ), pytest.raises(RuntimeError, match="No transcription provider"):
+        with (
+            patch(
+                "claudetube.operations.factory.get_provider",
+                side_effect=ImportError("not installed"),
+            ),
+            pytest.raises(RuntimeError, match="No transcription provider"),
+        ):
             factory.get_transcribe_operation()
 
     def test_get_visual_operation(self):
@@ -367,10 +370,13 @@ class TestOperationConstruction:
         config = _default_config()
         factory = OperationFactory(config)
 
-        with patch(
-            "claudetube.operations.factory.get_provider",
-            side_effect=ImportError("not installed"),
-        ), pytest.raises(RuntimeError, match="No vision provider"):
+        with (
+            patch(
+                "claudetube.operations.factory.get_provider",
+                side_effect=ImportError("not installed"),
+            ),
+            pytest.raises(RuntimeError, match="No vision provider"),
+        ):
             factory.get_visual_operation()
 
     def test_get_entity_extraction_operation(self):

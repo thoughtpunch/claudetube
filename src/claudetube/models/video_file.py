@@ -10,10 +10,13 @@ Can represent:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from claudetube.config.loader import get_cache_dir
 from claudetube.models.state import VideoState
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
@@ -61,9 +64,7 @@ class VideoFile:
     @property
     def has_transcript(self) -> bool:
         """True if a transcript exists."""
-        return (
-            self.transcript_txt is not None and self.transcript_txt.exists()
-        ) or (
+        return (self.transcript_txt is not None and self.transcript_txt.exists()) or (
             self.transcript_srt is not None and self.transcript_srt.exists()
         )
 

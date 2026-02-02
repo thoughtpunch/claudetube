@@ -182,9 +182,7 @@ class DeepgramProvider(Provider, Transcriber):
                 )
         elif hasattr(alternative, "words") and alternative.words:
             # Fall back to grouping words into segments
-            segments = self._group_words_into_segments(
-                alternative.words, diarize
-            )
+            segments = self._group_words_into_segments(alternative.words, diarize)
 
         duration = segments[-1].end if segments else None
 

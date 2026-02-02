@@ -6,10 +6,13 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from claudetube.tools.base import ToolResult, VideoTool
 from claudetube.utils.system import find_tool
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +50,17 @@ class FFmpegTool(VideoTool):
             Path to extracted audio, or None if failed
         """
         args = [
-            "-i", str(input_path),
+            "-i",
+            str(input_path),
             "-vn",  # No video
-            "-acodec", "libmp3lame",
-            "-ar", str(sample_rate),
-            "-ac", str(channels),
-            "-ab", bitrate,
+            "-acodec",
+            "libmp3lame",
+            "-ar",
+            str(sample_rate),
+            "-ac",
+            str(channels),
+            "-ab",
+            bitrate,
             "-y",  # Overwrite output
             str(output_path),
         ]
@@ -127,11 +135,16 @@ class FFmpegTool(VideoTool):
             Path to extracted frame, or None if failed
         """
         args = [
-            "-ss", str(timestamp),
-            "-i", str(video_path),
-            "-vframes", "1",
-            "-vf", f"scale={width}:-1",
-            "-q:v", str(jpeg_quality),
+            "-ss",
+            str(timestamp),
+            "-i",
+            str(video_path),
+            "-vframes",
+            "1",
+            "-vf",
+            f"scale={width}:-1",
+            "-q:v",
+            str(jpeg_quality),
             "-y",
             str(output_path),
         ]
@@ -167,10 +180,14 @@ class FFmpegTool(VideoTool):
             return sorted(existing)
 
         args = [
-            "-i", str(video_path),
-            "-vf", f"fps=1/{interval},scale={width}:-1",
-            "-q:v", str(jpeg_quality),
-            "-vsync", "vfr",
+            "-i",
+            str(video_path),
+            "-vf",
+            f"fps=1/{interval},scale={width}:-1",
+            "-q:v",
+            str(jpeg_quality),
+            "-vsync",
+            "vfr",
             str(output_dir / "frame_%03d.jpg"),
         ]
 

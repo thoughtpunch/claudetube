@@ -452,9 +452,7 @@ class TestLegacyEnvVars:
             monkeypatch.delenv(f"CLAUDETUBE_{var}", raising=False)
 
         config = load_providers_config({})
-        assert (
-            config.get_provider_config("openai").api_key == "sk-from-claudetube-env"
-        )
+        assert config.get_provider_config("openai").api_key == "sk-from-claudetube-env"
 
     def test_yaml_overrides_env_var(self, monkeypatch):
         """Test that YAML api_key takes priority over env var."""
@@ -535,12 +533,8 @@ class TestGetProvidersConfig:
             monkeypatch.delenv(f"CLAUDETUBE_{var}", raising=False)
 
         with (
-            patch(
-                "claudetube.config.loader._find_project_config", return_value=None
-            ),
-            patch(
-                "claudetube.config.loader._load_yaml_config", return_value=None
-            ),
+            patch("claudetube.config.loader._find_project_config", return_value=None),
+            patch("claudetube.config.loader._load_yaml_config", return_value=None),
         ):
             config = get_providers_config()
         assert isinstance(config, ProvidersConfig)
@@ -561,9 +555,7 @@ class TestGetProvidersConfig:
             monkeypatch.delenv(f"CLAUDETUBE_{var}", raising=False)
 
         with (
-            patch(
-                "claudetube.config.loader._find_project_config", return_value=None
-            ),
+            patch("claudetube.config.loader._find_project_config", return_value=None),
             patch(
                 "claudetube.config.loader._load_yaml_config", return_value=None
             ) as mock_load,
@@ -591,9 +583,7 @@ class TestGetProvidersConfig:
             monkeypatch.delenv(f"CLAUDETUBE_{var}", raising=False)
 
         with (
-            patch(
-                "claudetube.config.loader._find_project_config", return_value=None
-            ),
+            patch("claudetube.config.loader._find_project_config", return_value=None),
             patch(
                 "claudetube.config.loader._load_yaml_config", return_value=None
             ) as mock_load,
@@ -821,7 +811,9 @@ class TestValidateProvidersConfig:
         yaml = {"providers": {"preferences": {"vision": "whisper-local"}}}
         result = validate_providers_config(yaml)
         assert result.is_valid is True
-        assert any("whisper-local" in w and "vision" in w.lower() for w in result.warnings)
+        assert any(
+            "whisper-local" in w and "vision" in w.lower() for w in result.warnings
+        )
 
     def test_transcription_pref_with_vision_provider_warns(self):
         """Test setting transcription to a vision-only provider warns."""
@@ -829,7 +821,9 @@ class TestValidateProvidersConfig:
         yaml = {"providers": {"preferences": {"transcription": "anthropic"}}}
         result = validate_providers_config(yaml)
         assert result.is_valid is True
-        assert any("anthropic" in w and "transcribe" in w.lower() for w in result.warnings)
+        assert any(
+            "anthropic" in w and "transcribe" in w.lower() for w in result.warnings
+        )
 
     def test_valid_preference_with_capability(self):
         """Test valid preference-capability combination passes."""
@@ -837,7 +831,9 @@ class TestValidateProvidersConfig:
         result = validate_providers_config(yaml)
         assert result.is_valid is True
         # Should not have warnings about capability mismatch
-        assert not any("openai" in w and "transcribe" in w.lower() for w in result.warnings)
+        assert not any(
+            "openai" in w and "transcribe" in w.lower() for w in result.warnings
+        )
 
     def test_non_dict_fallbacks_is_error(self):
         """Test non-dict fallbacks section produces error."""
@@ -884,7 +880,9 @@ class TestValidateProvidersConfig:
         }
         result = validate_providers_config(yaml)
         assert result.is_valid is True
-        assert not any("vision" in w and "capability" in w.lower() for w in result.warnings)
+        assert not any(
+            "vision" in w and "capability" in w.lower() for w in result.warnings
+        )
 
     def test_multiple_errors_collected(self):
         """Test multiple errors are all collected."""

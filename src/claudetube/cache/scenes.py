@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
@@ -42,7 +45,9 @@ class SceneBoundary:
     end_time: float  # seconds
     title: str | None = None  # Optional scene title/description
     transcript_segment: str | None = None  # DEPRECATED: Use transcript_text instead
-    transcript: list[dict] = field(default_factory=list)  # Individual segments with timestamps
+    transcript: list[dict] = field(
+        default_factory=list
+    )  # Individual segments with timestamps
     transcript_text: str = ""  # Joined transcript text for this scene
 
     def duration(self) -> float:
@@ -67,7 +72,7 @@ class SceneBoundary:
         return result
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SceneBoundary":
+    def from_dict(cls, data: dict) -> SceneBoundary:
         """Create from dictionary."""
         return cls(
             scene_id=data["scene_id"],
@@ -98,7 +103,7 @@ class ScenesData:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ScenesData":
+    def from_dict(cls, data: dict) -> ScenesData:
         """Create from dictionary."""
         return cls(
             video_id=data["video_id"],
@@ -297,4 +302,7 @@ def get_all_scene_statuses(cache_dir: Path) -> dict[int, SceneStatus]:
     if not scenes_data:
         return {}
 
-    return {scene.scene_id: get_scene_status(cache_dir, scene.scene_id) for scene in scenes_data.scenes}
+    return {
+        scene.scene_id: get_scene_status(cache_dir, scene.scene_id)
+        for scene in scenes_data.scenes
+    }

@@ -12,11 +12,14 @@ from __future__ import annotations
 import json
 import logging
 import re
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from claudetube.config.loader import get_cache_dir
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -242,7 +245,9 @@ def build_knowledge_graph(
         texts.append(" ".join(text_parts))
 
     # Also include playlist title/description
-    playlist_text = playlist_data.get("title", "") + " " + playlist_data.get("description", "")
+    playlist_text = (
+        playlist_data.get("title", "") + " " + playlist_data.get("description", "")
+    )
     if playlist_text.strip():
         texts.append(playlist_text)
 

@@ -1,7 +1,5 @@
 """Tests for playlist metadata extraction."""
 
-import pytest
-
 
 class TestClassifyPlaylistType:
     """Test playlist type classification."""
@@ -16,7 +14,10 @@ class TestClassifyPlaylistType:
     def test_course_detection_description(self):
         from claudetube.operations.playlist import classify_playlist_type
 
-        playlist_info = {"title": "Programming Videos", "description": "A complete tutorial series"}
+        playlist_info = {
+            "title": "Programming Videos",
+            "description": "A complete tutorial series",
+        }
         videos = []
         assert classify_playlist_type(playlist_info, videos) == "course"
 

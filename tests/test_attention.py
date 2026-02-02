@@ -22,6 +22,7 @@ from claudetube.analysis.attention import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def simple_scenes():
     """Five scenes covering a typical tutorial video."""
@@ -70,8 +71,8 @@ def simple_scenes():
 # get_weights_for_video_type
 # ---------------------------------------------------------------------------
 
-class TestGetWeightsForVideoType:
 
+class TestGetWeightsForVideoType:
     def test_known_types_return_specific_weights(self):
         for vtype in VIDEO_TYPE_WEIGHTS:
             weights = get_weights_for_video_type(vtype)
@@ -101,8 +102,8 @@ class TestGetWeightsForVideoType:
 # AttentionFactors
 # ---------------------------------------------------------------------------
 
-class TestAttentionFactors:
 
+class TestAttentionFactors:
     def test_create(self):
         f = AttentionFactors(
             relevance_to_goal=0.8,
@@ -155,8 +156,8 @@ class TestAttentionFactors:
 # calculate_relevance
 # ---------------------------------------------------------------------------
 
-class TestCalculateRelevance:
 
+class TestCalculateRelevance:
     def test_matching_keywords_score_high(self):
         scene = {"transcript_text": "Let me show you how to fix this bug"}
         score = calculate_relevance(scene, "fix the bug")
@@ -190,6 +191,7 @@ class TestCalculateRelevance:
     def test_works_with_scene_boundary(self):
         """Test with an object that has transcript_text attribute."""
         from claudetube.cache.scenes import SceneBoundary
+
         scene = SceneBoundary(
             scene_id=0,
             start_time=0.0,
@@ -204,8 +206,8 @@ class TestCalculateRelevance:
 # estimate_information_density
 # ---------------------------------------------------------------------------
 
-class TestEstimateInformationDensity:
 
+class TestEstimateInformationDensity:
     def test_dense_transcript_scores_higher(self):
         # 40 words in 10 seconds = 4 words/sec (high density)
         dense = {
@@ -219,7 +221,9 @@ class TestEstimateInformationDensity:
             "end_time": 10.0,
             "transcript_text": " ".join(["word"] * 5),
         }
-        assert estimate_information_density(dense) > estimate_information_density(sparse)
+        assert estimate_information_density(dense) > estimate_information_density(
+            sparse
+        )
 
     def test_empty_transcript(self):
         scene = {"start_time": 0, "end_time": 10, "transcript_text": ""}
@@ -239,7 +243,9 @@ class TestEstimateInformationDensity:
                 "code_blocks": ["def foo(): pass", "x = 1"],
             },
         }
-        assert estimate_information_density(with_tech) > estimate_information_density(base)
+        assert estimate_information_density(with_tech) > estimate_information_density(
+            base
+        )
 
     def test_zero_duration_uses_word_count_fallback(self):
         scene = {"start_time": 0, "end_time": 0, "transcript_text": "hello world"}
@@ -261,8 +267,8 @@ class TestEstimateInformationDensity:
 # calculate_novelty
 # ---------------------------------------------------------------------------
 
-class TestCalculateNovelty:
 
+class TestCalculateNovelty:
     def test_first_scene_gets_neutral_score(self):
         scene = {"transcript_text": "Introduction to the topic"}
         score = calculate_novelty(scene, [])
@@ -281,7 +287,9 @@ class TestCalculateNovelty:
         assert score > 0.5
 
     def test_empty_transcript_returns_neutral(self):
-        score = calculate_novelty({"transcript_text": ""}, [{"transcript_text": "anything"}])
+        score = calculate_novelty(
+            {"transcript_text": ""}, [{"transcript_text": "anything"}]
+        )
         assert score == 0.5
 
     def test_score_between_zero_and_one(self):
@@ -295,8 +303,8 @@ class TestCalculateNovelty:
 # detect_visual_salience
 # ---------------------------------------------------------------------------
 
-class TestDetectVisualSalience:
 
+class TestDetectVisualSalience:
     def test_code_content_type_high_salience(self):
         scene = {"technical": {"content_type": "code"}}
         assert detect_visual_salience(scene) >= 0.9
@@ -331,6 +339,7 @@ class TestDetectVisualSalience:
     def test_scene_boundary_object(self):
         """SceneBoundary objects have no technical dict."""
         from claudetube.cache.scenes import SceneBoundary
+
         scene = SceneBoundary(scene_id=0, start_time=0.0, end_time=10.0)
         score = detect_visual_salience(scene)
         assert score == 0.3  # empty technical dict
@@ -340,8 +349,8 @@ class TestDetectVisualSalience:
 # detect_audio_emphasis
 # ---------------------------------------------------------------------------
 
-class TestDetectAudioEmphasis:
 
+class TestDetectAudioEmphasis:
     def test_emphasis_phrase_detected(self):
         scene = {"transcript_text": "This is a key point that is important to remember"}
         score = detect_audio_emphasis(scene)
@@ -383,24 +392,30 @@ class TestDetectAudioEmphasis:
 # get_structural_weight
 # ---------------------------------------------------------------------------
 
-class TestGetStructuralWeight:
 
+class TestGetStructuralWeight:
     def test_intro_scene_gets_bonus(self):
         scene = {"scene_id": 0, "start_time": 5.0}
-        weight = get_structural_weight(scene, "lecture", total_scenes=10, video_duration=300.0)
+        weight = get_structural_weight(
+            scene, "lecture", total_scenes=10, video_duration=300.0
+        )
         # position_ratio = 5/300 = 0.017 < 0.1 (intro)
         # scene_id <= 2 (chapter start)
         assert weight >= 0.6
 
     def test_conclusion_gets_bonus(self):
         scene = {"scene_id": 9, "start_time": 285.0}
-        weight = get_structural_weight(scene, "lecture", total_scenes=10, video_duration=300.0)
+        weight = get_structural_weight(
+            scene, "lecture", total_scenes=10, video_duration=300.0
+        )
         # position_ratio = 285/300 = 0.95 > 0.9 (conclusion)
         assert weight >= 0.5
 
     def test_middle_scene_lower_weight(self):
         scene = {"scene_id": 5, "start_time": 150.0}
-        weight = get_structural_weight(scene, "lecture", total_scenes=10, video_duration=300.0)
+        weight = get_structural_weight(
+            scene, "lecture", total_scenes=10, video_duration=300.0
+        )
         # Middle scene, not intro/conclusion, scene_id > 2
         assert weight < 0.5
 
@@ -417,7 +432,9 @@ class TestGetStructuralWeight:
 
     def test_zero_duration_handled(self):
         scene = {"scene_id": 0, "start_time": 0.0}
-        weight = get_structural_weight(scene, "unknown", total_scenes=5, video_duration=0.0)
+        weight = get_structural_weight(
+            scene, "unknown", total_scenes=5, video_duration=0.0
+        )
         assert 0.0 <= weight <= 1.0
 
     def test_weight_clamped_to_one(self):
@@ -433,8 +450,8 @@ class TestGetStructuralWeight:
 # calculate_attention_factors (composite)
 # ---------------------------------------------------------------------------
 
-class TestCalculateAttentionFactors:
 
+class TestCalculateAttentionFactors:
     def test_returns_all_factors(self, simple_scenes):
         factors = calculate_attention_factors(
             scene=simple_scenes[2],
@@ -470,8 +487,8 @@ class TestCalculateAttentionFactors:
 # calculate_attention_priority
 # ---------------------------------------------------------------------------
 
-class TestCalculateAttentionPriority:
 
+class TestCalculateAttentionPriority:
     def test_returns_float_between_zero_and_one(self, simple_scenes):
         priority = calculate_attention_priority(
             scene=simple_scenes[0],
@@ -538,8 +555,8 @@ class TestCalculateAttentionPriority:
 # rank_scenes_by_attention
 # ---------------------------------------------------------------------------
 
-class TestRankScenesByAttention:
 
+class TestRankScenesByAttention:
     def test_returns_sorted_by_priority_descending(self, simple_scenes):
         ranked = rank_scenes_by_attention(
             scenes=simple_scenes,

@@ -110,7 +110,9 @@ def _cmd_validate_config(args):
     elif result.is_valid:
         print(f"\nConfig is valid with {len(result.warnings)} warning(s).")
     else:
-        print(f"\nConfig is invalid: {len(result.errors)} error(s), {len(result.warnings)} warning(s).")
+        print(
+            f"\nConfig is invalid: {len(result.errors)} error(s), {len(result.warnings)} warning(s)."
+        )
 
     sys.exit(0 if result.is_valid else 1)
 
@@ -182,7 +184,8 @@ Examples:
         help="Validate provider configuration",
     )
     vc_parser.add_argument(
-        "--skip-availability", action="store_true",
+        "--skip-availability",
+        action="store_true",
         help="Skip checking provider availability (faster)",
     )
 
@@ -193,19 +196,24 @@ Examples:
     )
     ee_parser.add_argument("video_id", help="Video ID or URL")
     ee_parser.add_argument(
-        "--scene-id", type=int, default=None,
+        "--scene-id",
+        type=int,
+        default=None,
         help="Specific scene ID to extract (default: all scenes)",
     )
     ee_parser.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Re-extract even if cached",
     )
     ee_parser.add_argument(
-        "--no-visual", action="store_true",
+        "--no-visual",
+        action="store_true",
         help="Skip generating visual.json from entities",
     )
     ee_parser.add_argument(
-        "--provider", default=None,
+        "--provider",
+        default=None,
         help="Override AI provider (e.g., anthropic, openai, claude-code)",
     )
     ee_parser.add_argument("-o", "--output", type=Path, help="Output directory")

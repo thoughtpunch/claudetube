@@ -68,8 +68,7 @@ def _get_easyocr_reader():
         return easyocr.Reader(["en"], gpu=False, verbose=False)
     except ImportError as e:
         raise ImportError(
-            "EasyOCR is required for OCR extraction. "
-            "Install with: pip install easyocr"
+            "EasyOCR is required for OCR extraction. Install with: pip install easyocr"
         ) from e
 
 
@@ -407,7 +406,9 @@ def extract_text_from_scene(
         if skip_low_likelihood:
             likelihood = estimate_text_likelihood(frame_path)
             if likelihood < likelihood_threshold:
-                logger.debug(f"Skipping {frame_path.name} (text likelihood: {likelihood:.2f})")
+                logger.debug(
+                    f"Skipping {frame_path.name} (text likelihood: {likelihood:.2f})"
+                )
                 continue
 
         # Run EasyOCR first (cheap)
@@ -480,7 +481,9 @@ def save_ocr_results(
     # Count content types
     for r in results:
         ct = r.content_type
-        data["summary"]["content_types"][ct] = data["summary"]["content_types"].get(ct, 0) + 1
+        data["summary"]["content_types"][ct] = (
+            data["summary"]["content_types"].get(ct, 0) + 1
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(data, indent=2))
@@ -503,9 +506,7 @@ def load_ocr_results(input_path: Path) -> list[FrameOCRResult] | None:
         data = json.loads(input_path.read_text())
         results = []
         for frame_data in data.get("frames", []):
-            regions = [
-                TextRegion(**r) for r in frame_data.get("regions", [])
-            ]
+            regions = [TextRegion(**r) for r in frame_data.get("regions", [])]
             results.append(
                 FrameOCRResult(
                     frame_path=frame_data["frame_path"],

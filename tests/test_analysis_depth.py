@@ -1,10 +1,16 @@
 """Tests for multi-pass analysis depth functionality."""
 
 import json
-from pathlib import Path
 
 import pytest
 
+from claudetube.cache.scenes import (
+    SceneBoundary,
+    ScenesData,
+    get_scene_dir,
+    get_visual_json_path,
+    save_scenes_data,
+)
 from claudetube.operations.analysis_depth import (
     AnalysisDepth,
     AnalysisResult,
@@ -12,15 +18,7 @@ from claudetube.operations.analysis_depth import (
     TechnicalContent,
     analyze_video,
     extract_entities,
-    extract_technical_content,
     get_analysis_status,
-)
-from claudetube.cache.scenes import (
-    SceneBoundary,
-    ScenesData,
-    get_scene_dir,
-    get_visual_json_path,
-    save_scenes_data,
 )
 
 
@@ -264,13 +262,15 @@ class TestExtractEntities:
         base_dir, video_id, cache_dir = mock_cache_dir
 
         # Create visual description
-        scene_dir = get_scene_dir(cache_dir, 0)
+        get_scene_dir(cache_dir, 0)
         visual_path = get_visual_json_path(cache_dir, 0)
         visual_path.write_text(
-            json.dumps({
-                "description": "A person coding with TypeScript in VSCode.",
-                "people": ["developer in blue shirt"],
-            })
+            json.dumps(
+                {
+                    "description": "A person coding with TypeScript in VSCode.",
+                    "people": ["developer in blue shirt"],
+                }
+            )
         )
 
         scene = SceneBoundary(
@@ -325,11 +325,13 @@ class TestAnalyzeVideo:
         visual_path = get_visual_json_path(cache_dir, 0)
         visual_path.parent.mkdir(parents=True, exist_ok=True)
         visual_path.write_text(
-            json.dumps({
-                "description": "A coding tutorial intro",
-                "people": ["instructor"],
-                "objects": ["laptop"],
-            })
+            json.dumps(
+                {
+                    "description": "A coding tutorial intro",
+                    "people": ["instructor"],
+                    "objects": ["laptop"],
+                }
+            )
         )
 
         result = analyze_video(
@@ -485,13 +487,11 @@ class TestIntegration:
         result1 = analyze_video(
             video_id, depth=AnalysisDepth.QUICK, output_base=base_dir
         )
-        time1 = result1.processing_time
 
         # Second call should be faster (cached)
         result2 = analyze_video(
             video_id, depth=AnalysisDepth.QUICK, output_base=base_dir
         )
-        time2 = result2.processing_time
 
         # Both should return same data
         assert len(result1.scenes) == len(result2.scenes)
@@ -503,13 +503,17 @@ class TestIntegration:
         # Pre-create entities with specific content
         entities_path = cache_dir / "scenes" / "scene_000" / "entities.json"
         entities_path.parent.mkdir(parents=True, exist_ok=True)
-        entities_path.write_text(json.dumps({
-            "scene_id": 0,
-            "technologies": ["old_tech"],
-            "people": [],
-            "topics": [],
-            "keywords": [],
-        }))
+        entities_path.write_text(
+            json.dumps(
+                {
+                    "scene_id": 0,
+                    "technologies": ["old_tech"],
+                    "people": [],
+                    "topics": [],
+                    "keywords": [],
+                }
+            )
+        )
 
         # Without force, should get cached value
         result1 = analyze_video(

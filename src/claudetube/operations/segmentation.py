@@ -186,7 +186,9 @@ def segment_video_smart(
             pass
 
     if duration == 0:
-        logger.warning(f"Could not determine duration for {video_id}, using 3600s default")
+        logger.warning(
+            f"Could not determine duration for {video_id}, using 3600s default"
+        )
         duration = 3600.0
 
     # Step 2: Always try cheap methods first
@@ -230,14 +232,18 @@ def segment_video_smart(
             logger.info("Coverage insufficient - running visual detection fallback")
             try:
                 visual_boundaries = detect_visual_boundaries(video_path)
-                logger.info(f"Visual detection found {len(visual_boundaries)} boundaries")
+                logger.info(
+                    f"Visual detection found {len(visual_boundaries)} boundaries"
+                )
                 # Merge cheap + visual boundaries
                 all_boundaries = merge_nearby_boundaries(
                     list(cheap_boundaries) + list(visual_boundaries)
                 )
                 method = "hybrid"
             except ImportError:
-                logger.warning("PySceneDetect not available, using cheap detection only")
+                logger.warning(
+                    "PySceneDetect not available, using cheap detection only"
+                )
             except Exception as e:
                 logger.warning(f"Visual detection failed: {e}")
         else:

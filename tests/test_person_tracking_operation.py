@@ -16,7 +16,6 @@ Verifies:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -25,10 +24,10 @@ from claudetube.cache.scenes import SceneBoundary
 from claudetube.operations.person_tracking import (
     FRAME_PERSON_TRACKING_PROMPT,
     VIDEO_PERSON_TRACKING_PROMPT,
+    PeopleTrackingData,
     PersonAppearance,
     PersonTrack,
     PersonTrackingOperation,
-    PeopleTrackingData,
     _get_default_providers,
     _track_from_visual_transcripts,
     get_people_json_path,
@@ -119,15 +118,30 @@ def video_tracking_response():
                 "person_id": "person_0",
                 "description": "man in blue shirt",
                 "appearances": [
-                    {"scene_id": 0, "timestamp": 7.5, "action": "presenting", "confidence": 0.95},
-                    {"scene_id": 1, "timestamp": 22.5, "action": "coding", "confidence": 0.90},
+                    {
+                        "scene_id": 0,
+                        "timestamp": 7.5,
+                        "action": "presenting",
+                        "confidence": 0.95,
+                    },
+                    {
+                        "scene_id": 1,
+                        "timestamp": 22.5,
+                        "action": "coding",
+                        "confidence": 0.90,
+                    },
                 ],
             },
             {
                 "person_id": "person_1",
                 "description": "woman with glasses",
                 "appearances": [
-                    {"scene_id": 1, "timestamp": 20.0, "action": "listening", "confidence": 0.85},
+                    {
+                        "scene_id": 1,
+                        "timestamp": 20.0,
+                        "action": "listening",
+                        "confidence": 0.85,
+                    },
                 ],
             },
         ]
@@ -143,7 +157,12 @@ def frame_tracking_response():
                 "person_id": "person_0",
                 "description": "man in blue shirt",
                 "appearances": [
-                    {"scene_id": 0, "timestamp": 7.5, "action": "presenting", "confidence": 0.9},
+                    {
+                        "scene_id": 0,
+                        "timestamp": 7.5,
+                        "action": "presenting",
+                        "confidence": 0.9,
+                    },
                 ],
             },
         ]
@@ -185,7 +204,9 @@ class TestPersonTrackingOperationInit:
 class TestBuildPrompt:
     """Tests for prompt building."""
 
-    def test_video_prompt_includes_scene_boundaries(self, mock_video_analyzer, sample_scenes):
+    def test_video_prompt_includes_scene_boundaries(
+        self, mock_video_analyzer, sample_scenes
+    ):
         op = PersonTrackingOperation(video_analyzer=mock_video_analyzer)
         prompt = op._build_video_prompt(sample_scenes)
         assert "scene 0: 0.0s-15.0s" in prompt
@@ -199,7 +220,9 @@ class TestBuildPrompt:
         assert "0.0s - 15.0s" in prompt
         assert "Transcript context: Hello and welcome" in prompt
 
-    def test_frame_prompt_without_transcript(self, mock_vision_analyzer, sample_scene_no_transcript):
+    def test_frame_prompt_without_transcript(
+        self, mock_vision_analyzer, sample_scene_no_transcript
+    ):
         op = PersonTrackingOperation(vision_analyzer=mock_vision_analyzer)
         prompt = op._build_frame_prompt(sample_scene_no_transcript)
         assert "scene 2" in prompt
@@ -254,8 +277,12 @@ class TestExecute:
 
     @pytest.mark.asyncio
     async def test_execute_with_vision_fallback(
-        self, mock_video_analyzer, mock_vision_analyzer,
-        sample_scenes, sample_keyframes, frame_tracking_response,
+        self,
+        mock_video_analyzer,
+        mock_vision_analyzer,
+        sample_scenes,
+        sample_keyframes,
+        frame_tracking_response,
     ):
         """Falls back to VisionAnalyzer when VideoAnalyzer fails."""
         mock_video_analyzer.analyze_video.side_effect = RuntimeError("API error")
@@ -280,7 +307,11 @@ class TestExecute:
 
     @pytest.mark.asyncio
     async def test_execute_vision_only(
-        self, mock_vision_analyzer, sample_scenes, sample_keyframes, frame_tracking_response
+        self,
+        mock_vision_analyzer,
+        sample_scenes,
+        sample_keyframes,
+        frame_tracking_response,
     ):
         """VisionAnalyzer works alone without VideoAnalyzer."""
         mock_vision_analyzer.analyze_images.return_value = frame_tracking_response
@@ -308,8 +339,12 @@ class TestExecute:
 
     @pytest.mark.asyncio
     async def test_execute_video_analyzer_no_video_path(
-        self, mock_video_analyzer, mock_vision_analyzer,
-        sample_scenes, sample_keyframes, frame_tracking_response,
+        self,
+        mock_video_analyzer,
+        mock_vision_analyzer,
+        sample_scenes,
+        sample_keyframes,
+        frame_tracking_response,
     ):
         """Without video_path, skips VideoAnalyzer and uses VisionAnalyzer."""
         mock_vision_analyzer.analyze_images.return_value = frame_tracking_response
@@ -338,7 +373,9 @@ class TestExecute:
         video_path.write_bytes(b"\x00" * 100)
 
         op = PersonTrackingOperation(video_analyzer=mock_video_analyzer)
-        await op.execute(scenes=sample_scenes, cache_dir=tmp_path, video_path=video_path)
+        await op.execute(
+            scenes=sample_scenes, cache_dir=tmp_path, video_path=video_path
+        )
 
         call_args = mock_video_analyzer.analyze_video.call_args
         assert call_args is not None
@@ -351,7 +388,9 @@ class TestExecute:
         self, mock_video_analyzer, sample_scenes, tmp_path, video_tracking_response
     ):
         """Handles provider returning JSON string instead of dict."""
-        mock_video_analyzer.analyze_video.return_value = json.dumps(video_tracking_response)
+        mock_video_analyzer.analyze_video.return_value = json.dumps(
+            video_tracking_response
+        )
 
         video_path = tmp_path / "video.mp4"
         video_path.write_bytes(b"\x00" * 100)
@@ -366,7 +405,10 @@ class TestExecute:
 
     @pytest.mark.asyncio
     async def test_execute_vision_merges_same_person(
-        self, mock_vision_analyzer, sample_scenes, sample_keyframes,
+        self,
+        mock_vision_analyzer,
+        sample_scenes,
+        sample_keyframes,
     ):
         """VisionAnalyzer merges same person across scenes by description."""
         # Both scenes return the same person
@@ -376,7 +418,12 @@ class TestExecute:
                     "person_id": "person_0",
                     "description": "man in blue shirt",
                     "appearances": [
-                        {"scene_id": 0, "timestamp": 7.5, "action": "speaking", "confidence": 0.9},
+                        {
+                            "scene_id": 0,
+                            "timestamp": 7.5,
+                            "action": "speaking",
+                            "confidence": 0.9,
+                        },
                     ],
                 },
             ]
@@ -395,7 +442,10 @@ class TestExecute:
 
     @pytest.mark.asyncio
     async def test_execute_vision_handles_scene_error(
-        self, mock_vision_analyzer, sample_scenes, sample_keyframes,
+        self,
+        mock_vision_analyzer,
+        sample_scenes,
+        sample_keyframes,
     ):
         """Vision error on one scene doesn't prevent other scenes."""
         call_count = 0
@@ -411,7 +461,12 @@ class TestExecute:
                         "person_id": "person_0",
                         "description": "presenter",
                         "appearances": [
-                            {"scene_id": 1, "timestamp": 22.5, "action": "coding", "confidence": 0.9},
+                            {
+                                "scene_id": 1,
+                                "timestamp": 22.5,
+                                "action": "coding",
+                                "confidence": 0.9,
+                            },
                         ],
                     },
                 ]
@@ -475,7 +530,9 @@ class TestDataClasses:
     """Tests for dataclass serialization."""
 
     def test_person_appearance_roundtrip(self):
-        original = PersonAppearance(scene_id=1, timestamp=15.0, action="speaking", confidence=0.9)
+        original = PersonAppearance(
+            scene_id=1, timestamp=15.0, action="speaking", confidence=0.9
+        )
         restored = PersonAppearance.from_dict(original.to_dict())
         assert restored.scene_id == original.scene_id
         assert restored.timestamp == original.timestamp
@@ -545,11 +602,15 @@ class TestTrackFromVisualTranscripts:
         scene_dir = scenes_dir / "scene_000"
         scene_dir.mkdir()
         visual_path = scene_dir / "visual.json"
-        visual_path.write_text(json.dumps({
-            "people": ["man in blue shirt", "woman with glasses"],
-            "actions": ["presenting"],
-            "description": "Two people in a conference room",
-        }))
+        visual_path.write_text(
+            json.dumps(
+                {
+                    "people": ["man in blue shirt", "woman with glasses"],
+                    "actions": ["presenting"],
+                    "description": "Two people in a conference room",
+                }
+            )
+        )
 
         scenes = [SceneBoundary(scene_id=0, start_time=0.0, end_time=10.0)]
         result = _track_from_visual_transcripts(scenes, tmp_path)
@@ -566,10 +627,14 @@ class TestTrackFromVisualTranscripts:
             scene_dir = scenes_dir / f"scene_{scene_id:03d}"
             scene_dir.mkdir()
             visual_path = scene_dir / "visual.json"
-            visual_path.write_text(json.dumps({
-                "people": ["man in blue shirt"],
-                "actions": ["speaking"],
-            }))
+            visual_path.write_text(
+                json.dumps(
+                    {
+                        "people": ["man in blue shirt"],
+                        "actions": ["speaking"],
+                    }
+                )
+            )
 
         scenes = [
             SceneBoundary(scene_id=0, start_time=0.0, end_time=10.0),
@@ -687,29 +752,37 @@ class TestTrackPeopleIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
+                }
+            )
+        )
 
         # Create cached people.json
         entities_dir = cache_dir / "entities"
         entities_dir.mkdir()
         people_json = entities_dir / "people.json"
-        people_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "visual_transcript",
-            "people_count": 1,
-            "people": {
-                "person_0": {
-                    "person_id": "person_0",
-                    "description": "presenter",
-                    "appearances": [{"scene_id": 0, "timestamp": 5.0}],
+        people_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "visual_transcript",
+                    "people_count": 1,
+                    "people": {
+                        "person_0": {
+                            "person_id": "person_0",
+                            "description": "presenter",
+                            "appearances": [{"scene_id": 0, "timestamp": 5.0}],
+                        }
+                    },
                 }
-            },
-        }))
+            )
+        )
 
         result = track_people(video_id=video_id, output_base=tmp_path)
 
@@ -725,21 +798,29 @@ class TestTrackPeopleIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
+                }
+            )
+        )
 
         # Create visual.json with people
         scene_dir = scenes_dir / "scene_000"
         scene_dir.mkdir()
         visual_path = scene_dir / "visual.json"
-        visual_path.write_text(json.dumps({
-            "people": ["presenter"],
-            "actions": ["speaking"],
-        }))
+        visual_path.write_text(
+            json.dumps(
+                {
+                    "people": ["presenter"],
+                    "actions": ["speaking"],
+                }
+            )
+        )
 
         result = track_people(video_id=video_id, output_base=tmp_path)
 
@@ -767,23 +848,31 @@ class TestTrackPeopleIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
+                }
+            )
+        )
 
         # Create cached people.json with 5 people
         entities_dir = cache_dir / "entities"
         entities_dir.mkdir()
         people_json = entities_dir / "people.json"
-        people_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "visual_transcript",
-            "people_count": 5,
-            "people": {},
-        }))
+        people_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "visual_transcript",
+                    "people_count": 5,
+                    "people": {},
+                }
+            )
+        )
 
         # Force should regenerate (no visual.json → 0 people from visual transcripts)
         result = track_people(video_id=video_id, output_base=tmp_path, force=True)
@@ -800,12 +889,16 @@ class TestTrackPeopleIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
+                }
+            )
+        )
 
         track_people(video_id=video_id, output_base=tmp_path)
 
@@ -823,12 +916,16 @@ class TestTrackPeopleIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [{"scene_id": 0, "start_time": 0.0, "end_time": 10.0}],
+                }
+            )
+        )
 
         state_file = cache_dir / "state.json"
         state_file.write_text(json.dumps({"video_id": video_id}))
@@ -855,12 +952,18 @@ class TestGetPeopleTracking:
         entities_dir = cache_dir / "entities"
         entities_dir.mkdir()
         people_json = entities_dir / "people.json"
-        people_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "visual_transcript",
-            "people_count": 1,
-            "people": {"person_0": {"person_id": "person_0", "description": "test"}},
-        }))
+        people_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "visual_transcript",
+                    "people_count": 1,
+                    "people": {
+                        "person_0": {"person_id": "person_0", "description": "test"}
+                    },
+                }
+            )
+        )
 
         result = get_people_tracking(video_id, output_base=tmp_path)
         assert result["people_count"] == 1

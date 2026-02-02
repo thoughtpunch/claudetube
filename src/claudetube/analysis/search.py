@@ -132,19 +132,21 @@ def _search_transcript_text(
             # Create preview - try to center on the match
             preview = _create_preview(transcript, query, max_len=150)
 
-            results.append((
-                score,
-                SearchMoment(
-                    rank=0,  # Will be set after sorting
-                    scene_id=scene.scene_id,
-                    start_time=scene.start_time,
-                    end_time=scene.end_time,
-                    relevance=min(score, 1.0),  # Cap at 1.0
-                    preview=preview,
-                    timestamp_str=format_timestamp(scene.start_time),
-                    match_type="text",
-                ),
-            ))
+            results.append(
+                (
+                    score,
+                    SearchMoment(
+                        rank=0,  # Will be set after sorting
+                        scene_id=scene.scene_id,
+                        start_time=scene.start_time,
+                        end_time=scene.end_time,
+                        relevance=min(score, 1.0),  # Cap at 1.0
+                        preview=preview,
+                        timestamp_str=format_timestamp(scene.start_time),
+                        match_type="text",
+                    ),
+                )
+            )
 
     # Sort by score descending
     results.sort(key=lambda x: x[0], reverse=True)
@@ -249,16 +251,18 @@ def _search_embedding(
         elif not preview:
             preview = "[No transcript]"
 
-        moments.append(SearchMoment(
-            rank=i + 1,
-            scene_id=result.scene_id,
-            start_time=result.start_time,
-            end_time=result.end_time,
-            relevance=relevance,
-            preview=preview[:150] + "..." if len(preview) > 150 else preview,
-            timestamp_str=format_timestamp(result.start_time),
-            match_type="semantic",
-        ))
+        moments.append(
+            SearchMoment(
+                rank=i + 1,
+                scene_id=result.scene_id,
+                start_time=result.start_time,
+                end_time=result.end_time,
+                relevance=relevance,
+                preview=preview[:150] + "..." if len(preview) > 150 else preview,
+                timestamp_str=format_timestamp(result.start_time),
+                match_type="semantic",
+            )
+        )
 
     return moments
 
@@ -342,9 +346,9 @@ def _search_with_expanded_queries(
         if existing is None or moment.relevance > existing.relevance:
             by_scene[moment.scene_id] = moment
 
-    sorted_moments = sorted(
-        by_scene.values(), key=lambda m: m.relevance, reverse=True
-    )[:top_k]
+    sorted_moments = sorted(by_scene.values(), key=lambda m: m.relevance, reverse=True)[
+        :top_k
+    ]
 
     for i, moment in enumerate(sorted_moments):
         moment.rank = i + 1
@@ -402,14 +406,12 @@ def find_moments(
 
     if not cache_dir.exists():
         raise FileNotFoundError(
-            f"Video {video_id} not found in cache. "
-            "Run process_video() first."
+            f"Video {video_id} not found in cache. Run process_video() first."
         )
 
     if not has_scenes(cache_dir):
         raise ValueError(
-            f"Video {video_id} has no scene data. "
-            "Run scene segmentation first."
+            f"Video {video_id} has no scene data. Run scene segmentation first."
         )
 
     logger.info(f"Searching for '{query}' in video {video_id}")

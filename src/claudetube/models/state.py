@@ -138,7 +138,9 @@ class VideoState:
             scenes_method=data.get("scenes_method"),
             scene_count=data.get("scene_count"),
             visual_transcripts_complete=data.get("visual_transcripts_complete", False),
-            technical_extraction_complete=data.get("technical_extraction_complete", False),
+            technical_extraction_complete=data.get(
+                "technical_extraction_complete", False
+            ),
         )
 
     @classmethod

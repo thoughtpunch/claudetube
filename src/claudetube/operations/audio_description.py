@@ -83,7 +83,10 @@ def _format_description(
             parts.append(visual.description)
 
         # Setting context (only if not already implied by description)
-        if visual.setting and visual.setting.lower() not in (visual.description or "").lower():
+        if (
+            visual.setting
+            and visual.setting.lower() not in (visual.description or "").lower()
+        ):
             parts.append(f"Setting: {visual.setting}.")
 
         # Text on screen (code, diagrams, etc.) - important for accessibility
@@ -191,7 +194,10 @@ def compile_scene_descriptions(
     cache_dir = cache.get_cache_dir(video_id)
 
     if not cache_dir.exists():
-        return {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+        return {
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        }
 
     # 1. CACHE - Return instantly if AD already exists
     if not force and cache.has_ad(video_id):
@@ -207,13 +213,18 @@ def compile_scene_descriptions(
     # Load scenes data
     scenes_data = load_scenes_data(cache_dir)
     if not scenes_data:
-        return {"error": "No scenes found. Run scene analysis first.", "video_id": video_id}
+        return {
+            "error": "No scenes found. Run scene analysis first.",
+            "video_id": video_id,
+        }
 
     if not scenes_data.scenes:
         return {"error": "No scene boundaries found.", "video_id": video_id}
 
     # 2. COMPILE - Format existing data into VTT
-    log_timed(f"Compiling audio descriptions for {len(scenes_data.scenes)} scenes...", t0)
+    log_timed(
+        f"Compiling audio descriptions for {len(scenes_data.scenes)} scenes...", t0
+    )
     vtt_lines, txt_lines = _compile_vtt(scenes_data, cache_dir)
 
     if not txt_lines:
@@ -265,7 +276,10 @@ def get_scene_descriptions(
     cache = CacheManager(output_base or get_cache_dir())
 
     if not cache.has_ad(video_id):
-        return {"error": "No audio descriptions found. Run compile_scene_descriptions first.", "video_id": video_id}
+        return {
+            "error": "No audio descriptions found. Run compile_scene_descriptions first.",
+            "video_id": video_id,
+        }
 
     vtt_path, txt_path = cache.get_ad_paths(video_id)
 
@@ -429,7 +443,10 @@ class AudioDescriptionGenerator:
         cache_dir = cache.get_cache_dir(video_id)
 
         if not cache_dir.exists():
-            return {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+            return {
+                "error": "Video not cached. Run process_video first.",
+                "video_id": video_id,
+            }
 
         # 1. CACHE
         if not force and cache.has_ad(video_id):
@@ -445,7 +462,10 @@ class AudioDescriptionGenerator:
         # Load scenes data
         scenes_data = load_scenes_data(cache_dir)
         if not scenes_data or not scenes_data.scenes:
-            return {"error": "No scenes found. Run scene analysis first.", "video_id": video_id}
+            return {
+                "error": "No scenes found. Run scene analysis first.",
+                "video_id": video_id,
+            }
 
         # Determine generation strategy
         video_prov = self._get_video_provider()
@@ -454,16 +474,28 @@ class AudioDescriptionGenerator:
         if video_prov is not None:
             log_timed(f"Using native video provider: {video_prov.info.name}", t0)
             result = await self._generate_native(
-                video_id, scenes_data, cache, cache_dir, video_prov, t0,
+                video_id,
+                scenes_data,
+                cache,
+                cache_dir,
+                video_prov,
+                t0,
             )
         elif vision_prov is not None:
             log_timed(f"Using vision provider: {vision_prov.info.name}", t0)
             result = await self._generate_from_frames(
-                video_id, scenes_data, cache, cache_dir, vision_prov, t0,
+                video_id,
+                scenes_data,
+                cache,
+                cache_dir,
+                vision_prov,
+                t0,
             )
         else:
             log_timed("No AI providers available; falling back to compile-only", t0)
-            return compile_scene_descriptions(video_id, force=True, output_base=output_base)
+            return compile_scene_descriptions(
+                video_id, force=True, output_base=output_base
+            )
 
         return result
 
@@ -485,17 +517,29 @@ class AudioDescriptionGenerator:
         from claudetube.providers.base import VideoAnalyzer
 
         if not isinstance(provider, VideoAnalyzer):
-            logger.warning(f"Provider {provider.info.name} does not implement VideoAnalyzer")
-            return {"error": f"Provider {provider.info.name} lacks VIDEO capability", "video_id": video_id}
+            logger.warning(
+                f"Provider {provider.info.name} does not implement VideoAnalyzer"
+            )
+            return {
+                "error": f"Provider {provider.info.name} lacks VIDEO capability",
+                "video_id": video_id,
+            }
 
         # Locate video source
         video_path = self._resolve_video_path(cache_dir, video_id)
         if video_path is None:
-            logger.warning("No video source available for native analysis; falling back to frames")
+            logger.warning(
+                "No video source available for native analysis; falling back to frames"
+            )
             vision_prov = self._get_vision_provider()
             if vision_prov is not None:
                 return await self._generate_from_frames(
-                    video_id, scenes_data, cache, cache_dir, vision_prov, t0,
+                    video_id,
+                    scenes_data,
+                    cache,
+                    cache_dir,
+                    vision_prov,
+                    t0,
                 )
             return compile_scene_descriptions(video_id, force=True)
 
@@ -533,14 +577,28 @@ class AudioDescriptionGenerator:
                     visual_path.parent.mkdir(parents=True, exist_ok=True)
                     visual_path.write_text(json.dumps(desc.to_dict(), indent=2))
                 else:
-                    errors.append({"scene_id": scene.scene_id, "error": "Failed to parse response"})
+                    errors.append(
+                        {
+                            "scene_id": scene.scene_id,
+                            "error": "Failed to parse response",
+                        }
+                    )
             except Exception as e:
-                logger.warning(f"Native video analysis failed for scene {scene.scene_id}: {e}")
+                logger.warning(
+                    f"Native video analysis failed for scene {scene.scene_id}: {e}"
+                )
                 errors.append({"scene_id": scene.scene_id, "error": str(e)})
 
         return self._finalize(
-            video_id, scenes_data, cache, cache_dir, descriptions, errors,
-            source="native_video", provider_name=provider.info.name, t0=t0,
+            video_id,
+            scenes_data,
+            cache,
+            cache_dir,
+            descriptions,
+            errors,
+            source="native_video",
+            provider_name=provider.info.name,
+            t0=t0,
         )
 
     async def _generate_from_frames(
@@ -560,7 +618,9 @@ class AudioDescriptionGenerator:
         from claudetube.providers.base import VisionAnalyzer
 
         if not isinstance(provider, VisionAnalyzer):
-            logger.warning(f"Provider {provider.info.name} does not implement VisionAnalyzer")
+            logger.warning(
+                f"Provider {provider.info.name} does not implement VisionAnalyzer"
+            )
             return compile_scene_descriptions(video_id, force=True)
 
         descriptions: list[VisualDescription] = []
@@ -580,7 +640,9 @@ class AudioDescriptionGenerator:
             # Get keyframes for this scene
             keyframes = self._get_scene_keyframes(scene, video_id, cache_dir)
             if not keyframes:
-                errors.append({"scene_id": scene.scene_id, "error": "No keyframes available"})
+                errors.append(
+                    {"scene_id": scene.scene_id, "error": "No keyframes available"}
+                )
                 continue
 
             context = ""
@@ -603,14 +665,28 @@ class AudioDescriptionGenerator:
                     visual_path.parent.mkdir(parents=True, exist_ok=True)
                     visual_path.write_text(json.dumps(desc.to_dict(), indent=2))
                 else:
-                    errors.append({"scene_id": scene.scene_id, "error": "Failed to parse response"})
+                    errors.append(
+                        {
+                            "scene_id": scene.scene_id,
+                            "error": "Failed to parse response",
+                        }
+                    )
             except Exception as e:
-                logger.warning(f"Vision analysis failed for scene {scene.scene_id}: {e}")
+                logger.warning(
+                    f"Vision analysis failed for scene {scene.scene_id}: {e}"
+                )
                 errors.append({"scene_id": scene.scene_id, "error": str(e)})
 
         return self._finalize(
-            video_id, scenes_data, cache, cache_dir, descriptions, errors,
-            source="frame_vision", provider_name=provider.info.name, t0=t0,
+            video_id,
+            scenes_data,
+            cache,
+            cache_dir,
+            descriptions,
+            errors,
+            source="frame_vision",
+            provider_name=provider.info.name,
+            t0=t0,
         )
 
     async def transcribe_ad_track(
@@ -641,13 +717,22 @@ class AudioDescriptionGenerator:
 
         provider = self._get_transcription_provider()
         if provider is None:
-            return {"error": "No transcription provider available", "video_id": video_id}
+            return {
+                "error": "No transcription provider available",
+                "video_id": video_id,
+            }
 
         if not isinstance(provider, Transcriber):
-            return {"error": f"Provider {provider.info.name} lacks TRANSCRIBE capability", "video_id": video_id}
+            return {
+                "error": f"Provider {provider.info.name} lacks TRANSCRIBE capability",
+                "video_id": video_id,
+            }
 
         if not _Path(ad_audio_path).exists():
-            return {"error": f"AD audio file not found: {ad_audio_path}", "video_id": video_id}
+            return {
+                "error": f"AD audio file not found: {ad_audio_path}",
+                "video_id": video_id,
+            }
 
         log_timed(f"Transcribing AD track with {provider.info.name}...", t0)
 
@@ -758,7 +843,9 @@ class AudioDescriptionGenerator:
 
             return _select_keyframes_for_scene(scene, video_id, cache_dir, n=n)
         except Exception as e:
-            logger.warning(f"Failed to extract keyframes for scene {scene.scene_id}: {e}")
+            logger.warning(
+                f"Failed to extract keyframes for scene {scene.scene_id}: {e}"
+            )
             return []
 
     @staticmethod
@@ -800,7 +887,9 @@ class AudioDescriptionGenerator:
                 setting=data.get("setting"),
             )
         except (json.JSONDecodeError, AttributeError, TypeError) as e:
-            logger.warning(f"Failed to parse description response for scene {scene.scene_id}: {e}")
+            logger.warning(
+                f"Failed to parse description response for scene {scene.scene_id}: {e}"
+            )
             return None
 
     @staticmethod

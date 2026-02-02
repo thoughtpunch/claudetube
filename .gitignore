@@ -31,6 +31,8 @@ htmlcov/
 .tox/
 tests/_integration_cache/
 tests/integration_results.json
+tests/_deep_integration_cache/
+tests/deep_integration_results.json
 
 # IDE
 .idea/

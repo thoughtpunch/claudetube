@@ -67,15 +67,11 @@ class VisualEntity(BaseModel):
     category: Literal["object", "person", "text", "code", "ui_element"] = Field(
         description="Type of entity"
     )
-    first_seen_sec: float = Field(
-        description="Timestamp when entity first appears"
-    )
+    first_seen_sec: float = Field(description="Timestamp when entity first appears")
     last_seen_sec: float | None = Field(
         default=None, description="Timestamp when entity last appears"
     )
-    confidence: float = Field(
-        default=1.0, description="Confidence score (0.0-1.0)"
-    )
+    confidence: float = Field(default=1.0, description="Confidence score (0.0-1.0)")
     attributes: dict[str, str] = Field(
         default_factory=dict, description="Additional attributes"
     )
@@ -109,12 +105,8 @@ class SemanticConcept(BaseModel):
     importance: Literal["primary", "secondary", "mentioned"] = Field(
         description="How central this concept is"
     )
-    first_mention_sec: float = Field(
-        description="Timestamp of first mention"
-    )
-    related_terms: list[str] = Field(
-        default_factory=list, description="Related terms"
-    )
+    first_mention_sec: float = Field(description="Timestamp of first mention")
+    related_terms: list[str] = Field(default_factory=list, description="Related terms")
 
 
 class EntityExtractionResult(BaseModel):
@@ -186,9 +178,7 @@ class VisualDescription(BaseModel):
         ... )
     """
 
-    description: str = Field(
-        description="Natural language description of the scene"
-    )
+    description: str = Field(description="Natural language description of the scene")
     objects: list[str] = Field(
         default_factory=list, description="Objects visible in scene"
     )
@@ -222,15 +212,9 @@ class PersonAppearance(BaseModel):
     """
 
     scene_id: int = Field(description="Scene identifier")
-    timestamp: float = Field(
-        description="Timestamp in seconds from video start"
-    )
-    action: str | None = Field(
-        default=None, description="What the person is doing"
-    )
-    confidence: float = Field(
-        default=1.0, description="Confidence score (0.0-1.0)"
-    )
+    timestamp: float = Field(description="Timestamp in seconds from video start")
+    action: str | None = Field(default=None, description="What the person is doing")
+    confidence: float = Field(default=1.0, description="Confidence score (0.0-1.0)")
 
 
 class PersonTrack(BaseModel):

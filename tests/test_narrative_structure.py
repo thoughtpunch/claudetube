@@ -367,9 +367,7 @@ class TestDetectNarrativeStructure:
             "test_video",
             [_make_scene(0, 0, 60, "the full video content")],
         )
-        (scenes_dir / "scenes.json").write_text(
-            json.dumps(scenes_data.to_dict())
-        )
+        (scenes_dir / "scenes.json").write_text(json.dumps(scenes_data.to_dict()))
 
         result = detect_narrative_structure("test_video", output_base=tmp_path)
         assert "error" not in result
@@ -390,9 +388,7 @@ class TestDetectNarrativeStructure:
                 _make_scene(2, 50, 60, "conclusion thanks"),
             ],
         )
-        (scenes_dir / "scenes.json").write_text(
-            json.dumps(scenes_data.to_dict())
-        )
+        (scenes_dir / "scenes.json").write_text(json.dumps(scenes_data.to_dict()))
 
         # First call generates
         result1 = detect_narrative_structure("test_video", output_base=tmp_path)
@@ -416,9 +412,7 @@ class TestDetectNarrativeStructure:
                 _make_scene(2, 20, 30, "end"),
             ],
         )
-        (scenes_dir / "scenes.json").write_text(
-            json.dumps(scenes_data.to_dict())
-        )
+        (scenes_dir / "scenes.json").write_text(json.dumps(scenes_data.to_dict()))
 
         detect_narrative_structure("test_video", output_base=tmp_path)
         # Force re-generation
@@ -442,17 +436,17 @@ class TestDetectNarrativeStructure:
             _make_scene(3, 30, 40, "topic B more different"),
         ]
         scenes_data = _make_scenes_data("test_video", scenes)
-        (scenes_dir / "scenes.json").write_text(
-            json.dumps(scenes_data.to_dict())
-        )
+        (scenes_dir / "scenes.json").write_text(json.dumps(scenes_data.to_dict()))
 
         # Save embeddings: first two similar, last two similar
-        embeddings = np.array([
-            [1.0, 0.0, 0.0],
-            [0.9, 0.1, 0.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.1, 0.9],
-        ])
+        embeddings = np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.9, 0.1, 0.0],
+                [0.0, 0.0, 1.0],
+                [0.0, 0.1, 0.9],
+            ]
+        )
         np.save(emb_dir / "scene_embeddings.npy", embeddings)
         (emb_dir / "scene_ids.json").write_text(json.dumps([0, 1, 2, 3]))
         (emb_dir / "metadata.json").write_text(

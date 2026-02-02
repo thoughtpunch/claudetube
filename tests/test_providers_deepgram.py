@@ -336,9 +336,7 @@ class TestRegistryIntegration:
     def test_get_provider_with_kwargs(self):
         from claudetube.providers.registry import get_provider
 
-        provider = get_provider(
-            "deepgram", model="nova-2-general", api_key="test-key"
-        )
+        provider = get_provider("deepgram", model="nova-2-general", api_key="test-key")
         assert isinstance(provider, DeepgramProvider)
         assert provider._model == "nova-2-general"
         assert provider._api_key == "test-key"

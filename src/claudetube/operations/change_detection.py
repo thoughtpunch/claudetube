@@ -327,13 +327,21 @@ def _get_content_type(
         description = visual_data.get("description", "").lower()
 
         # Heuristic content type detection
-        if any(kw in description for kw in ["code", "editor", "terminal", "function", "class"]):
+        if any(
+            kw in description
+            for kw in ["code", "editor", "terminal", "function", "class"]
+        ):
             return "code"
-        if any(kw in description for kw in ["slide", "presentation", "powerpoint", "keynote"]):
+        if any(
+            kw in description
+            for kw in ["slide", "presentation", "powerpoint", "keynote"]
+        ):
             return "slides"
         if any(kw in description for kw in ["diagram", "chart", "graph", "flowchart"]):
             return "diagram"
-        if any(kw in description for kw in ["person", "presenter", "speaker", "talking"]):
+        if any(
+            kw in description for kw in ["person", "presenter", "speaker", "talking"]
+        ):
             return "presenter"
         if any(kw in description for kw in ["screen", "browser", "website", "app"]):
             return "screencast"
@@ -456,14 +464,20 @@ def detect_scene_changes(
     cache_dir = cache.get_cache_dir(video_id)
 
     if not cache_dir.exists():
-        return {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+        return {
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        }
 
     # 1. CACHE - Return instantly if already exists
     changes_path = get_changes_json_path(cache_dir)
     if not force and changes_path.exists():
         try:
             data = json.loads(changes_path.read_text())
-            log_timed(f"Scene changes: loaded from cache ({data.get('summary', {}).get('total_changes', 0)} changes)", t0)
+            log_timed(
+                f"Scene changes: loaded from cache ({data.get('summary', {}).get('total_changes', 0)} changes)",
+                t0,
+            )
             return data
         except json.JSONDecodeError:
             pass  # Re-generate if cached data is invalid
@@ -492,7 +506,9 @@ def detect_scene_changes(
     embeddings = _load_embeddings_dict(cache_dir)
 
     if embeddings:
-        logger.info(f"Loaded {len(embeddings)} scene embeddings for topic shift detection")
+        logger.info(
+            f"Loaded {len(embeddings)} scene embeddings for topic shift detection"
+        )
     else:
         logger.info("No embeddings available, topic shift scores will be 0")
 
@@ -504,9 +520,7 @@ def detect_scene_changes(
         scene_a = scenes_data.scenes[i]
         scene_b = scenes_data.scenes[i + 1]
 
-        change = _detect_changes_between_scenes(
-            scene_a, scene_b, cache_dir, embeddings
-        )
+        change = _detect_changes_between_scenes(scene_a, scene_b, cache_dir, embeddings)
         changes.append(change)
 
     # Build result

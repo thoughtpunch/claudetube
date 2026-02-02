@@ -120,10 +120,30 @@ class VideoURL(BaseModel):
         # Look for ID-like path segments
         candidates = []
         skip_segments = {
-            "video", "videos", "watch", "embed", "shorts", "reel", "p",
-            "status", "clips", "details", "channel", "user", "playlist",
-            "live", "stories", "comments", "r", "w", "share", "post",
-            "posts", "gag", "view", "media",
+            "video",
+            "videos",
+            "watch",
+            "embed",
+            "shorts",
+            "reel",
+            "p",
+            "status",
+            "clips",
+            "details",
+            "channel",
+            "user",
+            "playlist",
+            "live",
+            "stories",
+            "comments",
+            "r",
+            "w",
+            "share",
+            "post",
+            "posts",
+            "gag",
+            "view",
+            "media",
         }
 
         for part in path_parts:
@@ -133,7 +153,11 @@ class VideoURL(BaseModel):
             if part.startswith("@"):
                 continue
             if "." in part and part.rsplit(".", 1)[-1] in [
-                "html", "php", "aspx", "mp4", "gifv",
+                "html",
+                "php",
+                "aspx",
+                "mp4",
+                "gifv",
             ]:
                 part = part.rsplit(".", 1)[0]
                 if "-" in part:
@@ -146,6 +170,7 @@ class VideoURL(BaseModel):
                 candidates.append(part)
 
         if candidates:
+
             def id_score(s):
                 length_score = len(s)
                 has_numbers = any(c.isdigit() for c in s)

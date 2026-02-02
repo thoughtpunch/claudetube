@@ -127,7 +127,9 @@ def build_scene_index(
         if visual_path.exists():
             try:
                 visual_data = json.loads(visual_path.read_text())
-                visual_by_id[scene_id] = visual_data.get("description", "")[:MAX_TRANSCRIPT_PREVIEW]
+                visual_by_id[scene_id] = visual_data.get("description", "")[
+                    :MAX_TRANSCRIPT_PREVIEW
+                ]
             except Exception:
                 pass
 
@@ -177,13 +179,15 @@ def build_scene_index(
 
         ids.append(f"scene_{scene_id}")
         embs.append(emb.embedding.tolist())
-        metadatas.append({
-            "scene_id": scene_id,
-            "start_time": start,
-            "end_time": end,
-            "transcript_preview": transcript[:MAX_TRANSCRIPT_PREVIEW],
-            "visual_description": visual_by_id.get(scene_id, ""),
-        })
+        metadatas.append(
+            {
+                "scene_id": scene_id,
+                "start_time": start,
+                "end_time": end,
+                "transcript_preview": transcript[:MAX_TRANSCRIPT_PREVIEW],
+                "visual_description": visual_by_id.get(scene_id, ""),
+            }
+        )
         documents.append(transcript)
 
     if not ids:
@@ -261,8 +265,7 @@ def search_scenes(
     collection = load_scene_index(cache_dir)
     if collection is None:
         raise ValueError(
-            f"No vector index found at {cache_dir}. "
-            "Run build_scene_index() first."
+            f"No vector index found at {cache_dir}. Run build_scene_index() first."
         )
 
     # Query the collection
@@ -279,14 +282,16 @@ def search_scenes(
         results["distances"][0],
         strict=True,
     ):
-        search_results.append(SearchResult(
-            scene_id=meta["scene_id"],
-            distance=dist,
-            start_time=meta["start_time"],
-            end_time=meta["end_time"],
-            transcript_preview=meta.get("transcript_preview", ""),
-            visual_description=meta.get("visual_description", ""),
-        ))
+        search_results.append(
+            SearchResult(
+                scene_id=meta["scene_id"],
+                distance=dist,
+                start_time=meta["start_time"],
+                end_time=meta["end_time"],
+                transcript_preview=meta.get("transcript_preview", ""),
+                visual_description=meta.get("visual_description", ""),
+            )
+        )
 
     return search_results
 

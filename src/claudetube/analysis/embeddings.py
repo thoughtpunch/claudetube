@@ -66,7 +66,9 @@ def get_embedding_model() -> str:
     Returns:
         "voyage" or "local" based on CLAUDETUBE_EMBEDDING_MODEL env var.
     """
-    model = os.environ.get("CLAUDETUBE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL).lower()
+    model = os.environ.get(
+        "CLAUDETUBE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL
+    ).lower()
     if model not in ("voyage", "local"):
         logger.warning(f"Unknown embedding model '{model}', falling back to 'voyage'")
         return DEFAULT_EMBEDDING_MODEL
@@ -184,7 +186,9 @@ def embed_scene(
     # Convert paths to Path objects for provider
     image_paths = None
     if keyframe_paths:
-        image_paths = [Path(p) if not isinstance(p, Path) else p for p in keyframe_paths]
+        image_paths = [
+            Path(p) if not isinstance(p, Path) else p for p in keyframe_paths
+        ]
 
     # Get provider and generate embedding
     provider = _get_embedder(model)
@@ -259,7 +263,9 @@ def embed_scenes(
             try:
                 technical_data = json.loads(technical_path.read_text())
             except Exception as e:
-                logger.warning(f"Failed to load technical.json for scene {scene_id}: {e}")
+                logger.warning(
+                    f"Failed to load technical.json for scene {scene_id}: {e}"
+                )
 
         # Get keyframes
         keyframe_paths = [str(p) for p in list_scene_keyframes(cache_dir, scene_id)]

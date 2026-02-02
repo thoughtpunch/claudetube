@@ -98,7 +98,9 @@ class TestVisualTranscriptOperationInit:
 class TestBuildPrompt:
     """Tests for prompt building."""
 
-    def test_prompt_without_transcript(self, mock_vision_analyzer, sample_scene_no_transcript):
+    def test_prompt_without_transcript(
+        self, mock_vision_analyzer, sample_scene_no_transcript
+    ):
         op = VisualTranscriptOperation(mock_vision_analyzer)
         prompt = op._build_prompt(sample_scene_no_transcript)
         assert "Describe what is visually happening" in prompt
@@ -123,7 +125,9 @@ class TestBuildPrompt:
         context_part = prompt.split("Transcript context: ")[1]
         assert len(context_part) <= 500
 
-    def test_uses_module_constant_template(self, mock_vision_analyzer, sample_scene_no_transcript):
+    def test_uses_module_constant_template(
+        self, mock_vision_analyzer, sample_scene_no_transcript
+    ):
         op = VisualTranscriptOperation(mock_vision_analyzer)
         prompt = op._build_prompt(sample_scene_no_transcript)
         expected = VISUAL_PROMPT.format(context="")
@@ -170,14 +174,16 @@ class TestExecute:
         self, mock_vision_analyzer, sample_scene, sample_keyframes
     ):
         """Fallback: provider returns JSON string instead of dict."""
-        mock_vision_analyzer.analyze_images.return_value = json.dumps({
-            "description": "Code on screen",
-            "people": [],
-            "objects": ["monitor"],
-            "text_on_screen": ["import os"],
-            "actions": [],
-            "setting": "office",
-        })
+        mock_vision_analyzer.analyze_images.return_value = json.dumps(
+            {
+                "description": "Code on screen",
+                "people": [],
+                "objects": ["monitor"],
+                "text_on_screen": ["import os"],
+                "actions": [],
+                "setting": "office",
+            }
+        )
 
         op = VisualTranscriptOperation(mock_vision_analyzer)
         result = await op.execute(
@@ -261,9 +267,7 @@ class TestExecute:
         assert result.setting is None
 
     @pytest.mark.asyncio
-    async def test_execute_model_name_from_info(
-        self, sample_scene, sample_keyframes
-    ):
+    async def test_execute_model_name_from_info(self, sample_scene, sample_keyframes):
         """Model name should come from provider.info.name."""
         analyzer = AsyncMock()
         info_mock = MagicMock()
@@ -279,27 +283,31 @@ class TestExecute:
         }
 
         op = VisualTranscriptOperation(analyzer)
-        result = await op.execute(scene_id=0, keyframes=sample_keyframes, scene=sample_scene)
+        result = await op.execute(
+            scene_id=0, keyframes=sample_keyframes, scene=sample_scene
+        )
 
         assert result.model_used == "google"
 
     @pytest.mark.asyncio
-    async def test_execute_no_info_attribute(
-        self, sample_scene, sample_keyframes
-    ):
+    async def test_execute_no_info_attribute(self, sample_scene, sample_keyframes):
         """Graceful handling when provider has no info attribute."""
         analyzer = AsyncMock(spec=[])
-        analyzer.analyze_images = AsyncMock(return_value={
-            "description": "test",
-            "people": [],
-            "objects": [],
-            "text_on_screen": [],
-            "actions": [],
-            "setting": None,
-        })
+        analyzer.analyze_images = AsyncMock(
+            return_value={
+                "description": "test",
+                "people": [],
+                "objects": [],
+                "text_on_screen": [],
+                "actions": [],
+                "setting": None,
+            }
+        )
 
         op = VisualTranscriptOperation(analyzer)
-        result = await op.execute(scene_id=0, keyframes=sample_keyframes, scene=sample_scene)
+        result = await op.execute(
+            scene_id=0, keyframes=sample_keyframes, scene=sample_scene
+        )
 
         assert result.model_used is None
 
@@ -486,10 +494,13 @@ class TestGetDefaultVisionAnalyzer:
         """Should raise RuntimeError when no provider available."""
         mock_provider = self._make_vision_mock(available=False)
 
-        with patch(
-            "claudetube.providers.registry.get_provider",
-            return_value=mock_provider,
-        ), pytest.raises(RuntimeError, match="No vision provider available"):
+        with (
+            patch(
+                "claudetube.providers.registry.get_provider",
+                return_value=mock_provider,
+            ),
+            pytest.raises(RuntimeError, match="No vision provider available"),
+        ):
             _get_default_vision_analyzer()
 
 
@@ -511,32 +522,42 @@ class TestGenerateVisualTranscriptIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{
-                "scene_id": 0,
-                "start_time": 0.0,
-                "end_time": 10.0,
-            }],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [
+                        {
+                            "scene_id": 0,
+                            "start_time": 0.0,
+                            "end_time": 10.0,
+                        }
+                    ],
+                }
+            )
+        )
 
         # Create cached visual.json
         scene_dir = scenes_dir / "scene_000"
         scene_dir.mkdir()
         visual_json = scene_dir / "visual.json"
-        visual_json.write_text(json.dumps({
-            "scene_id": 0,
-            "description": "Cached description",
-            "people": [],
-            "objects": [],
-            "text_on_screen": [],
-            "actions": [],
-            "setting": "office",
-            "keyframe_count": 3,
-            "model_used": "anthropic",
-        }))
+        visual_json.write_text(
+            json.dumps(
+                {
+                    "scene_id": 0,
+                    "description": "Cached description",
+                    "people": [],
+                    "objects": [],
+                    "text_on_screen": [],
+                    "actions": [],
+                    "setting": "office",
+                    "keyframe_count": 3,
+                    "model_used": "anthropic",
+                }
+            )
+        )
 
         result = generate_visual_transcript(
             video_id=video_id,
@@ -556,17 +577,23 @@ class TestGenerateVisualTranscriptIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{
-                "scene_id": 0,
-                "start_time": 0.0,
-                "end_time": 10.0,
-                "transcript_text": "word " * 30,  # High density -> skip
-            }],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [
+                        {
+                            "scene_id": 0,
+                            "start_time": 0.0,
+                            "end_time": 10.0,
+                            "transcript_text": "word " * 30,  # High density -> skip
+                        }
+                    ],
+                }
+            )
+        )
 
         result = generate_visual_transcript(
             video_id=video_id,
@@ -606,16 +633,22 @@ class TestGenerateVisualTranscriptIntegration:
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
         scenes_json = scenes_dir / "scenes.json"
-        scenes_json.write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scene_count": 1,
-            "scenes": [{
-                "scene_id": 0,
-                "start_time": 0.0,
-                "end_time": 10.0,
-            }],
-        }))
+        scenes_json.write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scene_count": 1,
+                    "scenes": [
+                        {
+                            "scene_id": 0,
+                            "start_time": 0.0,
+                            "end_time": 10.0,
+                        }
+                    ],
+                }
+            )
+        )
 
         # Create state.json (needed for keyframe extraction)
         state_file = cache_dir / "state.json"

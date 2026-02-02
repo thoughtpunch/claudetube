@@ -50,15 +50,23 @@ class TestGetFormats:
         assert got == []
 
     def test_raises_on_failure(self, tool):
-        result = ToolResult(success=False, stderr="ERROR: Video not found", returncode=1)
+        result = ToolResult(
+            success=False, stderr="ERROR: Video not found", returncode=1
+        )
 
-        with patch.object(tool, "_run", return_value=result), pytest.raises(MetadataError, match="Video not found"):
+        with (
+            patch.object(tool, "_run", return_value=result),
+            pytest.raises(MetadataError, match="Video not found"),
+        ):
             tool.get_formats("https://example.com/video")
 
     def test_raises_on_invalid_json(self, tool):
         result = ToolResult.ok(stdout="not json")
 
-        with patch.object(tool, "_run", return_value=result), pytest.raises(MetadataError, match="Invalid JSON"):
+        with (
+            patch.object(tool, "_run", return_value=result),
+            pytest.raises(MetadataError, match="Invalid JSON"),
+        ):
             tool.get_formats("https://example.com/video")
 
 
@@ -205,7 +213,10 @@ class TestDownloadAudioDescription:
         ad_format = _make_format("338", "Audio Description")
         result = ToolResult.ok()
 
-        with patch.object(tool, "check_audio_description", return_value=ad_format), patch.object(tool, "_run", return_value=result):
+        with (
+            patch.object(tool, "check_audio_description", return_value=ad_format),
+            patch.object(tool, "_run", return_value=result),
+        ):
             path = tool.download_audio_description(
                 "https://example.com/video",
                 output_path,
@@ -216,7 +227,10 @@ class TestDownloadAudioDescription:
     def test_raises_when_no_ad_track(self, tool, tmp_path):
         output_path = tmp_path / "ad_audio.mp3"
 
-        with patch.object(tool, "check_audio_description", return_value=None), pytest.raises(DownloadError, match="No audio description track found"):
+        with (
+            patch.object(tool, "check_audio_description", return_value=None),
+            pytest.raises(DownloadError, match="No audio description track found"),
+        ):
             tool.download_audio_description(
                 "https://example.com/video",
                 output_path,
@@ -227,7 +241,10 @@ class TestDownloadAudioDescription:
         # Don't create the file - simulates failed download
 
         result = ToolResult(success=False, stderr="Download failed", returncode=1)
-        with patch.object(tool, "_run", return_value=result), pytest.raises(DownloadError, match="Audio description download failed"):
+        with (
+            patch.object(tool, "_run", return_value=result),
+            pytest.raises(DownloadError, match="Audio description download failed"),
+        ):
             tool.download_audio_description(
                 "https://example.com/video",
                 output_path,

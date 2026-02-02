@@ -1,16 +1,14 @@
 """Tests for scene cache management."""
 
 import json
-from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 from claudetube.cache import (
     CacheManager,
     SceneBoundary,
     ScenesData,
     SceneStatus,
+    get_all_scene_statuses,
     get_keyframes_dir,
     get_scene_dir,
     get_scene_status,
@@ -22,7 +20,6 @@ from claudetube.cache import (
     list_scene_keyframes,
     load_scenes_data,
     save_scenes_data,
-    get_all_scene_statuses,
 )
 from claudetube.models.state import VideoState
 
@@ -535,7 +532,9 @@ class TestGetScenesSyncEnrich:
         return cache_dir
 
     @patch("claudetube.mcp_server.get_cache_dir")
-    def test_enrich_false_does_not_call_visual_transcript(self, mock_cache_dir, tmp_path):
+    def test_enrich_false_does_not_call_visual_transcript(
+        self, mock_cache_dir, tmp_path
+    ):
         """When enrich=False (default), visual transcript generation is not triggered."""
         self._setup_cached_video(tmp_path)
         mock_cache_dir.return_value = tmp_path
@@ -578,7 +577,11 @@ class TestGetScenesSyncEnrich:
         # Write visual.json for scene 0
         scene_dir = cache_dir / "scenes" / "scene_000"
         scene_dir.mkdir(parents=True, exist_ok=True)
-        visual_data = {"scene_id": 0, "description": "A person talking", "people": ["host"]}
+        visual_data = {
+            "scene_id": 0,
+            "description": "A person talking",
+            "people": ["host"],
+        }
         (scene_dir / "visual.json").write_text(json.dumps(visual_data))
 
         from claudetube.mcp_server import _get_scenes_sync

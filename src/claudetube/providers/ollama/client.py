@@ -258,10 +258,12 @@ class OllamaProvider(Provider, VisionAnalyzer, Reasoner):
         # Build messages list, keeping system messages as-is (Ollama supports them)
         api_messages = []
         for msg in messages:
-            api_messages.append({
-                "role": msg.get("role", "user"),
-                "content": msg.get("content", ""),
-            })
+            api_messages.append(
+                {
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", ""),
+                }
+            )
 
         # Append schema request to the last user message if provided
         if schema and api_messages:

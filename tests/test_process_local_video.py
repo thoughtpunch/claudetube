@@ -21,10 +21,18 @@ def sample_video(tmp_path):
         subprocess.run(
             [
                 "ffmpeg",
-                "-f", "lavfi", "-i", "testsrc=duration=2:size=320x240:rate=10",
-                "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
-                "-c:v", "libx264",
-                "-c:a", "aac",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=duration=2:size=320x240:rate=10",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=2",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
                 "-y",
                 str(video),
             ],
@@ -60,17 +68,30 @@ class TestProcessLocalVideoBasic:
         """Returns a VideoResult object."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
-                    with patch("claudetube.operations.processor.FFmpegTool") as mock_ffmpeg:
+                    with patch(
+                        "claudetube.operations.processor.FFmpegTool"
+                    ) as mock_ffmpeg:
                         mock_ffmpeg.return_value.extract_frame.return_value = None
 
-                        result = process_local_video(str(fake_video), output_base=cache_base)
+                        result = process_local_video(
+                            str(fake_video), output_base=cache_base
+                        )
 
         assert isinstance(result, VideoResult)
 
@@ -78,15 +99,29 @@ class TestProcessLocalVideoBasic:
         """Returns success=True for valid file."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
-                    mock_transcribe.return_value = {"txt": "hello world", "srt": "1\n00:00:00,000 --> 00:00:02,000\nhello world"}
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
+                    mock_transcribe.return_value = {
+                        "txt": "hello world",
+                        "srt": "1\n00:00:00,000 --> 00:00:02,000\nhello world",
+                    }
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(str(fake_video), output_base=cache_base)
+                        result = process_local_video(
+                            str(fake_video), output_base=cache_base
+                        )
 
         assert result.success is True
         assert result.error is None
@@ -112,20 +147,32 @@ class TestProcessLocalVideoBasic:
         """Generates a valid video_id from the local file."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(str(fake_video), output_base=cache_base)
+                        result = process_local_video(
+                            str(fake_video), output_base=cache_base
+                        )
 
         assert result.video_id
         assert len(result.video_id) > 0
         # video_id should be filesystem-safe
         import re
+
         assert re.match(r"^[\w-]+$", result.video_id)
 
 
@@ -136,15 +183,26 @@ class TestProcessLocalVideoCaching:
         """Creates a cache directory for the video."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(str(fake_video), output_base=cache_base)
+                        result = process_local_video(
+                            str(fake_video), output_base=cache_base
+                        )
 
         assert result.output_dir.exists()
         assert result.output_dir.is_dir()
@@ -153,15 +211,26 @@ class TestProcessLocalVideoCaching:
         """Saves state.json with local file metadata."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(str(fake_video), output_base=cache_base)
+                        result = process_local_video(
+                            str(fake_video), output_base=cache_base
+                        )
 
         state_file = result.output_dir / "state.json"
         assert state_file.exists()
@@ -175,15 +244,26 @@ class TestProcessLocalVideoCaching:
         """Creates symlink to source file by default."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(str(fake_video), output_base=cache_base)
+                        result = process_local_video(
+                            str(fake_video), output_base=cache_base
+                        )
 
         state = json.loads((result.output_dir / "state.json").read_text())
         assert state["cache_mode"] == "symlink"
@@ -195,15 +275,26 @@ class TestProcessLocalVideoCaching:
         """Creates copy of source file when copy=True."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(str(fake_video), output_base=cache_base, copy=True)
+                        result = process_local_video(
+                            str(fake_video), output_base=cache_base, copy=True
+                        )
 
         state = json.loads((result.output_dir / "state.json").read_text())
         assert state["cache_mode"] == "copy"
@@ -216,20 +307,33 @@ class TestProcessLocalVideoCaching:
         """Second call returns cached result without re-processing."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "cached", "srt": "cached"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result1 = process_local_video(str(fake_video), output_base=cache_base)
+                        result1 = process_local_video(
+                            str(fake_video), output_base=cache_base
+                        )
 
         # Second call should hit cache
         with (
             patch("claudetube.operations.processor.FFprobeTool"),
-            patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe2,
+            patch(
+                "claudetube.operations.processor.transcribe_audio"
+            ) as mock_transcribe2,
         ):
             result2 = process_local_video(str(fake_video), output_base=cache_base)
 
@@ -246,15 +350,26 @@ class TestProcessLocalVideoMetadata:
         """Extracts metadata from local file via ffprobe."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=120.5, width=1920, height=1080, fps=29.97, codec="h264", creation_time="2024-01-15T10:30:00Z"
+                duration=120.5,
+                width=1920,
+                height=1080,
+                fps=29.97,
+                codec="h264",
+                creation_time="2024-01-15T10:30:00Z",
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(str(fake_video), output_base=cache_base)
+                        result = process_local_video(
+                            str(fake_video), output_base=cache_base
+                        )
 
         assert result.metadata["duration"] == 120.5
         assert result.metadata["duration_string"] == "2:00"  # format_duration(120.5)
@@ -264,15 +379,26 @@ class TestProcessLocalVideoMetadata:
         """Uses filename stem as title."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(str(fake_video), output_base=cache_base)
+                        result = process_local_video(
+                            str(fake_video), output_base=cache_base
+                        )
 
         assert result.metadata["title"] == "fake_video"
 
@@ -284,18 +410,29 @@ class TestProcessLocalVideoTranscription:
         """Creates transcript .srt and .txt files."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {
                         "txt": "Hello world",
-                        "srt": "1\n00:00:00,000 --> 00:00:02,000\nHello world"
+                        "srt": "1\n00:00:00,000 --> 00:00:02,000\nHello world",
                     }
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(str(fake_video), output_base=cache_base)
+                        result = process_local_video(
+                            str(fake_video), output_base=cache_base
+                        )
 
         assert result.transcript_txt.exists()
         assert result.transcript_srt.exists()
@@ -305,15 +442,28 @@ class TestProcessLocalVideoTranscription:
         """Passes whisper_model parameter to transcribe_audio."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        process_local_video(str(fake_video), output_base=cache_base, whisper_model="medium")
+                        process_local_video(
+                            str(fake_video),
+                            output_base=cache_base,
+                            whisper_model="medium",
+                        )
 
         mock_transcribe.assert_called_once()
         _, kwargs = mock_transcribe.call_args
@@ -327,15 +477,26 @@ class TestProcessLocalVideoPathFormats:
         """Handles absolute paths."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(str(fake_video.absolute()), output_base=cache_base)
+                        result = process_local_video(
+                            str(fake_video.absolute()), output_base=cache_base
+                        )
 
         assert result.success is True
 
@@ -347,15 +508,26 @@ class TestProcessLocalVideoPathFormats:
 
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video("./video.mp4", output_base=cache_base)
+                        result = process_local_video(
+                            "./video.mp4", output_base=cache_base
+                        )
 
         assert result.success is True
 
@@ -363,15 +535,26 @@ class TestProcessLocalVideoPathFormats:
         """Handles file:// URIs."""
         with patch("claudetube.operations.processor.FFprobeTool") as mock_ffprobe:
             mock_ffprobe.return_value.get_metadata.return_value = MagicMock(
-                duration=10.0, width=320, height=240, fps=30.0, codec="h264", creation_time=None
+                duration=10.0,
+                width=320,
+                height=240,
+                fps=30.0,
+                codec="h264",
+                creation_time=None,
             )
-            with patch("claudetube.operations.processor.extract_audio_local") as mock_audio:
+            with patch(
+                "claudetube.operations.processor.extract_audio_local"
+            ) as mock_audio:
                 mock_audio.return_value = cache_base / "audio.mp3"
                 (cache_base / "audio.mp3").touch()
-                with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+                with patch(
+                    "claudetube.operations.processor.transcribe_audio"
+                ) as mock_transcribe:
                     mock_transcribe.return_value = {"txt": "test", "srt": "test"}
                     with patch("claudetube.operations.processor.FFmpegTool"):
-                        result = process_local_video(f"file://{fake_video}", output_base=cache_base)
+                        result = process_local_video(
+                            f"file://{fake_video}", output_base=cache_base
+                        )
 
         assert result.success is True
 
@@ -386,10 +569,12 @@ class TestProcessLocalVideoIntegration:
             pytest.skip("Sample video not available")
 
         # Mock only whisper to avoid slow transcription
-        with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+        with patch(
+            "claudetube.operations.processor.transcribe_audio"
+        ) as mock_transcribe:
             mock_transcribe.return_value = {
                 "txt": "Test transcription",
-                "srt": "1\n00:00:00,000 --> 00:00:02,000\nTest transcription"
+                "srt": "1\n00:00:00,000 --> 00:00:02,000\nTest transcription",
             }
             result = process_local_video(str(sample_video), output_base=cache_base)
 
@@ -405,7 +590,9 @@ class TestProcessLocalVideoIntegration:
         if sample_video is None:
             pytest.skip("Sample video not available")
 
-        with patch("claudetube.operations.processor.transcribe_audio") as mock_transcribe:
+        with patch(
+            "claudetube.operations.processor.transcribe_audio"
+        ) as mock_transcribe:
             mock_transcribe.return_value = {"txt": "test", "srt": "test"}
             result = process_local_video(str(sample_video), output_base=cache_base)
 

@@ -42,14 +42,18 @@ class TestClaudetubeConfig:
 
     def test_config_repr(self):
         """Test config string representation."""
-        config = ClaudetubeConfig(cache_dir=Path("/tmp/cache"), source=ConfigSource.USER)
+        config = ClaudetubeConfig(
+            cache_dir=Path("/tmp/cache"), source=ConfigSource.USER
+        )
         repr_str = repr(config)
         assert "cache_dir=" in repr_str
         assert "source='user'" in repr_str
 
     def test_config_is_frozen(self):
         """Test config is immutable."""
-        config = ClaudetubeConfig(cache_dir=Path("/tmp/cache"), source=ConfigSource.DEFAULT)
+        config = ClaudetubeConfig(
+            cache_dir=Path("/tmp/cache"), source=ConfigSource.DEFAULT
+        )
         with pytest.raises(AttributeError):
             config.cache_dir = Path("/other")  # type: ignore
 

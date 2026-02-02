@@ -45,9 +45,7 @@ class TestRoutingWithDefaultConfig:
         config = ProvidersConfig()
         assert config.transcription_provider == "whisper-local"
 
-        mock_whisper = _make_mock_provider(
-            "whisper-local", {Capability.TRANSCRIBE}
-        )
+        mock_whisper = _make_mock_provider("whisper-local", {Capability.TRANSCRIBE})
 
         with patch(
             "claudetube.providers.registry.get_provider",
@@ -334,9 +332,7 @@ class TestCallWithFallback:
             vision_fallbacks=["openai", "claude-code"],
         )
 
-        mock_anthropic = _make_mock_provider(
-            "anthropic", {Capability.VISION}
-        )
+        mock_anthropic = _make_mock_provider("anthropic", {Capability.VISION})
 
         async def _fail(*args, **kwargs):
             raise RuntimeError("API error")
@@ -383,8 +379,12 @@ class TestConfigToRouterIntegration:
 
         # Clear env vars
         for var in [
-            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY",
-            "DEEPGRAM_API_KEY", "ASSEMBLYAI_API_KEY", "VOYAGE_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_API_KEY",
+            "DEEPGRAM_API_KEY",
+            "ASSEMBLYAI_API_KEY",
+            "VOYAGE_API_KEY",
         ]:
             monkeypatch.delenv(var, raising=False)
             monkeypatch.delenv(f"CLAUDETUBE_{var}", raising=False)
@@ -420,8 +420,12 @@ class TestConfigToRouterIntegration:
         from claudetube.providers.config import load_providers_config
 
         for var in [
-            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY",
-            "DEEPGRAM_API_KEY", "ASSEMBLYAI_API_KEY", "VOYAGE_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_API_KEY",
+            "DEEPGRAM_API_KEY",
+            "ASSEMBLYAI_API_KEY",
+            "VOYAGE_API_KEY",
         ]:
             monkeypatch.delenv(var, raising=False)
             monkeypatch.delenv(f"CLAUDETUBE_{var}", raising=False)

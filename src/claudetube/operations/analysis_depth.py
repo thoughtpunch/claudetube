@@ -568,9 +568,7 @@ def _extract_entities_with_operation(
 
     try:
         result = asyncio.run(
-            entity_op.execute(
-                scene.scene_id, keyframes, scene, video_path=video_path
-            )
+            entity_op.execute(scene.scene_id, keyframes, scene, video_path=video_path)
         )
     except Exception as e:
         logger.warning(
@@ -657,7 +655,10 @@ def analyze_video(
             )
 
         state = json.loads(state_file.read_text())
-        video_info = {"duration": state.get("duration"), "description": state.get("description", "")}
+        video_info = {
+            "duration": state.get("duration"),
+            "description": state.get("description", ""),
+        }
 
         transcript_segments = None
         srt_path = cache_dir / "audio.srt"
@@ -738,7 +739,9 @@ def analyze_video(
                     if result.get("results"):
                         scene_dict["visual"] = result["results"][0]
                 except Exception as e:
-                    errors.append({"scene_id": scene_id, "stage": "visual", "error": str(e)})
+                    errors.append(
+                        {"scene_id": scene_id, "stage": "visual", "error": str(e)}
+                    )
 
     if depth == AnalysisDepth.STANDARD:
         return AnalysisResult(
@@ -789,7 +792,9 @@ def analyze_video(
                 if tech:
                     scene_dict["technical"] = tech.to_dict()
             except Exception as e:
-                errors.append({"scene_id": scene_id, "stage": "technical", "error": str(e)})
+                errors.append(
+                    {"scene_id": scene_id, "stage": "technical", "error": str(e)}
+                )
 
             # Entities via OperationFactory (preferred) or regex fallback
             try:
@@ -799,7 +804,9 @@ def analyze_video(
                 if ent:
                     scene_dict["entities"] = ent.to_dict()
             except Exception as e:
-                errors.append({"scene_id": scene_id, "stage": "entities", "error": str(e)})
+                errors.append(
+                    {"scene_id": scene_id, "stage": "entities", "error": str(e)}
+                )
 
     if depth == AnalysisDepth.DEEP:
         return AnalysisResult(
@@ -817,7 +824,9 @@ def analyze_video(
         log_timed("Running frame-by-frame analysis...", t0)
 
         # Default to all scenes if no focus specified
-        target_ids = focus_sections if focus_sections else [s["scene_id"] for s in scenes]
+        target_ids = (
+            focus_sections if focus_sections else [s["scene_id"] for s in scenes]
+        )
 
         for i, scene_dict in enumerate(scenes):
             scene_id = scene_dict["scene_id"]
@@ -830,7 +839,9 @@ def analyze_video(
                 if frame_analysis:
                     scene_dict["frame_analysis"] = frame_analysis
             except Exception as e:
-                errors.append({"scene_id": scene_id, "stage": "frames", "error": str(e)})
+                errors.append(
+                    {"scene_id": scene_id, "stage": "frames", "error": str(e)}
+                )
 
     return AnalysisResult(
         video_id=video_id,

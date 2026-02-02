@@ -40,50 +40,56 @@ logger = logging.getLogger(__name__)
 
 
 # Emphasis phrases that indicate important content
-_EMPHASIS_PHRASES = frozenset({
-    "important",
-    "key point",
-    "remember",
-    "crucial",
-    "essential",
-    "pay attention",
-    "note that",
-    "in summary",
-    "to summarize",
-    "in conclusion",
-    "let me show",
-    "let's look at",
-})
+_EMPHASIS_PHRASES = frozenset(
+    {
+        "important",
+        "key point",
+        "remember",
+        "crucial",
+        "essential",
+        "pay attention",
+        "note that",
+        "in summary",
+        "to summarize",
+        "in conclusion",
+        "let me show",
+        "let's look at",
+    }
+)
 
 # Intro phrases that suggest introductory content
-_INTRO_PHRASES = frozenset({
-    "welcome",
-    "hello",
-    "hey everyone",
-    "today we",
-    "in this video",
-    "i'm going to",
-    "we're going to",
-    "let's get started",
-    "introduction",
-    "overview",
-    "what we'll cover",
-})
+_INTRO_PHRASES = frozenset(
+    {
+        "welcome",
+        "hello",
+        "hey everyone",
+        "today we",
+        "in this video",
+        "i'm going to",
+        "we're going to",
+        "let's get started",
+        "introduction",
+        "overview",
+        "what we'll cover",
+    }
+)
 
 # Conclusion phrases
-_CONCLUSION_PHRASES = frozenset({
-    "in conclusion",
-    "to summarize",
-    "to wrap up",
-    "that's it",
-    "thanks for watching",
-    "see you",
-    "goodbye",
-    "subscribe",
-    "like and subscribe",
-    "next time",
-    "in the next",
-})
+_CONCLUSION_PHRASES = frozenset(
+    {
+        "in conclusion",
+        "to summarize",
+        "to wrap up",
+        "that's it",
+        "thanks for watching",
+        "see you",
+        "goodbye",
+        "subscribe",
+        "like and subscribe",
+        "next time",
+        "in the next",
+    }
+)
 
 
 @dataclass
@@ -146,9 +152,7 @@ class NarrativeStructure:
                 "section_count": len(self.sections),
                 "video_type": self.video_type,
                 "section_labels": [s.label for s in self.sections],
-                "total_duration": round(
-                    sum(s.duration() for s in self.sections), 1
-                ),
+                "total_duration": round(sum(s.duration() for s in self.sections), 1),
             },
         }
 
@@ -424,9 +428,7 @@ def _build_sections(
     for scene, label in zip(scenes[1:], labels[1:], strict=True):
         if label != current_label:
             # New section
-            section = _create_section(
-                current_scenes, len(sections), cache_dir
-            )
+            section = _create_section(current_scenes, len(sections), cache_dir)
             sections.append(section)
             current_scenes = [scene]
             current_label = label
@@ -463,9 +465,7 @@ def _create_section(
     end_time = section_scenes[-1].end_time
 
     # Build summary from transcript text
-    all_text = " ".join(
-        s.transcript_text for s in section_scenes if s.transcript_text
-    )
+    all_text = " ".join(s.transcript_text for s in section_scenes if s.transcript_text)
 
     # Truncate to reasonable length for summary
     summary = all_text[:300].strip()
@@ -620,9 +620,7 @@ def classify_video_type(
         return "tutorial"
 
     # Transcript-based heuristics
-    all_text = " ".join(
-        s.transcript_text.lower() for s in scenes if s.transcript_text
-    )
+    all_text = " ".join(s.transcript_text.lower() for s in scenes if s.transcript_text)
     if "step" in all_text and ("follow" in all_text or "next" in all_text):
         return "tutorial"
     if "demo" in all_text or "let me show" in all_text:

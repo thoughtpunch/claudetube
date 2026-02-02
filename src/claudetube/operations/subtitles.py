@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pysubs2
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from claudetube.tools.ffprobe import FFprobeTool
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,9 @@ logger = logging.getLogger(__name__)
 SIDECAR_EXTENSIONS = [".srt", ".vtt", ".ass", ".ssa"]
 
 
-def find_embedded_subtitles(video_path: Path, ffprobe: FFprobeTool | None = None) -> list[dict]:
+def find_embedded_subtitles(
+    video_path: Path, ffprobe: FFprobeTool | None = None
+) -> list[dict]:
     """Find embedded subtitle streams in a video file.
 
     Args:
@@ -36,6 +39,7 @@ def find_embedded_subtitles(video_path: Path, ffprobe: FFprobeTool | None = None
     """
     if ffprobe is None:
         from claudetube.tools.ffprobe import FFprobeTool
+
         ffprobe = FFprobeTool()
 
     probe_data = ffprobe.probe(video_path)
@@ -82,14 +86,18 @@ def extract_embedded_subtitles(
     """
     try:
         from claudetube.utils.system import find_tool
+
         ffmpeg_path = find_tool("ffmpeg")
 
         result = subprocess.run(
             [
                 ffmpeg_path,
-                "-i", str(video_path),
-                "-map", f"0:s:{stream_index}",
-                "-c:s", "srt",
+                "-i",
+                str(video_path),
+                "-map",
+                f"0:s:{stream_index}",
+                "-c:s",
+                "srt",
                 "-y",
                 str(output_path),
             ],

@@ -128,9 +128,7 @@ class TestAnalyzeImages:
         missing = tmp_path / "missing.jpg"
 
         provider = ClaudeCodeProvider()
-        result = await provider.analyze_images(
-            [existing, missing], "Describe"
-        )
+        result = await provider.analyze_images([existing, missing], "Describe")
 
         assert f"[Image: {existing.resolve()}]" in result
         assert "[Image not found:" in result
@@ -200,7 +198,7 @@ class TestAnalyzeImages:
         # Extract path from [Image: /path/to/file]
         for line in result.split("\n"):
             if line.startswith("[Image: "):
-                path_str = line[len("[Image: "):-1]
+                path_str = line[len("[Image: ") : -1]
                 assert Path(path_str).is_absolute()
 
 
@@ -210,9 +208,11 @@ class TestReason:
     @pytest.mark.asyncio
     async def test_user_message(self):
         provider = ClaudeCodeProvider()
-        result = await provider.reason([
-            {"role": "user", "content": "Hello"},
-        ])
+        result = await provider.reason(
+            [
+                {"role": "user", "content": "Hello"},
+            ]
+        )
 
         assert "Hello" in result
         assert "[System]" not in result
@@ -220,30 +220,36 @@ class TestReason:
     @pytest.mark.asyncio
     async def test_system_message(self):
         provider = ClaudeCodeProvider()
-        result = await provider.reason([
-            {"role": "system", "content": "You are helpful"},
-        ])
+        result = await provider.reason(
+            [
+                {"role": "system", "content": "You are helpful"},
+            ]
+        )
 
         assert "[System]: You are helpful" in result
 
     @pytest.mark.asyncio
     async def test_assistant_message(self):
         provider = ClaudeCodeProvider()
-        result = await provider.reason([
-            {"role": "assistant", "content": "I can help"},
-        ])
+        result = await provider.reason(
+            [
+                {"role": "assistant", "content": "I can help"},
+            ]
+        )
 
         assert "[Previous response]: I can help" in result
 
     @pytest.mark.asyncio
     async def test_multi_turn_conversation(self):
         provider = ClaudeCodeProvider()
-        result = await provider.reason([
-            {"role": "system", "content": "Be concise"},
-            {"role": "user", "content": "Summarize this video"},
-            {"role": "assistant", "content": "The video shows..."},
-            {"role": "user", "content": "What about the ending?"},
-        ])
+        result = await provider.reason(
+            [
+                {"role": "system", "content": "Be concise"},
+                {"role": "user", "content": "Summarize this video"},
+                {"role": "assistant", "content": "The video shows..."},
+                {"role": "user", "content": "What about the ending?"},
+            ]
+        )
 
         assert "[System]: Be concise" in result
         assert "Summarize this video" in result
@@ -262,9 +268,11 @@ class TestReason:
     async def test_default_role_is_user(self):
         """Messages without role are treated as user messages."""
         provider = ClaudeCodeProvider()
-        result = await provider.reason([
-            {"content": "No role specified"},
-        ])
+        result = await provider.reason(
+            [
+                {"content": "No role specified"},
+            ]
+        )
 
         assert "No role specified" in result
         assert "[System]" not in result
@@ -295,9 +303,11 @@ class TestReason:
     @pytest.mark.asyncio
     async def test_without_schema(self):
         provider = ClaudeCodeProvider()
-        result = await provider.reason([
-            {"role": "user", "content": "Hello"},
-        ])
+        result = await provider.reason(
+            [
+                {"role": "user", "content": "Hello"},
+            ]
+        )
 
         assert "schema" not in result.lower()
         assert "```json" not in result
@@ -305,19 +315,23 @@ class TestReason:
     @pytest.mark.asyncio
     async def test_returns_string(self):
         provider = ClaudeCodeProvider()
-        result = await provider.reason([
-            {"role": "user", "content": "Hello"},
-        ])
+        result = await provider.reason(
+            [
+                {"role": "user", "content": "Hello"},
+            ]
+        )
 
         assert isinstance(result, str)
 
     @pytest.mark.asyncio
     async def test_messages_separated_by_double_newline(self):
         provider = ClaudeCodeProvider()
-        result = await provider.reason([
-            {"role": "system", "content": "System msg"},
-            {"role": "user", "content": "User msg"},
-        ])
+        result = await provider.reason(
+            [
+                {"role": "system", "content": "System msg"},
+                {"role": "user", "content": "User msg"},
+            ]
+        )
 
         assert "\n\n" in result
 

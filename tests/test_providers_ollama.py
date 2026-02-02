@@ -141,7 +141,10 @@ class TestIsAvailable:
 
             with (
                 patch.object(provider, "_ping_server", side_effect=counting_ping),
-                patch("claudetube.providers.ollama.client.time.monotonic", side_effect=monotonic_values),
+                patch(
+                    "claudetube.providers.ollama.client.time.monotonic",
+                    side_effect=monotonic_values,
+                ),
             ):
                 provider.is_available()  # now=0.0, no cache → ping
                 assert call_count == 1
@@ -161,7 +164,10 @@ class TestPingServer:
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("claudetube.providers.ollama.client.urllib.request.urlopen", return_value=mock_resp):
+        with patch(
+            "claudetube.providers.ollama.client.urllib.request.urlopen",
+            return_value=mock_resp,
+        ):
             assert provider._ping_server() is True
 
     def test_returns_false_on_connection_error(self):
@@ -189,7 +195,10 @@ class TestPingServer:
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("claudetube.providers.ollama.client.urllib.request.urlopen", return_value=mock_resp) as mock_open:
+        with patch(
+            "claudetube.providers.ollama.client.urllib.request.urlopen",
+            return_value=mock_resp,
+        ) as mock_open:
             provider._ping_server()
             # Verify the URL includes the custom host
             req = mock_open.call_args[0][0]
@@ -316,9 +325,7 @@ class TestAnalyzeImages:
         provider._client = AsyncMock()
 
         with pytest.raises(FileNotFoundError, match="not found"):
-            await provider.analyze_images(
-                [tmp_path / "nonexistent.jpg"], "Describe"
-            )
+            await provider.analyze_images([tmp_path / "nonexistent.jpg"], "Describe")
 
     @pytest.mark.asyncio
     async def test_empty_images_raises(self):
@@ -392,9 +399,7 @@ class TestAnalyzeImages:
         img.write_bytes(b"fake jpeg")
 
         mock_client = AsyncMock()
-        mock_client.chat = AsyncMock(
-            return_value={"message": {"content": "result"}}
-        )
+        mock_client.chat = AsyncMock(return_value={"message": {"content": "result"}})
 
         provider = OllamaProvider()
         provider._client = mock_client
@@ -431,9 +436,7 @@ class TestReason:
     async def test_system_message_passed_through(self):
         """Ollama supports system messages directly."""
         mock_client = AsyncMock()
-        mock_client.chat = AsyncMock(
-            return_value={"message": {"content": "response"}}
-        )
+        mock_client.chat = AsyncMock(return_value={"message": {"content": "response"}})
 
         provider = OllamaProvider()
         provider._client = mock_client
@@ -453,9 +456,7 @@ class TestReason:
     @pytest.mark.asyncio
     async def test_no_system_message(self):
         mock_client = AsyncMock()
-        mock_client.chat = AsyncMock(
-            return_value={"message": {"content": "response"}}
-        )
+        mock_client.chat = AsyncMock(return_value={"message": {"content": "response"}})
 
         provider = OllamaProvider()
         provider._client = mock_client
@@ -506,11 +507,7 @@ class TestReason:
         """Model returns JSON wrapped in markdown code block."""
         mock_client = AsyncMock()
         mock_client.chat = AsyncMock(
-            return_value={
-                "message": {
-                    "content": '```json\n{"summary": "test"}\n```'
-                }
-            }
+            return_value={"message": {"content": '```json\n{"summary": "test"}\n```'}}
         )
 
         mock_schema = MagicMock()
@@ -528,9 +525,7 @@ class TestReason:
     @pytest.mark.asyncio
     async def test_model_override(self):
         mock_client = AsyncMock()
-        mock_client.chat = AsyncMock(
-            return_value={"message": {"content": "result"}}
-        )
+        mock_client.chat = AsyncMock(return_value={"message": {"content": "result"}})
 
         provider = OllamaProvider()
         provider._client = mock_client

@@ -114,7 +114,10 @@ class TestDetectVocabularyShifts:
     def test_different_vocabulary_detects_shift(self):
         """Very different vocabulary should detect a shift."""
         segments = [
-            {"start": 0.0, "text": "Python programming language functions classes modules"},
+            {
+                "start": 0.0,
+                "text": "Python programming language functions classes modules",
+            },
             {"start": 35.0, "text": "Cooking recipes kitchen ingredients chef food"},
         ]
         boundaries = detect_vocabulary_shifts(
@@ -162,7 +165,10 @@ class TestDetectVocabularyShifts:
         """Trigger text should be truncated to 50 chars."""
         segments = [
             {"start": 0.0, "text": "Python programming language functions classes"},
-            {"start": 35.0, "text": "Cooking recipes kitchen ingredients chef restaurant"},
+            {
+                "start": 35.0,
+                "text": "Cooking recipes kitchen ingredients chef restaurant",
+            },
         ]
         boundaries = detect_vocabulary_shifts(segments, window_seconds=30)
         if boundaries:

@@ -417,7 +417,9 @@ class TestIndexVideoToGraph:
         # Create mock video cache
         video_dir = tmp_path / "vid456"
         video_dir.mkdir()
-        (video_dir / "state.json").write_text(json.dumps({"video_id": "vid456", "title": "Test"}))
+        (video_dir / "state.json").write_text(
+            json.dumps({"video_id": "vid456", "title": "Test"})
+        )
 
         # Index once
         result1 = index_video_to_graph("vid456", video_dir, tmp_path)
@@ -432,13 +434,17 @@ class TestIndexVideoToGraph:
         # Create mock video cache
         video_dir = tmp_path / "vid789"
         video_dir.mkdir()
-        (video_dir / "state.json").write_text(json.dumps({"video_id": "vid789", "title": "Original"}))
+        (video_dir / "state.json").write_text(
+            json.dumps({"video_id": "vid789", "title": "Original"})
+        )
 
         # Index once
         index_video_to_graph("vid789", video_dir, tmp_path)
 
         # Update state
-        (video_dir / "state.json").write_text(json.dumps({"video_id": "vid789", "title": "Updated"}))
+        (video_dir / "state.json").write_text(
+            json.dumps({"video_id": "vid789", "title": "Updated"})
+        )
 
         # Force re-index
         result = index_video_to_graph("vid789", video_dir, tmp_path, force=True)

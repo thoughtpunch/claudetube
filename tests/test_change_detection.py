@@ -5,7 +5,6 @@ Tests for scene change detection.
 import json
 
 import numpy as np
-import pytest
 
 from claudetube.operations.change_detection import (
     ChangesData,
@@ -223,7 +222,10 @@ class TestExtractObjects:
         technical_data = {
             "content_type": "code",
             "frames": [
-                {"content_type": "code", "code_blocks": [{"content": "def foo(): pass"}]},
+                {
+                    "content_type": "code",
+                    "code_blocks": [{"content": "def foo(): pass"}],
+                },
             ],
         }
         objects = _extract_objects(None, technical_data)
@@ -316,13 +318,22 @@ class TestDetectSceneChanges:
 
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
-        (scenes_dir / "scenes.json").write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scenes": [
-                {"scene_id": 0, "start_time": 0, "end_time": 30, "title": "Only scene"},
-            ],
-        }))
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scenes": [
+                        {
+                            "scene_id": 0,
+                            "start_time": 0,
+                            "end_time": 30,
+                            "title": "Only scene",
+                        },
+                    ],
+                }
+            )
+        )
 
         result = detect_scene_changes(video_id, output_base=tmp_path)
         assert "error" not in result
@@ -341,33 +352,62 @@ class TestDetectSceneChanges:
         # Create scenes data
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
-        (scenes_dir / "scenes.json").write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scenes": [
-                {"scene_id": 0, "start_time": 0, "end_time": 30, "title": "Intro"},
-                {"scene_id": 1, "start_time": 30, "end_time": 60, "title": "Code demo"},
-                {"scene_id": 2, "start_time": 60, "end_time": 90, "title": "Summary"},
-            ],
-        }))
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scenes": [
+                        {
+                            "scene_id": 0,
+                            "start_time": 0,
+                            "end_time": 30,
+                            "title": "Intro",
+                        },
+                        {
+                            "scene_id": 1,
+                            "start_time": 30,
+                            "end_time": 60,
+                            "title": "Code demo",
+                        },
+                        {
+                            "scene_id": 2,
+                            "start_time": 60,
+                            "end_time": 90,
+                            "title": "Summary",
+                        },
+                    ],
+                }
+            )
+        )
 
         # Create scene directories with visual/technical data
-        for i, (ctype, objs) in enumerate([
-            ("slides", ["title_slide", "presenter"]),
-            ("code", ["code_editor", "presenter"]),
-            ("slides", ["summary_slide"]),
-        ]):
+        for i, (ctype, objs) in enumerate(
+            [
+                ("slides", ["title_slide", "presenter"]),
+                ("code", ["code_editor", "presenter"]),
+                ("slides", ["summary_slide"]),
+            ]
+        ):
             scene_dir = scenes_dir / f"scene_{i:03d}"
             scene_dir.mkdir()
-            (scene_dir / "visual.json").write_text(json.dumps({
-                "description": f"Scene {i}",
-                "objects": objs,
-                "people": ["presenter"] if "presenter" in objs else [],
-            }))
-            (scene_dir / "technical.json").write_text(json.dumps({
-                "content_type": ctype,
-                "frames": [],
-            }))
+            (scene_dir / "visual.json").write_text(
+                json.dumps(
+                    {
+                        "description": f"Scene {i}",
+                        "objects": objs,
+                        "people": ["presenter"] if "presenter" in objs else [],
+                    }
+                )
+            )
+            (scene_dir / "technical.json").write_text(
+                json.dumps(
+                    {
+                        "content_type": ctype,
+                        "frames": [],
+                    }
+                )
+            )
 
         result = detect_scene_changes(video_id, output_base=tmp_path)
 
@@ -396,14 +436,18 @@ class TestDetectSceneChanges:
 
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
-        (scenes_dir / "scenes.json").write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scenes": [
-                {"scene_id": 0, "start_time": 0, "end_time": 30},
-                {"scene_id": 1, "start_time": 30, "end_time": 60},
-            ],
-        }))
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scenes": [
+                        {"scene_id": 0, "start_time": 0, "end_time": 30},
+                        {"scene_id": 1, "start_time": 30, "end_time": 60},
+                    ],
+                }
+            )
+        )
 
         # First call - generates data
         result1 = detect_scene_changes(video_id, output_base=tmp_path)
@@ -416,7 +460,9 @@ class TestDetectSceneChanges:
         # Second call - from cache
         result2 = detect_scene_changes(video_id, output_base=tmp_path)
         assert result2["video_id"] == result1["video_id"]
-        assert result2["summary"]["total_changes"] == result1["summary"]["total_changes"]
+        assert (
+            result2["summary"]["total_changes"] == result1["summary"]["total_changes"]
+        )
 
     def test_uses_embeddings_for_topic_shift(self, tmp_path):
         """Should use cached embeddings for topic shift detection."""
@@ -428,22 +474,29 @@ class TestDetectSceneChanges:
 
         scenes_dir = cache_dir / "scenes"
         scenes_dir.mkdir()
-        (scenes_dir / "scenes.json").write_text(json.dumps({
-            "video_id": video_id,
-            "method": "transcript",
-            "scenes": [
-                {"scene_id": 0, "start_time": 0, "end_time": 30},
-                {"scene_id": 1, "start_time": 30, "end_time": 60},
-            ],
-        }))
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(
+                {
+                    "video_id": video_id,
+                    "method": "transcript",
+                    "scenes": [
+                        {"scene_id": 0, "start_time": 0, "end_time": 30},
+                        {"scene_id": 1, "start_time": 30, "end_time": 60},
+                    ],
+                }
+            )
+        )
 
         # Create embeddings (very different vectors)
         emb_dir = cache_dir / "embeddings"
         emb_dir.mkdir()
-        embeddings = np.array([
-            [1.0, 0.0, 0.0],  # Scene 0
-            [0.0, 1.0, 0.0],  # Scene 1 - orthogonal (different topic)
-        ], dtype=np.float32)
+        embeddings = np.array(
+            [
+                [1.0, 0.0, 0.0],  # Scene 0
+                [0.0, 1.0, 0.0],  # Scene 1 - orthogonal (different topic)
+            ],
+            dtype=np.float32,
+        )
         np.save(emb_dir / "scene_embeddings.npy", embeddings)
         (emb_dir / "scene_ids.json").write_text(json.dumps([0, 1]))
 

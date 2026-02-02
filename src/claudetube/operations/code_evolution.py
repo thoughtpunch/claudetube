@@ -186,8 +186,12 @@ FUNCTION_PATTERNS = [
     re.compile(r"\bfunction\s+(\w+)\s*\("),  # JavaScript
     re.compile(r"\bfn\s+(\w+)\s*\("),  # Rust
     re.compile(r"\bfunc\s+(\w+)\s*\("),  # Go
-    re.compile(r"(?:public|private|protected)?\s*(?:static)?\s*\w+\s+(\w+)\s*\([^)]*\)\s*\{"),  # Java/C#
-    re.compile(r"\bconst\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>"),  # JS arrow function
+    re.compile(
+        r"(?:public|private|protected)?\s*(?:static)?\s*\w+\s+(\w+)\s*\([^)]*\)\s*\{"
+    ),  # Java/C#
+    re.compile(
+        r"\bconst\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>"
+    ),  # JS arrow function
     re.compile(r"\blet\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>"),  # JS arrow function
 ]
 
@@ -251,7 +255,11 @@ def identify_code_unit(content: str) -> tuple[str, str, str]:
             return f"function:{name}", "function", name
 
     # Fallback: create a snippet ID based on first significant line
-    lines = [line.strip() for line in content.split("\n") if line.strip() and not line.strip().startswith(("#", "//", "/*", "*"))]
+    lines = [
+        line.strip()
+        for line in content.split("\n")
+        if line.strip() and not line.strip().startswith(("#", "//", "/*", "*"))
+    ]
     if lines:
         first_line = lines[0][:40]
         # Create a stable hash
@@ -277,12 +285,14 @@ def detect_change_type(old_content: str, new_content: str) -> tuple[str, str | N
     old_lines = old_content.splitlines()
     new_lines = new_content.splitlines()
 
-    diff = list(
-        difflib.unified_diff(old_lines, new_lines, lineterm="", n=0)
-    )
+    diff = list(difflib.unified_diff(old_lines, new_lines, lineterm="", n=0))
 
-    additions = sum(1 for line in diff if line.startswith("+") and not line.startswith("+++"))
-    deletions = sum(1 for line in diff if line.startswith("-") and not line.startswith("---"))
+    additions = sum(
+        1 for line in diff if line.startswith("+") and not line.startswith("+++")
+    )
+    deletions = sum(
+        1 for line in diff if line.startswith("-") and not line.startswith("---")
+    )
 
     # Build summary
     summary_parts = []
@@ -336,11 +346,13 @@ def _extract_code_blocks_from_technical(technical_path: Path) -> list[dict]:
 
             # Check for code_blocks field (from code analysis)
             for block in frame.get("code_blocks", []):
-                code_blocks.append({
-                    "content": block.get("content", ""),
-                    "language": block.get("language"),
-                    "timestamp": timestamp,
-                })
+                code_blocks.append(
+                    {
+                        "content": block.get("content", ""),
+                        "language": block.get("language"),
+                        "timestamp": timestamp,
+                    }
+                )
 
             # Also check for raw text regions that look like code
             # (in case code analysis hasn't been run)
@@ -349,11 +361,13 @@ def _extract_code_blocks_from_technical(technical_path: Path) -> list[dict]:
                     text = region.get("text", "")
                     # Simple heuristic - if content_type is 'code'
                     if frame.get("content_type") == "code" and len(text) > 20:
-                        code_blocks.append({
-                            "content": text,
-                            "language": None,
-                            "timestamp": timestamp,
-                        })
+                        code_blocks.append(
+                            {
+                                "content": text,
+                                "language": None,
+                                "timestamp": timestamp,
+                            }
+                        )
 
         return code_blocks
     except (json.JSONDecodeError, KeyError) as e:
@@ -451,14 +465,20 @@ def track_code_evolution(
     cache_dir = cache.get_cache_dir(video_id)
 
     if not cache_dir.exists():
-        return {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+        return {
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        }
 
     # 1. CACHE - Return instantly if already exists
     evolution_path = get_code_evolution_path(cache_dir)
     if not force and evolution_path.exists():
         try:
             data = json.loads(evolution_path.read_text())
-            log_timed(f"Code evolution: loaded from cache ({data.get('unit_count', 0)} units)", t0)
+            log_timed(
+                f"Code evolution: loaded from cache ({data.get('unit_count', 0)} units)",
+                t0,
+            )
             return data
         except json.JSONDecodeError:
             pass  # Re-generate if cached data is invalid
@@ -484,7 +504,9 @@ def track_code_evolution(
         state["code_evolution_complete"] = True
         state_file.write_text(json.dumps(state, indent=2))
 
-    log_timed(f"Code evolution complete: {len(evolution_data.code_units)} units tracked", t0)
+    log_timed(
+        f"Code evolution complete: {len(evolution_data.code_units)} units tracked", t0
+    )
 
     return result
 
@@ -512,7 +534,10 @@ def get_code_evolution(
 
     evolution_path = get_code_evolution_path(cache_dir)
     if not evolution_path.exists():
-        return {"error": "No code evolution data. Run track_code_evolution first.", "video_id": video_id}
+        return {
+            "error": "No code evolution data. Run track_code_evolution first.",
+            "video_id": video_id,
+        }
 
     try:
         data = json.loads(evolution_path.read_text())

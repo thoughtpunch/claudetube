@@ -10,7 +10,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
@@ -156,11 +159,13 @@ class VideoMemory:
         if key not in self._observations:
             self._observations[key] = []
 
-        self._observations[key].append({
-            "type": obs_type,
-            "content": content,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._observations[key].append(
+            {
+                "type": obs_type,
+                "content": content,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         self._save_observations()
 
     def record_qa(self, question: str, answer: str, scenes: list[int]) -> None:
@@ -171,12 +176,14 @@ class VideoMemory:
             answer: The answer that was given
             scenes: List of scene IDs relevant to this Q&A
         """
-        self._qa_history.append({
-            "question": question,
-            "answer": answer,
-            "scenes": scenes,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._qa_history.append(
+            {
+                "question": question,
+                "answer": answer,
+                "scenes": scenes,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         self._save_qa()
 
     def get_observations(self, scene_id: int) -> list[dict]:

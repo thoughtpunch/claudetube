@@ -2,6 +2,19 @@
 Cache management for claudetube.
 """
 
+from claudetube.cache.enrichment import (
+    boost_scene_relevance,
+    find_relevant_scenes,
+    find_scene_at_timestamp,
+    get_boosted_relevance,
+    get_enrichment_stats,
+    get_relevance_boosts,
+    get_scene_context,
+    record_frame_examination,
+    record_qa_interaction,
+    save_relevance_boosts,
+    search_cached_qa,
+)
 from claudetube.cache.entities import (
     ConceptMention,
     ObjectAppearance,
@@ -18,7 +31,6 @@ from claudetube.cache.entities import (
     track_entities,
     track_objects_from_scenes,
 )
-from claudetube.cache.manager import CacheManager
 from claudetube.cache.knowledge_graph import (
     ConceptNode,
     EntityNode,
@@ -28,25 +40,13 @@ from claudetube.cache.knowledge_graph import (
     get_knowledge_graph,
     index_video_to_graph,
 )
+from claudetube.cache.manager import CacheManager
 from claudetube.cache.memory import (
     Observation,
     QAPair,
     VideoMemory,
     get_memory_dir,
     has_memory,
-)
-from claudetube.cache.enrichment import (
-    boost_scene_relevance,
-    find_relevant_scenes,
-    find_scene_at_timestamp,
-    get_boosted_relevance,
-    get_enrichment_stats,
-    get_relevance_boosts,
-    get_scene_context,
-    record_frame_examination,
-    record_qa_interaction,
-    save_relevance_boosts,
-    search_cached_qa,
 )
 from claudetube.cache.scenes import (
     SceneBoundary,

@@ -443,12 +443,18 @@ def _get_scenes_sync(video_id: str, force: bool = False, enrich: bool = False) -
     cache_dir = get_cache_dir() / video_id
 
     if not cache_dir.exists():
-        return {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+        return {
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        }
 
     # Check state.json exists
     state_file = cache_dir / "state.json"
     if not state_file.exists():
-        return {"error": "Video not processed. Run process_video first.", "video_id": video_id}
+        return {
+            "error": "Video not processed. Run process_video first.",
+            "video_id": video_id,
+        }
 
     # Fast path: return cached scenes
     if not force and has_scenes(cache_dir):
@@ -460,13 +466,17 @@ def _get_scenes_sync(video_id: str, force: bool = False, enrich: bool = False) -
                     generate_visual_transcript,
                 )
 
-                generate_visual_transcript(video_id=video_id, output_base=cache_dir.parent)
+                generate_visual_transcript(
+                    video_id=video_id, output_base=cache_dir.parent
+                )
 
             result = scenes_data.to_dict()
             # Enrich with visual descriptions if available
             for scene in result.get("scenes", []):
                 scene_id = scene.get("scene_id", 0)
-                visual_file = cache_dir / "scenes" / f"scene_{scene_id:03d}" / "visual.json"
+                visual_file = (
+                    cache_dir / "scenes" / f"scene_{scene_id:03d}" / "visual.json"
+                )
                 if visual_file.exists():
                     visual_text = visual_file.read_text()
                     if visual_text.strip():
@@ -503,6 +513,7 @@ def _get_scenes_sync(video_id: str, force: bool = False, enrich: bool = False) -
     srt_path = cache_dir / "audio.srt"
     if srt_path.exists():
         from claudetube.analysis.pause import parse_srt_file
+
         transcript_segments = parse_srt_file(srt_path)
 
     # Run smart segmentation
@@ -767,7 +778,9 @@ def _format_moments_for_claude(moments: list[dict]) -> str:
     if not moments:
         return "No relevant moments found."
 
-    lines = [f"Found {len(moments)} relevant moment{'s' if len(moments) != 1 else ''}:\n"]
+    lines = [
+        f"Found {len(moments)} relevant moment{'s' if len(moments) != 1 else ''}:\n"
+    ]
 
     for m in moments:
         end_str = format_timestamp(m["end_time"])
@@ -900,25 +913,31 @@ async def analyze_focus_tool(
     # Find scenes in time range
     scenes_data = load_scenes_data(cache_dir)
     if not scenes_data:
-        return json.dumps({"error": "No scenes found. Run get_scenes first.", "video_id": video_id})
+        return json.dumps(
+            {"error": "No scenes found. Run get_scenes first.", "video_id": video_id}
+        )
 
     focus_ids = [
-        s.scene_id for s in scenes_data.scenes
+        s.scene_id
+        for s in scenes_data.scenes
         if s.start_time >= start_time and s.end_time <= end_time
     ]
 
     # Also include scenes that overlap with the range
     if not focus_ids:
         focus_ids = [
-            s.scene_id for s in scenes_data.scenes
+            s.scene_id
+            for s in scenes_data.scenes
             if not (s.end_time < start_time or s.start_time > end_time)
         ]
 
     if not focus_ids:
-        return json.dumps({
-            "error": f"No scenes found between {start_time}s and {end_time}s",
-            "video_id": video_id,
-        })
+        return json.dumps(
+            {
+                "error": f"No scenes found between {start_time}s and {end_time}s",
+                "video_id": video_id,
+            }
+        )
 
     result = await asyncio.to_thread(
         analyze_video,
@@ -1028,12 +1047,15 @@ async def search_qa_history_tool(
         query,
     )
 
-    return json.dumps({
-        "video_id": video_id,
-        "query": query,
-        "match_count": len(results),
-        "matches": results,
-    }, indent=2)
+    return json.dumps(
+        {
+            "video_id": video_id,
+            "query": query,
+            "match_count": len(results),
+            "matches": results,
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -1064,11 +1086,14 @@ async def get_scene_context_tool(
         scene_id,
     )
 
-    return json.dumps({
-        "video_id": video_id,
-        "scene_id": scene_id,
-        **context,
-    }, indent=2)
+    return json.dumps(
+        {
+            "video_id": video_id,
+            "scene_id": scene_id,
+            **context,
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -1096,10 +1121,13 @@ async def get_enrichment_stats_tool(
         cache_dir,
     )
 
-    return json.dumps({
-        "video_id": video_id,
-        **stats,
-    }, indent=2)
+    return json.dumps(
+        {
+            "video_id": video_id,
+            **stats,
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -1122,20 +1150,25 @@ async def find_related_videos_tool(
     graph = get_knowledge_graph()
 
     if graph.video_count == 0:
-        return json.dumps({
-            "query": query,
-            "error": "No videos indexed yet. Use index_video_to_graph_tool first.",
-            "matches": [],
-        })
+        return json.dumps(
+            {
+                "query": query,
+                "error": "No videos indexed yet. Use index_video_to_graph_tool first.",
+                "matches": [],
+            }
+        )
 
     matches = graph.find_related_videos(query)
 
-    return json.dumps({
-        "query": query,
-        "match_count": len(matches),
-        "matches": [m.to_dict() for m in matches],
-        "graph_stats": graph.get_stats(),
-    }, indent=2)
+    return json.dumps(
+        {
+            "query": query,
+            "match_count": len(matches),
+            "matches": [m.to_dict() for m in matches],
+            "graph_stats": graph.get_stats(),
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -1190,10 +1223,12 @@ async def get_video_connections_tool(
 
     video = graph.get_video(video_id)
     if not video:
-        return json.dumps({
-            "error": f"Video '{video_id}' not in knowledge graph. Index it first.",
-            "video_id": video_id,
-        })
+        return json.dumps(
+            {
+                "error": f"Video '{video_id}' not in knowledge graph. Index it first.",
+                "video_id": video_id,
+            }
+        )
 
     connected_ids = graph.get_video_connections(video_id)
 
@@ -1204,12 +1239,15 @@ async def get_video_connections_tool(
         if v:
             connections.append(v.to_dict())
 
-    return json.dumps({
-        "video_id": video_id,
-        "video_title": video.title,
-        "connection_count": len(connections),
-        "connections": connections,
-    }, indent=2)
+    return json.dumps(
+        {
+            "video_id": video_id,
+            "video_title": video.title,
+            "connection_count": len(connections),
+            "connections": connections,
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -1242,10 +1280,12 @@ async def get_descriptions(
     cache_dir = get_cache_dir() / video_id
 
     if not cache_dir.exists():
-        return json.dumps({
-            "error": "Video not cached. Run process_video first.",
-            "video_id": video_id,
-        })
+        return json.dumps(
+            {
+                "error": "Video not cached. Run process_video first.",
+                "video_id": video_id,
+            }
+        )
 
     cache = CacheManager(get_cache_dir())
 
@@ -1290,7 +1330,9 @@ async def get_descriptions(
                         output_base=get_cache_dir(),
                     )
                     if "error" not in result:
-                        ad_result = get_scene_descriptions(video_id, output_base=get_cache_dir())
+                        ad_result = get_scene_descriptions(
+                            video_id, output_base=get_cache_dir()
+                        )
                         if format == "txt" and "txt" in ad_result:
                             ad_result["content"] = ad_result.pop("txt", "")
                             ad_result.pop("vtt", None)
@@ -1341,11 +1383,13 @@ async def get_descriptions(
             return json.dumps(ad_result, indent=2)
         return json.dumps(result, indent=2)
     except Exception as e:
-        return json.dumps({
-            "error": f"Audio description generation failed: {e}",
-            "video_id": video_id,
-            "suggestion": "Run get_scenes and generate_visual_transcripts first, then try again.",
-        })
+        return json.dumps(
+            {
+                "error": f"Audio description generation failed: {e}",
+                "video_id": video_id,
+                "suggestion": "Run get_scenes and generate_visual_transcripts first, then try again.",
+            }
+        )
 
 
 @mcp.tool()
@@ -1369,10 +1413,12 @@ async def describe_moment(
     cache_dir = get_cache_dir() / video_id
 
     if not cache_dir.exists():
-        return json.dumps({
-            "error": "Video not cached. Run process_video first.",
-            "video_id": video_id,
-        })
+        return json.dumps(
+            {
+                "error": "Video not cached. Run process_video first.",
+                "video_id": video_id,
+            }
+        )
 
     # Extract HQ frames around the timestamp
     frames = await asyncio.to_thread(
@@ -1386,11 +1432,13 @@ async def describe_moment(
     )
 
     if not frames:
-        return json.dumps({
-            "error": "Could not extract frames at the given timestamp.",
-            "video_id": video_id,
-            "timestamp": timestamp,
-        })
+        return json.dumps(
+            {
+                "error": "Could not extract frames at the given timestamp.",
+                "video_id": video_id,
+                "timestamp": timestamp,
+            }
+        )
 
     # Try to get a vision provider for description
     try:
@@ -1400,14 +1448,17 @@ async def describe_moment(
         vision = None
 
     if vision is None:
-        return json.dumps({
-            "video_id": video_id,
-            "timestamp": timestamp,
-            "frame_count": len(frames),
-            "frame_paths": [str(f) for f in frames],
-            "description": None,
-            "note": "No vision provider available. Frames extracted for manual inspection.",
-        }, indent=2)
+        return json.dumps(
+            {
+                "video_id": video_id,
+                "timestamp": timestamp,
+                "frame_count": len(frames),
+                "frame_paths": [str(f) for f in frames],
+                "description": None,
+                "note": "No vision provider available. Frames extracted for manual inspection.",
+            },
+            indent=2,
+        )
 
     # Build prompt
     prompt_parts = [
@@ -1430,14 +1481,17 @@ async def describe_moment(
         description = None
         logger.warning(f"Vision analysis failed for moment at {timestamp}s: {e}")
 
-    return json.dumps({
-        "video_id": video_id,
-        "timestamp": timestamp,
-        "frame_count": len(frames),
-        "frame_paths": [str(f) for f in frames],
-        "description": description,
-        "provider": vision.info.name if vision else None,
-    }, indent=2)
+    return json.dumps(
+        {
+            "video_id": video_id,
+            "timestamp": timestamp,
+            "frame_count": len(frames),
+            "frame_paths": [str(f) for f in frames],
+            "description": description,
+            "provider": vision.info.name if vision else None,
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -1463,10 +1517,12 @@ async def get_accessible_transcript(
     cache_dir = get_cache_dir() / video_id
 
     if not cache_dir.exists():
-        return json.dumps({
-            "error": "Video not cached. Run process_video first.",
-            "video_id": video_id,
-        })
+        return json.dumps(
+            {
+                "error": "Video not cached. Run process_video first.",
+                "video_id": video_id,
+            }
+        )
 
     # Load transcript
     if format == "srt":
@@ -1479,30 +1535,36 @@ async def get_accessible_transcript(
         if fallback.exists():
             transcript_path = fallback
         else:
-            return json.dumps({
-                "error": "No transcript found. Run process_video or transcribe_video first.",
-                "video_id": video_id,
-            })
+            return json.dumps(
+                {
+                    "error": "No transcript found. Run process_video or transcribe_video first.",
+                    "video_id": video_id,
+                }
+            )
 
     transcript_text = transcript_path.read_text()
 
     # Load audio descriptions
     cache = CacheManager(get_cache_dir())
     if not cache.has_ad(video_id):
-        return json.dumps({
-            "error": "No audio descriptions found. Run get_descriptions first.",
-            "video_id": video_id,
-            "transcript_available": True,
-        })
+        return json.dumps(
+            {
+                "error": "No audio descriptions found. Run get_descriptions first.",
+                "video_id": video_id,
+                "transcript_available": True,
+            }
+        )
 
     ad_data = get_scene_descriptions(video_id, output_base=get_cache_dir())
     ad_txt = ad_data.get("txt", "")
 
     if not ad_txt:
-        return json.dumps({
-            "error": "Audio description file is empty.",
-            "video_id": video_id,
-        })
+        return json.dumps(
+            {
+                "error": "Audio description file is empty.",
+                "video_id": video_id,
+            }
+        )
 
     # Parse AD lines into (timestamp_seconds, description) tuples
     ad_entries = []
@@ -1514,7 +1576,7 @@ async def get_accessible_transcript(
         if line.startswith("[") and "]" in line:
             bracket_end = line.index("]")
             ts_str = line[1:bracket_end]
-            desc = line[bracket_end + 1:].strip()
+            desc = line[bracket_end + 1 :].strip()
             parts = ts_str.split(":")
             try:
                 if len(parts) == 2:
@@ -1544,13 +1606,16 @@ async def get_accessible_transcript(
 
     merged = "\n".join(merged_lines)
 
-    return json.dumps({
-        "video_id": video_id,
-        "format": "accessible_transcript",
-        "transcript_length": len(transcript_text),
-        "ad_entry_count": len(ad_entries),
-        "content": merged,
-    }, indent=2)
+    return json.dumps(
+        {
+            "video_id": video_id,
+            "format": "accessible_transcript",
+            "transcript_length": len(transcript_text),
+            "ad_entry_count": len(ad_entries),
+            "content": merged,
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -1632,10 +1697,7 @@ async def get_knowledge_graph_stats_tool() -> str:
 
     # Add list of indexed video IDs
     videos = graph.get_all_videos()
-    stats["videos"] = [
-        {"video_id": v.video_id, "title": v.title}
-        for v in videos
-    ]
+    stats["videos"] = [{"video_id": v.video_id, "title": v.title} for v in videos]
 
     return json.dumps(stats, indent=2)
 
@@ -1697,10 +1759,12 @@ async def list_providers_tool() -> str:
         for name in all_providers:
             info = PROVIDER_INFO.get(name)
             if info and info.can(cap):
-                cap_providers.append({
-                    "name": name,
-                    "available": name in available,
-                })
+                cap_providers.append(
+                    {
+                        "name": name,
+                        "available": name in available,
+                    }
+                )
         capabilities[cap.name.lower()] = {
             "providers": cap_providers,
         }
@@ -1720,11 +1784,14 @@ async def list_providers_tool() -> str:
     except (RuntimeError, ImportError):
         pass
 
-    return json.dumps({
-        "available_providers": available,
-        "all_providers": all_providers,
-        "capabilities": capabilities,
-    }, indent=2)
+    return json.dumps(
+        {
+            "available_providers": available,
+            "all_providers": all_providers,
+            "capabilities": capabilities,
+        },
+        indent=2,
+    )
 
 
 def main():

@@ -293,9 +293,7 @@ def _resolve_provider_name(name: str) -> str:
         return name.lower().strip()
 
 
-def _check_provider_capability(
-    provider_name: str, capability_name: str
-) -> str | None:
+def _check_provider_capability(provider_name: str, capability_name: str) -> str | None:
     """Check if a provider supports a capability.
 
     Returns an error message if the provider doesn't support the capability,
@@ -314,9 +312,7 @@ def _check_provider_capability(
             return None
 
         if not info.can(cap):
-            available_caps = ", ".join(
-                c.name.lower() for c in info.capabilities
-            )
+            available_caps = ", ".join(c.name.lower() for c in info.capabilities)
             return (
                 f"Provider '{provider_name}' does not support "
                 f"{capability_name.lower()}. "
@@ -353,8 +349,7 @@ def validate_providers_config(
 
     if not isinstance(config_dict, dict):
         result.errors.append(
-            "Config must be a YAML mapping (dict), "
-            f"got {type(config_dict).__name__}"
+            f"Config must be a YAML mapping (dict), got {type(config_dict).__name__}"
         )
         return result
 
@@ -462,9 +457,7 @@ def validate_providers_config(
                 # Check capability match
                 cap_err = _check_provider_capability(canonical, cap_name)
                 if cap_err:
-                    result.warnings.append(
-                        f"Preference '{pref_key}': {cap_err}"
-                    )
+                    result.warnings.append(f"Preference '{pref_key}': {cap_err}")
 
     # Validate fallbacks
     fallbacks = providers_section.get("fallbacks")
@@ -504,9 +497,7 @@ def validate_providers_config(
                             f"Known providers: {', '.join(sorted(_ALL_PROVIDERS))}"
                         )
                     else:
-                        cap_err = _check_provider_capability(
-                            canonical, cap_name
-                        )
+                        cap_err = _check_provider_capability(canonical, cap_name)
                         if cap_err:
                             result.warnings.append(
                                 f"Fallback chain '{fb_key}': {cap_err}"

@@ -345,8 +345,7 @@ def _get_default_vision_analyzer() -> VisionAnalyzer:
         pass
 
     raise RuntimeError(
-        "No vision provider available. "
-        "Set ANTHROPIC_API_KEY or run within Claude Code."
+        "No vision provider available. Set ANTHROPIC_API_KEY or run within Claude Code."
     )
 
 
@@ -380,7 +379,10 @@ def generate_visual_transcript(
     cache_dir = cache.get_cache_dir(video_id)
 
     if not cache_dir.exists():
-        return {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+        return {
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        }
 
     # Load scenes data
     scenes_data = load_scenes_data(cache_dir)
@@ -425,7 +427,9 @@ def generate_visual_transcript(
         keyframes = _select_keyframes_for_scene(scene, video_id, cache_dir)
 
         if not keyframes:
-            errors.append({"scene_id": scene.scene_id, "error": "No keyframes available"})
+            errors.append(
+                {"scene_id": scene.scene_id, "error": "No keyframes available"}
+            )
             continue
 
         # Lazily create operation on first actual use

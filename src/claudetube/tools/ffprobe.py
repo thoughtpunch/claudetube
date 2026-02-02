@@ -95,8 +95,10 @@ class FFprobeTool(VideoTool):
             Parsed JSON dict, or None if failed
         """
         args = [
-            "-v", "quiet",
-            "-print_format", "json",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
             "-show_format",
             "-show_streams",
             str(file_path),
@@ -185,8 +187,10 @@ class FFprobeTool(VideoTool):
             Duration in seconds, or None if failed
         """
         args = [
-            "-v", "quiet",
-            "-print_format", "json",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
             "-show_format",
             str(file_path),
         ]

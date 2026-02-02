@@ -7,11 +7,14 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from claudetube.exceptions import DownloadError, MetadataError
 from claudetube.tools.base import ToolResult, VideoTool
 from claudetube.utils.system import find_tool
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -134,13 +137,17 @@ class YtDlpTool(VideoTool):
             DownloadError: If download fails
         """
         args = [
-            "-f", "ba",
+            "-f",
+            "ba",
             "-x",
-            "--audio-format", "mp3",
-            "--audio-quality", quality,
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            quality,
             "--no-playlist",
             "--no-warnings",
-            "-o", str(output_path),
+            "-o",
+            str(output_path),
             url,
         ]
 
@@ -150,13 +157,17 @@ class YtDlpTool(VideoTool):
         if not result.success or not output_path.exists():
             logger.info("No audio-only format, extracting from video...")
             args = [
-                "-S", "+size,+br",
+                "-S",
+                "+size,+br",
                 "-x",
-                "--audio-format", "mp3",
-                "--audio-quality", quality,
+                "--audio-format",
+                "mp3",
+                "--audio-quality",
+                quality,
                 "--no-playlist",
                 "--no-warnings",
-                "-o", str(output_path),
+                "-o",
+                str(output_path),
                 url,
             ]
             result = self._run(args)
@@ -179,11 +190,13 @@ class YtDlpTool(VideoTool):
         """
         args = [
             "--write-thumbnail",
-            "--convert-thumbnails", "jpg",
+            "--convert-thumbnails",
+            "jpg",
             "--skip-download",
             "--no-playlist",
             "--no-warnings",
-            "-o", str(output_dir / "thumbnail"),
+            "-o",
+            str(output_dir / "thumbnail"),
             url,
         ]
 
@@ -221,13 +234,17 @@ class YtDlpTool(VideoTool):
         args = [
             "--write-subs",
             "--write-auto-subs",
-            "--sub-langs", "en.*,en",
-            "--sub-format", "srt/vtt/best",
-            "--convert-subs", "srt",
+            "--sub-langs",
+            "en.*,en",
+            "--sub-format",
+            "srt/vtt/best",
+            "--convert-subs",
+            "srt",
             "--skip-download",
             "--no-playlist",
             "--no-warnings",
-            "-o", str(output_dir / "%(id)s.%(ext)s"),
+            "-o",
+            str(output_dir / "%(id)s.%(ext)s"),
             url,
         ]
 
@@ -371,13 +388,17 @@ class YtDlpTool(VideoTool):
             format_id = ad_format["format_id"]
 
         args = [
-            "-f", format_id,
+            "-f",
+            format_id,
             "-x",
-            "--audio-format", "mp3",
-            "--audio-quality", quality,
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            quality,
             "--no-playlist",
             "--no-warnings",
-            "-o", str(output_path),
+            "-o",
+            str(output_path),
             url,
         ]
 
@@ -415,14 +436,19 @@ class YtDlpTool(VideoTool):
         section_spec = f"*{start_time}-{end_time}"
 
         args = [
-            "-S", quality_sort,
-            "-N", str(concurrent_fragments),
-            "--download-sections", section_spec,
+            "-S",
+            quality_sort,
+            "-N",
+            str(concurrent_fragments),
+            "--download-sections",
+            section_spec,
             "--force-keyframes-at-cuts",
             "--no-playlist",
             "--no-warnings",
-            "--merge-output-format", "mp4",
-            "-o", str(output_path),
+            "--merge-output-format",
+            "mp4",
+            "-o",
+            str(output_path),
             url,
         ]
 

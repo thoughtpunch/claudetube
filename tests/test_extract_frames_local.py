@@ -1,7 +1,6 @@
 """Tests for local file frame extraction."""
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -154,7 +153,7 @@ class TestExtractFramesLocal:
         ]
         mock_ffmpeg_class.return_value = mock_ffmpeg
 
-        frames = extract_frames_local(
+        extract_frames_local(
             video_id="local_video",
             start_time=10.0,
             duration=5.0,

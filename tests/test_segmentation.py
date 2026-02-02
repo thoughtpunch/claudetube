@@ -199,7 +199,11 @@ class TestSegmentVideoSmart:
         video_info = {
             "duration": 600,
             "chapters": [
-                {"title": f"Chapter {i}", "start_time": i * 100, "end_time": (i + 1) * 100}
+                {
+                    "title": f"Chapter {i}",
+                    "start_time": i * 100,
+                    "end_time": (i + 1) * 100,
+                }
                 for i in range(6)
             ],
         }
@@ -301,7 +305,11 @@ class TestVisualFallbackDecision:
         video_info = {
             "duration": 1800,  # 30 minutes
             "chapters": [
-                {"title": f"Chapter {i}", "start_time": i * 360, "end_time": (i + 1) * 360}
+                {
+                    "title": f"Chapter {i}",
+                    "start_time": i * 360,
+                    "end_time": (i + 1) * 360,
+                }
                 for i in range(5)
             ],
         }

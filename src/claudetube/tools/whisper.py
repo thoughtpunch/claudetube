@@ -6,12 +6,15 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from claudetube.config.defaults import MIN_TRANSCRIPT_COVERAGE, WHISPER_BATCH_SIZE
 from claudetube.exceptions import TranscriptionError
 from claudetube.tools.base import VideoTool
 from claudetube.utils.formatting import format_srt_time
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,7 @@ class WhisperTool(VideoTool):
         """Check if faster-whisper is installed."""
         try:
             import faster_whisper  # noqa: F401
+
             return True
         except ImportError:
             return False

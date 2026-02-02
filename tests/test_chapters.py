@@ -1,7 +1,5 @@
 """Tests for chapter extraction."""
 
-import pytest
-
 from claudetube.models import Chapter
 from claudetube.operations.chapters import extract_youtube_chapters, parse_timestamp
 
@@ -200,9 +198,7 @@ Thanks for watching!""",
 
     def test_description_without_timestamps(self):
         """Description without timestamps returns empty list."""
-        video_info = {
-            "description": "This is a great video about Python programming."
-        }
+        video_info = {"description": "This is a great video about Python programming."}
         chapters = extract_youtube_chapters(video_info)
         assert chapters == []
 

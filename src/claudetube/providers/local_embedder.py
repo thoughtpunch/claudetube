@@ -90,7 +90,9 @@ class LocalEmbedderProvider(Provider, Embedder):
                 model.eval()
                 self._clip_model = (model, preprocess)
             except ImportError:
-                logger.warning("open-clip-torch not installed, image embeddings unavailable")
+                logger.warning(
+                    "open-clip-torch not installed, image embeddings unavailable"
+                )
                 return None
         return self._clip_model
 

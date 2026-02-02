@@ -611,7 +611,10 @@ class TestLocalFileVideoId:
         video_id = lf.video_id
 
         import re
-        assert re.match(r"^[\w-]+$", video_id), f"video_id '{video_id}' contains unsafe chars"
+
+        assert re.match(r"^[\w-]+$", video_id), (
+            f"video_id '{video_id}' contains unsafe chars"
+        )
 
     def test_video_id_is_deterministic(self, tmp_path):
         """Same file path should always produce same video_id."""

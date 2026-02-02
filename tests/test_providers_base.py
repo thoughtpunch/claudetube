@@ -8,7 +8,6 @@ Verifies that:
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -23,8 +22,9 @@ from claudetube.providers.base import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from claudetube.providers.capabilities import ProviderInfo
-    from claudetube.providers.types import TranscriptionResult
 
 
 class TestProviderABC:

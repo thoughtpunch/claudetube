@@ -1,10 +1,8 @@
 """Tests for linguistic transition cue detection."""
 
-import pytest
-
 from claudetube.analysis.linguistic import (
-    Boundary,
     COMPILED_PATTERNS,
+    Boundary,
     detect_linguistic_boundaries,
 )
 
@@ -244,9 +242,7 @@ class TestOneMatchPerSegment:
 
     def test_multiple_patterns_in_segment(self):
         """Multiple patterns in one segment should only produce one boundary."""
-        segments = [
-            {"start": 10.0, "text": "Okay so first let's talk about step 1"}
-        ]
+        segments = [{"start": 10.0, "text": "Okay so first let's talk about step 1"}]
         boundaries = detect_linguistic_boundaries(segments)
         assert len(boundaries) == 1
 
@@ -326,6 +322,7 @@ class TestPatternCompilation:
     def test_patterns_are_precompiled(self):
         """Patterns should be pre-compiled for performance."""
         import re
+
         assert all(isinstance(p, re.Pattern) for p in COMPILED_PATTERNS)
 
     def test_pattern_count(self):

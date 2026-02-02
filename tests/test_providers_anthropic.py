@@ -227,9 +227,7 @@ class TestAnalyzeImages:
         provider._client = AsyncMock()
 
         with pytest.raises(FileNotFoundError, match="not found"):
-            await provider.analyze_images(
-                [tmp_path / "nonexistent.jpg"], "Describe"
-            )
+            await provider.analyze_images([tmp_path / "nonexistent.jpg"], "Describe")
 
     @pytest.mark.asyncio
     async def test_with_schema(self, tmp_path):

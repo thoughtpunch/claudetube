@@ -9,10 +9,13 @@ import logging
 import os
 import platform
 import shutil
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from claudetube.exceptions import CacheError
 from claudetube.models.state import VideoState
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -120,11 +123,15 @@ def cache_local_file(
                 shutil.copy2(source, dest)
                 return dest, "copy"
             except Exception as copy_err:
-                raise CacheError(f"Failed to copy file after symlink failed: {copy_err}") from copy_err
+                raise CacheError(
+                    f"Failed to copy file after symlink failed: {copy_err}"
+                ) from copy_err
         raise CacheError(f"Failed to create symlink: {e}") from e
 
 
-def check_cached_source(cache_dir: Path, cached_file: str | None) -> tuple[bool, str | None]:
+def check_cached_source(
+    cache_dir: Path, cached_file: str | None
+) -> tuple[bool, str | None]:
     """Check if a cached source file exists and is valid.
 
     For symlinks, checks if the target still exists.
@@ -148,12 +155,18 @@ def check_cached_source(cache_dir: Path, cached_file: str | None) -> tuple[bool,
         try:
             target = cached_path.resolve(strict=True)
             if not target.exists():
-                return False, f"Broken symlink: source file moved or deleted ({cached_path.readlink()})"
+                return (
+                    False,
+                    f"Broken symlink: source file moved or deleted ({cached_path.readlink()})",
+                )
         except (OSError, FileNotFoundError):
             # resolve(strict=True) raises if target doesn't exist
             try:
                 original = os.readlink(cached_path)
-                return False, f"Broken symlink: source file moved or deleted ({original})"
+                return (
+                    False,
+                    f"Broken symlink: source file moved or deleted ({original})",
+                )
             except Exception:
                 return False, "Broken symlink: source file moved or deleted"
 

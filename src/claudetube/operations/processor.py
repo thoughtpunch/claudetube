@@ -118,7 +118,10 @@ def process_video(
         state.transcript_complete = True
         state.transcript_source = sub_result["source"]
         cache.save_state(video_id, state)
-        log_timed(f"DONE via subtitles ({sub_result['source']}) in {time.time() - t0:.1f}s", t0)
+        log_timed(
+            f"DONE via subtitles ({sub_result['source']}) in {time.time() - t0:.1f}s",
+            t0,
+        )
         return VideoResult(
             success=True,
             video_id=video_id,
@@ -165,6 +168,7 @@ def process_video(
         if not video_path.exists():
             log_timed("Downloading video for frames...", t0)
             from claudetube.operations.download import download_video_segment
+
             download_video_segment(
                 url=url,
                 output_path=video_path,
@@ -272,7 +276,9 @@ def process_local_video(
     # STEP 1: Cache the local file (symlink or copy)
     log_timed("Caching local file...", t0)
     try:
-        cached_path, cache_mode = cache.cache_local_file(video_id, local_file.path, copy=copy)
+        cached_path, cache_mode = cache.cache_local_file(
+            video_id, local_file.path, copy=copy
+        )
         log_timed(f"Cached via {cache_mode}: {cached_path.name}", t0)
     except Exception as e:
         return VideoResult(
@@ -302,7 +308,9 @@ def process_local_video(
     state.cache_mode = cache_mode
     state.cached_file = cached_path.name
     cache.save_state(video_id, state)
-    log_timed(f"Metadata: '{state.title}' ({state.duration_string or 'unknown duration'})", t0)
+    log_timed(
+        f"Metadata: '{state.title}' ({state.duration_string or 'unknown duration'})", t0
+    )
 
     # STEP 3: Generate thumbnail from video
     if not thumbnail_path.exists() and local_file.is_video:
@@ -329,12 +337,15 @@ def process_local_video(
     if not srt_path.exists():
         log_timed("Checking for existing subtitles...", t0)
         from claudetube.operations.subtitles import fetch_local_subtitles
+
         sub_result = fetch_local_subtitles(local_file.path, cache_dir)
         if sub_result:
             srt_path.write_text(sub_result["srt"])
             txt_path.write_text(sub_result["txt"])
             transcript_source = sub_result["source"]
-            log_timed(f"DONE via {transcript_source} subtitles in {time.time() - t0:.1f}s", t0)
+            log_timed(
+                f"DONE via {transcript_source} subtitles in {time.time() - t0:.1f}s", t0
+            )
             state.transcript_complete = True
             state.transcript_source = transcript_source
             cache.save_state(video_id, state)

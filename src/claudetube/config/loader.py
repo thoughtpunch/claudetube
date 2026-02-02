@@ -170,7 +170,9 @@ def _resolve_config() -> ClaudetubeConfig:
         project_config = _load_yaml_config(project_config_path)
         cache_dir = _get_cache_dir_from_yaml(project_config, project_config_path)
         if cache_dir:
-            logger.info(f"Using cache_dir from project config {project_config_path}: {cache_dir}")
+            logger.info(
+                f"Using cache_dir from project config {project_config_path}: {cache_dir}"
+            )
             return ClaudetubeConfig(cache_dir=cache_dir, source=ConfigSource.PROJECT)
 
     # 3. Check user config

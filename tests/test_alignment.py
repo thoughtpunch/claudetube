@@ -1,7 +1,5 @@
 """Tests for transcript-to-scene alignment."""
 
-import pytest
-
 from claudetube.analysis.alignment import (
     align_transcript_to_scenes,
     align_transcript_to_scenes_simple,

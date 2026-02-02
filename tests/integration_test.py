@@ -192,7 +192,7 @@ def print_result(r: dict, verbose: bool = False):
         if "elapsed" in info:
             extra += f" ({info['elapsed']}s)"
         if "title" in info:
-            extra += f" \"{info['title']}\""
+            extra += f' "{info["title"]}"'
         if "provider" in info and info["provider"]:
             extra += f" [{info['provider']}]"
         if "error" in info:
@@ -223,16 +223,13 @@ def main():
     all_urls = load_test_urls()
 
     # Filter sites if specified
-    if args:
-        sites = {k: v for k, v in all_urls.items() if k in args}
-    else:
-        sites = all_urls
+    sites = {k: v for k, v in all_urls.items() if k in args} if args else all_urls
 
     # Print mode
     mode_name = "FULL PIPELINE" if full_mode else "METADATA-ONLY (fast)"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f" MODE: {mode_name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     all_results = []
     summary = {}
@@ -242,9 +239,9 @@ def main():
         if first_only:
             urls = urls[:1]
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f" {site.upper()} ({len(urls)} URLs)")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         site_pass = 0
         site_total = len(urls)
@@ -272,9 +269,9 @@ def main():
 
     # Print summary
     elapsed = time.time() - total_time
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f" SUMMARY ({elapsed:.1f}s total)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     total_pass = 0
     total_all = 0
     for site, s in summary.items():

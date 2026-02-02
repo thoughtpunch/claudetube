@@ -201,14 +201,20 @@ class VideoKnowledgeGraph:
         """Save graph to disk."""
         data = {
             "videos": {
-                vid: {"title": v.title, "channel": v.channel, "indexed_at": v.indexed_at}
+                vid: {
+                    "title": v.title,
+                    "channel": v.channel,
+                    "indexed_at": v.indexed_at,
+                }
                 for vid, v in self._videos.items()
             },
             "entities": {
                 key: {"type": e.entity_type, "videos": e.video_ids}
                 for key, e in self._entities.items()
             },
-            "concepts": {key: {"videos": c.video_ids} for key, c in self._concepts.items()},
+            "concepts": {
+                key: {"videos": c.video_ids} for key, c in self._concepts.items()
+            },
         }
         self.graph_path.write_text(json.dumps(data, indent=2))
         logger.debug(f"Saved knowledge graph to {self.graph_path}")
@@ -512,7 +518,10 @@ def index_video_to_graph(
     if people_path.exists():
         try:
             people_data = json.loads(people_path.read_text())
-            entities["person"] = [p.get("name", f"Person {i}") for i, p in enumerate(people_data.get("people", []))]
+            entities["person"] = [
+                p.get("name", f"Person {i}")
+                for i, p in enumerate(people_data.get("people", []))
+            ]
         except (json.JSONDecodeError, KeyError):
             pass
 

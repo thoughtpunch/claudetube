@@ -5,7 +5,7 @@ Cache manager for video processing.
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from claudetube.cache import memory as memory_cache
 from claudetube.cache import scenes as scene_cache
@@ -16,8 +16,12 @@ from claudetube.cache.storage import (
     save_state,
 )
 from claudetube.config.loader import get_cache_dir
-from claudetube.models.state import VideoState
 from claudetube.models.video_file import VideoFile
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from claudetube.models.state import VideoState
 
 
 class CacheManager:
@@ -88,14 +92,16 @@ class CacheManager:
         for state_file in sorted(self.cache_base.glob("*/state.json")):
             try:
                 state = json.loads(state_file.read_text())
-                videos.append({
-                    "video_id": state.get("video_id", state_file.parent.name),
-                    "title": state.get("title"),
-                    "duration_string": state.get("duration_string"),
-                    "transcript_complete": state.get("transcript_complete", False),
-                    "transcript_source": state.get("transcript_source"),
-                    "cache_dir": str(state_file.parent),
-                })
+                videos.append(
+                    {
+                        "video_id": state.get("video_id", state_file.parent.name),
+                        "title": state.get("title"),
+                        "duration_string": state.get("duration_string"),
+                        "transcript_complete": state.get("transcript_complete", False),
+                        "transcript_source": state.get("transcript_source"),
+                        "cache_dir": str(state_file.parent),
+                    }
+                )
             except (json.JSONDecodeError, OSError):
                 continue
 
@@ -107,6 +113,7 @@ class CacheManager:
         Returns True if video was removed, False if not found.
         """
         import shutil
+
         cache_dir = self.get_cache_dir(video_id)
         if cache_dir.exists():
             shutil.rmtree(cache_dir)
@@ -187,9 +194,7 @@ class CacheManager:
         """Check if scenes have been processed for this video."""
         return scene_cache.has_scenes(self.get_cache_dir(video_id))
 
-    def get_scene_status(
-        self, video_id: str, scene_id: int
-    ) -> scene_cache.SceneStatus:
+    def get_scene_status(self, video_id: str, scene_id: int) -> scene_cache.SceneStatus:
         """Get processing status for a specific scene."""
         return scene_cache.get_scene_status(self.get_cache_dir(video_id), scene_id)
 
@@ -203,9 +208,7 @@ class CacheManager:
 
     def list_scene_keyframes(self, video_id: str, scene_id: int) -> list[Path]:
         """List all keyframe images for a scene."""
-        return scene_cache.list_scene_keyframes(
-            self.get_cache_dir(video_id), scene_id
-        )
+        return scene_cache.list_scene_keyframes(self.get_cache_dir(video_id), scene_id)
 
     def get_all_scene_statuses(
         self, video_id: str

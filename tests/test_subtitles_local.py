@@ -1,15 +1,12 @@
 """Tests for local subtitle detection and extraction."""
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from claudetube.operations.subtitles import (
     convert_to_srt,
+    fetch_local_subtitles,
     find_embedded_subtitles,
     find_sidecar_subtitles,
-    fetch_local_subtitles,
     srt_to_txt,
 )
 
@@ -172,9 +169,7 @@ class TestFetchLocalSubtitles:
         video = tmp_path / "video.mp4"
         srt = tmp_path / "video.srt"
         video.touch()
-        srt.write_text(
-            "1\n00:00:00,000 --> 00:00:01,000\nHello from sidecar"
-        )
+        srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nHello from sidecar")
 
         output_dir = tmp_path / "cache"
         output_dir.mkdir()
@@ -192,9 +187,13 @@ class TestFetchLocalSubtitles:
         output_dir = tmp_path / "cache"
         output_dir.mkdir()
 
-        with patch("claudetube.operations.subtitles.find_embedded_subtitles") as mock_find:
+        with patch(
+            "claudetube.operations.subtitles.find_embedded_subtitles"
+        ) as mock_find:
             mock_find.return_value = [{"codec_type": "subtitle"}]
-            with patch("claudetube.operations.subtitles.extract_embedded_subtitles") as mock_extract:
+            with patch(
+                "claudetube.operations.subtitles.extract_embedded_subtitles"
+            ) as mock_extract:
                 mock_extract.return_value = False
 
                 result = fetch_local_subtitles(video, output_dir)
@@ -211,7 +210,9 @@ class TestFetchLocalSubtitles:
         output_dir = tmp_path / "cache"
         output_dir.mkdir()
 
-        with patch("claudetube.operations.subtitles.find_embedded_subtitles") as mock_find:
+        with patch(
+            "claudetube.operations.subtitles.find_embedded_subtitles"
+        ) as mock_find:
             mock_find.return_value = []
 
             result = fetch_local_subtitles(video, output_dir)
@@ -246,9 +247,7 @@ class TestFetchLocalSubtitlesIntegration:
         video = tmp_path / "video.mp4"
         vtt = tmp_path / "video.vtt"
         video.touch()
-        vtt.write_text(
-            "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello from VTT"
-        )
+        vtt.write_text("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello from VTT")
 
         output_dir = tmp_path / "cache"
         output_dir.mkdir()

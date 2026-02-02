@@ -13,7 +13,6 @@ Verifies:
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -21,8 +20,11 @@ import pytest
 
 from claudetube.providers.base import Embedder
 from claudetube.providers.capabilities import Capability
-from claudetube.providers.local_embedder import IMAGE_DIM, TEXT_DIM, LocalEmbedderProvider
-
+from claudetube.providers.local_embedder import (
+    IMAGE_DIM,
+    TEXT_DIM,
+    LocalEmbedderProvider,
+)
 
 # =============================================================================
 # Instantiation and Info
@@ -90,7 +92,9 @@ class TestLocalEmbedderTextOnly:
     def test_text_embedding_dimensions(self):
         """Text-only embedding should have TEXT_DIM + IMAGE_DIM dimensions."""
         mock_text_model = MagicMock()
-        mock_text_model.encode.return_value = np.random.randn(TEXT_DIM).astype(np.float32)
+        mock_text_model.encode.return_value = np.random.randn(TEXT_DIM).astype(
+            np.float32
+        )
 
         provider = LocalEmbedderProvider()
         provider._text_model = mock_text_model
@@ -137,7 +141,9 @@ class TestLocalEmbedderWithImages:
         img_vec = np.ones(IMAGE_DIM, dtype=np.float32) * 0.3
         mock_clip_model = MagicMock()
         mock_clip_model.encode_image.return_value = MagicMock(
-            squeeze=MagicMock(return_value=MagicMock(numpy=MagicMock(return_value=img_vec)))
+            squeeze=MagicMock(
+                return_value=MagicMock(numpy=MagicMock(return_value=img_vec))
+            )
         )
         mock_preprocess = MagicMock(
             return_value=MagicMock(unsqueeze=MagicMock(return_value=MagicMock()))
@@ -151,11 +157,14 @@ class TestLocalEmbedderWithImages:
         mock_pil_image.open.return_value = MagicMock()
         mock_torch = MagicMock()
 
-        with patch.dict("sys.modules", {
-            "PIL": MagicMock(),
-            "PIL.Image": mock_pil_image,
-            "torch": mock_torch,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "PIL": MagicMock(),
+                "PIL.Image": mock_pil_image,
+                "torch": mock_torch,
+            },
+        ):
             result = provider.embed_sync("text", images=[img_path])
 
         assert len(result) == TEXT_DIM + IMAGE_DIM
@@ -216,11 +225,14 @@ class TestLocalEmbedderWithImages:
         mock_pil_module = MagicMock()
         mock_pil_module.Image = mock_pil_image
 
-        with patch.dict("sys.modules", {
-            "PIL": mock_pil_module,
-            "PIL.Image": mock_pil_image,
-            "torch": MagicMock(),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "PIL": mock_pil_module,
+                "PIL.Image": mock_pil_image,
+                "torch": MagicMock(),
+            },
+        ):
             provider.embed_sync("text", images=paths)
 
         # Should only open 3 images

@@ -25,19 +25,92 @@ from claudetube.analysis.search import format_timestamp
 logger = logging.getLogger(__name__)
 
 # Words filtered out when comparing answer terms to transcript
-_STOP_WORDS = frozenset({
-    "the", "a", "an", "is", "are", "was", "were", "be", "been",
-    "being", "have", "has", "had", "do", "does", "did", "will",
-    "would", "could", "should", "may", "might", "must", "shall",
-    "can", "to", "of", "in", "for", "on", "with", "at", "by",
-    "from", "as", "into", "through", "during", "before", "after",
-    "then", "once", "here", "there", "when", "where", "why",
-    "how", "all", "each", "few", "more", "most", "other", "some",
-    "such", "no", "nor", "not", "only", "own", "same", "so",
-    "than", "too", "very", "just", "and", "but", "if", "or",
-    "because", "until", "while", "this", "that", "these", "those",
-    "based", "video", "content", "about",
-})
+_STOP_WORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "can",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "then",
+        "once",
+        "here",
+        "there",
+        "when",
+        "where",
+        "why",
+        "how",
+        "all",
+        "each",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "nor",
+        "not",
+        "only",
+        "own",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "just",
+        "and",
+        "but",
+        "if",
+        "or",
+        "because",
+        "until",
+        "while",
+        "this",
+        "that",
+        "these",
+        "those",
+        "based",
+        "video",
+        "content",
+        "about",
+    }
+)
 
 
 @dataclass
@@ -122,12 +195,14 @@ def verify_comprehension(
         # Verify against video content
         verification = verify_answer(answer, question, video_understanding)
 
-        results.append(VerificationResult(
-            question=question,
-            answer=answer,
-            verified=verification["correct"],
-            confidence=verification["confidence"],
-        ))
+        results.append(
+            VerificationResult(
+                question=question,
+                answer=answer,
+                verified=verification["correct"],
+                confidence=verification["confidence"],
+            )
+        )
 
     # Calculate overall score
     comprehension_score = sum(r.verified for r in results) / len(results)
@@ -181,9 +256,7 @@ def generate_self_test_questions(understanding: dict) -> list[str]:
     if scenes:
         scene = random.choice(scenes)
         start = scene.get("start_time", scene.get("start", 0))
-        questions.append(
-            f"What is happening at {format_timestamp(start)}?"
-        )
+        questions.append(f"What is happening at {format_timestamp(start)}?")
 
     # Synthesis
     questions.append("What would someone learn from watching this video?")
@@ -246,18 +319,13 @@ def verify_answer(
         Dict with 'correct' (bool) and 'confidence' (float).
     """
     scenes = understanding.get("scenes", [])
-    all_text = " ".join(
-        s.get("transcript_text", "") for s in scenes
-    ).lower()
+    all_text = " ".join(s.get("transcript_text", "") for s in scenes).lower()
 
     if not all_text.strip():
         return {"correct": False, "confidence": 0.0}
 
     answer_words = set(answer.lower().split())
-    important_words = {
-        w for w in answer_words
-        if len(w) > 4 and w not in _STOP_WORDS
-    }
+    important_words = {w for w in answer_words if len(w) > 4 and w not in _STOP_WORDS}
 
     if not important_words:
         return {"correct": False, "confidence": 0.0}

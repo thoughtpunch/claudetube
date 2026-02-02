@@ -164,9 +164,7 @@ class TestSchemaJson:
 def _make_mock_litellm(response_content="result"):
     """Create a mock litellm module with acompletion returning given content."""
     mock_response = MagicMock()
-    mock_response.choices = [
-        MagicMock(message=MagicMock(content=response_content))
-    ]
+    mock_response.choices = [MagicMock(message=MagicMock(content=response_content))]
     mock_module = MagicMock()
     mock_module.acompletion = AsyncMock(return_value=mock_response)
     return mock_module

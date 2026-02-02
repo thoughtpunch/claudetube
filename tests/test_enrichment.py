@@ -340,9 +340,7 @@ class TestGetSceneContext:
     def test_gets_full_context(self, cache_dir: Path) -> None:
         """Should return all context after interactions."""
         # Record frame examination
-        record_frame_examination(
-            "test_video", cache_dir, start_time=10.0, duration=5.0
-        )
+        record_frame_examination("test_video", cache_dir, start_time=10.0, duration=5.0)
 
         # Record Q&A
         record_qa_interaction(

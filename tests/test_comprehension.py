@@ -135,12 +135,8 @@ class TestAnswerFromUnderstanding:
     def test_answer_from_relevant_scene(self):
         understanding = {
             "scenes": [
-                {
-                    "transcript_text": "This tutorial covers Python debugging techniques"
-                },
-                {
-                    "transcript_text": "Use breakpoints to step through code execution"
-                },
+                {"transcript_text": "This tutorial covers Python debugging techniques"},
+                {"transcript_text": "Use breakpoints to step through code execution"},
             ],
             "memory": {},
         }
@@ -162,9 +158,7 @@ class TestAnswerFromUnderstanding:
                 ],
             },
         }
-        answer = answer_from_understanding(
-            understanding, "What is the main topic?"
-        )
+        answer = answer_from_understanding(understanding, "What is the main topic?")
         assert answer == "Python debugging"
 
     def test_similar_question_matches_history(self):
@@ -360,7 +354,7 @@ class TestVerifyComprehension:
 
     def test_ready_to_answer_threshold(self, rich_understanding):
         # High threshold
-        result = verify_comprehension(
+        verify_comprehension(
             rich_understanding,
             verification_questions=[
                 "What Python debugging techniques are discussed?",
