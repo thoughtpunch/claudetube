@@ -73,6 +73,9 @@ ollama = [
 litellm = [
     "litellm>=1.0.0",
 ]
+youtube-pot = [
+    "bgutil-ytdlp-pot-provider>=1.2.0",
+]
 all-providers = [
     "claudetube[openai,anthropic,google,deepgram,assemblyai,ollama,litellm]",
 ]

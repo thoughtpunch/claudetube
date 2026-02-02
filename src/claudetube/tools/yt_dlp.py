@@ -146,13 +146,15 @@ class YtDlpTool(VideoTool):
         return bool(_YOUTUBE_URL_RE.search(url))
 
     def _youtube_config_args(self) -> list[str]:
-        """Build yt-dlp args from YouTube config (PO token, cookies).
+        """Build yt-dlp args from YouTube config (PO token, cookies, bgutil).
 
         Reads optional ``youtube`` section from config YAML::
 
             youtube:
               po_token: "..."
               cookies_file: "/path/to/cookies.txt"
+              pot_server_url: "http://127.0.0.1:4416"
+              pot_script_path: "/path/to/generate_once.js"
 
         Returns an empty list when nothing is configured.
         """
@@ -194,10 +196,65 @@ class YtDlpTool(VideoTool):
                     args.extend(["--cookies", str(cookies_path)])
                 else:
                     logger.warning("Cookies file not found: %s", cookies_path)
+
+            # bgutil-ytdlp-pot-provider: HTTP server URL
+            pot_server_url = yt_cfg.get("pot_server_url")
+            if pot_server_url:
+                args.extend([
+                    "--extractor-args",
+                    f"youtubepot-bgutilhttp:base_url={pot_server_url}",
+                ])
+
+            # bgutil-ytdlp-pot-provider: script path (fallback mode)
+            pot_script_path = yt_cfg.get("pot_script_path")
+            if pot_script_path:
+                from pathlib import Path
+
+                script_path = Path(pot_script_path).expanduser()
+                if script_path.exists():
+                    args.extend([
+                        "--extractor-args",
+                        f"youtubepot-bgutilscript:script_path={script_path}",
+                    ])
+                else:
+                    logger.warning(
+                        "bgutil script not found: %s", script_path
+                    )
         except Exception:
             logger.debug("Failed to load YouTube config", exc_info=True)
 
         return args
+
+    def check_pot_providers(self, timeout: int = 10) -> list[str]:
+        """Check which PO Token providers yt-dlp has loaded.
+
+        Runs ``yt-dlp --verbose`` against a dummy YouTube URL (no download)
+        and parses the debug output for registered POT providers.
+
+        Returns:
+            List of provider strings (e.g. ``["bgutil:http-1.2.2 (external)"]``),
+            or an empty list if none are detected.
+        """
+        result = self._run(
+            [
+                "--verbose",
+                "--skip-download",
+                "--no-warnings",
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            ],
+            timeout=timeout,
+            retry_clients=False,
+        )
+        providers: list[str] = []
+        output = (result.stderr or "") + (result.stdout or "")
+        for line in output.splitlines():
+            if "PO Token Providers:" in line:
+                # Format: [pot] PO Token Providers: bgutil:http-1.2.2 (...), ...
+                after = line.split("PO Token Providers:", 1)[1].strip()
+                if after and after.lower() != "none":
+                    providers = [p.strip() for p in after.split(",") if p.strip()]
+                break
+        return providers
 
     def get_metadata(self, url: str, timeout: int = 30) -> dict:
         """Fetch video metadata without downloading.
