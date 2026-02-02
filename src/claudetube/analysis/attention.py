@@ -26,8 +26,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from claudetube.analysis.embeddings import SceneEmbedding
     from claudetube.cache.scenes import SceneBoundary
 
@@ -346,10 +344,7 @@ def detect_visual_salience(scene: dict | SceneBoundary) -> float:
         Visual salience score from 0.0 to 1.0.
     """
     # Get technical data
-    if isinstance(scene, dict):
-        technical = scene.get("technical", {})
-    else:
-        technical = {}
+    technical = scene.get("technical", {}) if isinstance(scene, dict) else {}
 
     content_type = technical.get("content_type", "unknown")
 
@@ -473,7 +468,6 @@ def get_structural_weight(
 
     # Calculate relative position
     position_ratio = start_time / video_duration if video_duration > 0 else 0
-    scene_index_ratio = scene_id / total_scenes if total_scenes > 0 else 0
 
     # Base weight
     weight = 0.3
@@ -487,8 +481,7 @@ def get_structural_weight(
         weight += 0.25
 
     # Demo section bonus for tutorials (20-80% is typically where demos happen)
-    if video_type in ("coding_tutorial", "demo", "screencast"):
-        if 0.2 < position_ratio < 0.8:
+    if video_type in ("coding_tutorial", "demo", "screencast") and 0.2 < position_ratio < 0.8:
             weight += 0.1
 
     # Chapter start bonus (scene_id <= 2 is often a chapter start)
