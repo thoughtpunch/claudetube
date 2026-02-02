@@ -79,6 +79,7 @@ all-providers = [
 dev = [
     "pytest",
     "pytest-asyncio",
+    "pytest-cov",
     "ruff",
     "mypy",
     "build",
@@ -98,6 +99,24 @@ asyncio_mode = "auto"
 markers = [
     "deep_integration: deep integration test against real playlist (slow, requires network)",
     "integration: integration test against real provider APIs (requires API keys)",
+]
+
+[tool.coverage.run]
+source = ["claudetube"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "pass",
 ]
 
 [tool.ruff]
