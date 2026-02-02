@@ -2,20 +2,27 @@
 OCR extraction for technical video content.
 
 Extracts text from video frames including code, slides, and terminal output.
-Uses EasyOCR for accurate text detection with bounding boxes.
+Uses EasyOCR for accurate text detection with bounding boxes, with optional
+VisionAnalyzer enhancement for code, handwriting, and low-contrast text.
 
 Architecture: Cheap First, Expensive Last
 1. CACHE - Check for cached OCR results first
 2. DETECT - Skip frames unlikely to contain text
-3. COMPUTE - Run OCR only when necessary
+3. EASYOCR - Fast local OCR (always available)
+4. VISION - Optional VisionAnalyzer for better accuracy on hard content
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from claudetube.providers.base import VisionAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -259,13 +266,122 @@ def extract_text_from_frame(
     )
 
 
+def _should_use_vision(
+    easyocr_result: FrameOCRResult,
+    min_confidence: float = 0.5,
+) -> bool:
+    """Determine if vision OCR would improve results for this frame.
+
+    Vision is preferred for:
+    - Code content (syntax-aware extraction)
+    - Low confidence EasyOCR results
+    - Frames with text regions but poor quality
+
+    Args:
+        easyocr_result: The EasyOCR result for this frame.
+        min_confidence: Threshold for "poor quality" EasyOCR results.
+
+    Returns:
+        True if vision OCR should be attempted.
+    """
+    # Code content benefits most from vision-based OCR
+    if easyocr_result.content_type == "code":
+        return True
+
+    # Terminal content often has low-contrast text
+    if easyocr_result.content_type == "terminal":
+        return True
+
+    # Low average confidence suggests EasyOCR is struggling
+    if easyocr_result.regions:
+        avg_confidence = sum(r.confidence for r in easyocr_result.regions) / len(
+            easyocr_result.regions
+        )
+        if avg_confidence < min_confidence:
+            return True
+
+    return False
+
+
+async def extract_text_with_vision(
+    frame_path: Path,
+    vision_analyzer: VisionAnalyzer,
+) -> FrameOCRResult:
+    """Extract text from a frame using a VisionAnalyzer provider.
+
+    Better than EasyOCR for: code snippets (syntax-aware), handwriting,
+    low-contrast text, and multi-language content.
+
+    Args:
+        frame_path: Path to the frame image.
+        vision_analyzer: A VisionAnalyzer provider instance.
+
+    Returns:
+        FrameOCRResult with extracted text.
+    """
+    prompt = (
+        "Extract ALL text visible in this image exactly as written. "
+        "Include code, terminal output, slide text, labels, and UI text. "
+        "Preserve formatting, indentation, and line breaks. "
+        "If this contains code, preserve the exact syntax. "
+        "Return ONLY the extracted text, nothing else."
+    )
+
+    try:
+        result = await vision_analyzer.analyze_images([frame_path], prompt)
+        text = result if isinstance(result, str) else str(result)
+    except Exception as e:
+        logger.warning(f"Vision OCR failed for {frame_path}: {e}")
+        return FrameOCRResult(
+            frame_path=str(frame_path),
+            timestamp=0.0,
+            regions=[],
+            content_type="unknown",
+        )
+
+    # Convert vision result to TextRegion (single region covering full frame)
+    regions = []
+    if text.strip():
+        regions.append(
+            TextRegion(
+                text=text.strip(),
+                confidence=0.9,  # Vision providers generally high quality
+                bbox={"x1": 0, "y1": 0, "x2": 0, "y2": 0},  # Full frame
+            )
+        )
+
+    # Classify content type from the extracted text
+    content_type = classify_content_type(regions, frame_path)
+
+    # Extract timestamp from filename
+    timestamp = 0.0
+    try:
+        name = Path(frame_path).stem
+        if "_" in name:
+            timestamp = float(name.split("_")[-1])
+    except (ValueError, IndexError):
+        pass
+
+    return FrameOCRResult(
+        frame_path=str(frame_path),
+        timestamp=timestamp,
+        regions=regions,
+        content_type=content_type,
+    )
+
+
 def extract_text_from_scene(
     scene_dir: Path,
     keyframe_paths: list[Path] | None = None,
     skip_low_likelihood: bool = True,
     likelihood_threshold: float = 0.3,
+    vision_analyzer: VisionAnalyzer | None = None,
 ) -> list[FrameOCRResult]:
     """Extract text from all keyframes in a scene.
+
+    Uses EasyOCR as the primary method. When a VisionAnalyzer is provided,
+    it is used to enhance results for frames where EasyOCR struggles
+    (code, terminal, low confidence).
 
     Args:
         scene_dir: Path to the scene directory.
@@ -273,6 +389,9 @@ def extract_text_from_scene(
             If None, finds all .jpg/.png files in scene_dir.
         skip_low_likelihood: If True, skip frames unlikely to contain text.
         likelihood_threshold: Minimum text likelihood score to process.
+        vision_analyzer: Optional VisionAnalyzer for enhanced OCR on
+            code, handwriting, and low-contrast content. Falls back
+            gracefully to EasyOCR-only if not provided or if vision fails.
 
     Returns:
         List of FrameOCRResult for each processed frame.
@@ -291,12 +410,49 @@ def extract_text_from_scene(
                 logger.debug(f"Skipping {frame_path.name} (text likelihood: {likelihood:.2f})")
                 continue
 
-        # Expensive: run OCR
+        # Run EasyOCR first (cheap)
         try:
             result = extract_text_from_frame(frame_path)
-            results.append(result)
         except Exception as e:
             logger.warning(f"OCR failed for {frame_path}: {e}")
+            continue
+
+        # Enhance with vision if available and beneficial
+        if vision_analyzer is not None and _should_use_vision(result):
+            try:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Already in async context
+                        import concurrent.futures
+
+                        with concurrent.futures.ThreadPoolExecutor() as pool:
+                            vision_result = pool.submit(
+                                asyncio.run,
+                                extract_text_with_vision(frame_path, vision_analyzer),
+                            ).result()
+                    else:
+                        vision_result = loop.run_until_complete(
+                            extract_text_with_vision(frame_path, vision_analyzer)
+                        )
+                except RuntimeError:
+                    vision_result = asyncio.run(
+                        extract_text_with_vision(frame_path, vision_analyzer)
+                    )
+
+                if vision_result.regions:
+                    logger.debug(
+                        f"Vision OCR enhanced {frame_path.name} "
+                        f"(was: {result.content_type})"
+                    )
+                    result = vision_result
+            except Exception as e:
+                logger.warning(
+                    f"Vision OCR enhancement failed for {frame_path}, "
+                    f"keeping EasyOCR result: {e}"
+                )
+
+        results.append(result)
 
     return results
 

@@ -2,7 +2,11 @@
 Tests for OCR extraction module.
 """
 
+import asyncio
 import json
+from unittest.mock import AsyncMock
+
+import pytest
 
 
 class TestTextRegion:
@@ -219,3 +223,237 @@ class TestSaveLoadOCRResults:
         assert data["summary"]["frames_with_text"] == 2
         assert data["summary"]["content_types"]["code"] == 2
         assert data["summary"]["content_types"]["talking_head"] == 1
+
+
+class TestShouldUseVision:
+    """Tests for _should_use_vision decision function."""
+
+    def test_code_content_returns_true(self):
+        """Should return True for code content type."""
+        from claudetube.analysis.ocr import FrameOCRResult, _should_use_vision
+
+        result = FrameOCRResult(
+            frame_path="/path/frame.jpg",
+            timestamp=0.0,
+            regions=[],
+            content_type="code",
+        )
+        assert _should_use_vision(result) is True
+
+    def test_terminal_content_returns_true(self):
+        """Should return True for terminal content type."""
+        from claudetube.analysis.ocr import FrameOCRResult, _should_use_vision
+
+        result = FrameOCRResult(
+            frame_path="/path/frame.jpg",
+            timestamp=0.0,
+            regions=[],
+            content_type="terminal",
+        )
+        assert _should_use_vision(result) is True
+
+    def test_low_confidence_returns_true(self):
+        """Should return True when average confidence is below threshold."""
+        from claudetube.analysis.ocr import (
+            FrameOCRResult,
+            TextRegion,
+            _should_use_vision,
+        )
+
+        result = FrameOCRResult(
+            frame_path="/path/frame.jpg",
+            timestamp=0.0,
+            regions=[
+                TextRegion("blurry", 0.3, {"x1": 0, "y1": 0, "x2": 50, "y2": 20}),
+                TextRegion("text", 0.2, {"x1": 0, "y1": 20, "x2": 50, "y2": 40}),
+            ],
+            content_type="slides",
+        )
+        assert _should_use_vision(result) is True
+
+    def test_high_confidence_slides_returns_false(self):
+        """Should return False for high-confidence non-code content."""
+        from claudetube.analysis.ocr import (
+            FrameOCRResult,
+            TextRegion,
+            _should_use_vision,
+        )
+
+        result = FrameOCRResult(
+            frame_path="/path/frame.jpg",
+            timestamp=0.0,
+            regions=[
+                TextRegion("clear text", 0.95, {"x1": 0, "y1": 0, "x2": 50, "y2": 20}),
+            ],
+            content_type="slides",
+        )
+        assert _should_use_vision(result) is False
+
+    def test_talking_head_no_regions_returns_false(self):
+        """Should return False for talking head with no regions."""
+        from claudetube.analysis.ocr import FrameOCRResult, _should_use_vision
+
+        result = FrameOCRResult(
+            frame_path="/path/frame.jpg",
+            timestamp=0.0,
+            regions=[],
+            content_type="talking_head",
+        )
+        assert _should_use_vision(result) is False
+
+    def test_custom_min_confidence_threshold(self):
+        """Should respect custom min_confidence threshold."""
+        from claudetube.analysis.ocr import (
+            FrameOCRResult,
+            TextRegion,
+            _should_use_vision,
+        )
+
+        result = FrameOCRResult(
+            frame_path="/path/frame.jpg",
+            timestamp=0.0,
+            regions=[
+                TextRegion("text", 0.6, {"x1": 0, "y1": 0, "x2": 50, "y2": 20}),
+            ],
+            content_type="slides",
+        )
+        # Default threshold 0.5 -> 0.6 > 0.5, should be False
+        assert _should_use_vision(result) is False
+        # Higher threshold 0.8 -> 0.6 < 0.8, should be True
+        assert _should_use_vision(result, min_confidence=0.8) is True
+
+
+class TestExtractTextWithVision:
+    """Tests for extract_text_with_vision async function."""
+
+    def test_successful_extraction(self, tmp_path):
+        """Should extract text using VisionAnalyzer."""
+        from claudetube.analysis.ocr import extract_text_with_vision
+
+        try:
+            import numpy as np
+            from PIL import Image
+        except ImportError:
+            pytest.skip("PIL/numpy not available")
+
+        # Create test image
+        arr = np.full((100, 100, 3), 255, dtype=np.uint8)
+        img = Image.fromarray(arr)
+        img_path = tmp_path / "frame_42.5.jpg"
+        img.save(img_path)
+
+        # Mock VisionAnalyzer
+        mock_analyzer = AsyncMock()
+        mock_analyzer.analyze_images.return_value = "def hello():\n    return True"
+
+        result = asyncio.run(extract_text_with_vision(img_path, mock_analyzer))
+
+        assert len(result.regions) == 1
+        assert "def hello():" in result.regions[0].text
+        assert result.regions[0].confidence == 0.9
+        assert result.timestamp == 42.5
+        mock_analyzer.analyze_images.assert_called_once()
+
+    def test_empty_vision_result(self, tmp_path):
+        """Should return empty regions for blank vision output."""
+        from claudetube.analysis.ocr import extract_text_with_vision
+
+        try:
+            import numpy as np
+            from PIL import Image
+        except ImportError:
+            pytest.skip("PIL/numpy not available")
+
+        arr = np.full((100, 100, 3), 255, dtype=np.uint8)
+        img = Image.fromarray(arr)
+        img_path = tmp_path / "frame_10.0.jpg"
+        img.save(img_path)
+
+        mock_analyzer = AsyncMock()
+        mock_analyzer.analyze_images.return_value = "   "
+
+        result = asyncio.run(extract_text_with_vision(img_path, mock_analyzer))
+
+        assert len(result.regions) == 0
+
+    def test_vision_failure_returns_empty(self, tmp_path):
+        """Should return empty result when VisionAnalyzer raises."""
+        from claudetube.analysis.ocr import extract_text_with_vision
+
+        img_path = tmp_path / "frame_5.0.jpg"
+        img_path.write_bytes(b"fake image data")
+
+        mock_analyzer = AsyncMock()
+        mock_analyzer.analyze_images.side_effect = RuntimeError("API error")
+
+        result = asyncio.run(extract_text_with_vision(img_path, mock_analyzer))
+
+        assert len(result.regions) == 0
+        assert result.content_type == "unknown"
+
+    def test_timestamp_from_filename(self, tmp_path):
+        """Should extract timestamp from frame filename."""
+        from claudetube.analysis.ocr import extract_text_with_vision
+
+        try:
+            import numpy as np
+            from PIL import Image
+        except ImportError:
+            pytest.skip("PIL/numpy not available")
+
+        arr = np.full((100, 100, 3), 255, dtype=np.uint8)
+        img = Image.fromarray(arr)
+        img_path = tmp_path / "frame_123.45.jpg"
+        img.save(img_path)
+
+        mock_analyzer = AsyncMock()
+        mock_analyzer.analyze_images.return_value = "some text"
+
+        result = asyncio.run(extract_text_with_vision(img_path, mock_analyzer))
+
+        assert result.timestamp == 123.45
+
+    def test_non_string_result_converted(self, tmp_path):
+        """Should handle non-string VisionAnalyzer results."""
+        from claudetube.analysis.ocr import extract_text_with_vision
+
+        try:
+            import numpy as np
+            from PIL import Image
+        except ImportError:
+            pytest.skip("PIL/numpy not available")
+
+        arr = np.full((100, 100, 3), 255, dtype=np.uint8)
+        img = Image.fromarray(arr)
+        img_path = tmp_path / "frame_1.0.jpg"
+        img.save(img_path)
+
+        mock_analyzer = AsyncMock()
+        mock_analyzer.analyze_images.return_value = ["line1", "line2"]
+
+        result = asyncio.run(extract_text_with_vision(img_path, mock_analyzer))
+
+        assert len(result.regions) == 1
+        # Non-string gets str() conversion
+        assert "line1" in result.regions[0].text
+
+
+class TestExtractTextFromSceneVision:
+    """Tests for extract_text_from_scene with vision_analyzer parameter."""
+
+    def test_signature_accepts_vision_analyzer(self):
+        """extract_text_from_scene should accept vision_analyzer kwarg."""
+        import inspect
+
+        from claudetube.analysis.ocr import extract_text_from_scene
+
+        sig = inspect.signature(extract_text_from_scene)
+        assert "vision_analyzer" in sig.parameters
+        # Default should be None
+        assert sig.parameters["vision_analyzer"].default is None
+
+    def test_exports_extract_text_with_vision(self):
+        """extract_text_with_vision should be exported from analysis package."""
+        from claudetube.analysis import extract_text_with_vision
+
+        assert callable(extract_text_with_vision)
