@@ -73,3 +73,103 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 - 2026-02-01 19:47 | claudetube-wnb.4 [P2] | Add AD MCP Tools
 - 2026-02-01 20:03 | claudetube-bdj [P3] | Add /yt:watch command for active viewing
 - 2026-02-01 20:19 | claudetube-i4c [P3] | Wire attention priority modeling into ActiveVideoWatcher
+- 2026-02-01 21:39 | claudetube-mc7 [P2] | Fix 7 failing config loader tests
+- 2026-02-01 21:44 | claudetube-05a [P3] | Add example YAML provider config files
+- 2026-02-01 21:48 | claudetube-cmg [P2] | Add LiteLLM integration for generic reasoning
+- 2026-02-01 21:57 | claudetube-0sn [P2] | Add structured output schemas (providers/schemas.py)
+- 2026-02-01 22:07 | claudetube-txy [P2] | Implement capability-driven entity extraction (PRD Phase 8)
+- 2026-02-01 22:16 | claudetube-chb [P3] | Add CLI validate-config command
+- 2026-02-01 22:21 | claudetube-dbc [P3] | Add cost-based routing to ProviderRouter
+- 2026-02-01 22:29 | claudetube-8ju [P3] | Add VideoAnalyzer support to EntityExtractionOperation
+- 2026-02-01 22:37 | claudetube-afx [P3] | Add Ollama server health check to is_available()
+- 2026-02-01 22:41 | claudetube-gx1 [P3] | Add embedder-based semantic query for search
+- 2026-02-01 23:08 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:08 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:08 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:09 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:09 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:09 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:09 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:09 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:09 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:09 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:10 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:10 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:10 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:10 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:10 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:10 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:11 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:11 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:11 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:11 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:11 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:11 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:12 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:12 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:12 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:12 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:12 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:12 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:12 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:13 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:13 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:13 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:13 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:13 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:13 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:14 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:14 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:14 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:14 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:14 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:14 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:15 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:15 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:15 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:15 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:15 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:15 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:16 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:16 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:16 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:16 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:16 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:16 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:17 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:17 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:17 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:17 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:17 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:17 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:18 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:18 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:18 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:18 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:18 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:18 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:19 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:19 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:19 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:19 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:19 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:19 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:20 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:20 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:20 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:20 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:20 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:20 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:20 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:21 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:21 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:21 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:21 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:21 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:21 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:22 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:22 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:22 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:22 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:22 | claudetube-9lb [P4] | Add streaming transcription support
+- 2026-02-01 23:22 | claudetube-9lb [P4] | Add streaming transcription support
