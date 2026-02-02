@@ -19,6 +19,9 @@ import base64
 import json
 import logging
 import os
+import time
+import urllib.error
+import urllib.request
 from typing import TYPE_CHECKING, Any
 
 from claudetube.providers.base import Provider, Reasoner, VisionAnalyzer
@@ -28,6 +31,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# How long to cache the server health check result (seconds)
+_HEALTH_CACHE_TTL = 30
 
 # Default models for vision and reasoning tasks
 DEFAULT_VISION_MODEL = "llava:13b"
@@ -92,26 +98,54 @@ class OllamaProvider(Provider, VisionAnalyzer, Reasoner):
         self._reason_model = reason_model
         self._host = host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
         self._client: Any = None
+        self._health_cache: tuple[float, bool] | None = None  # (timestamp, result)
 
     @property
     def info(self) -> ProviderInfo:
         return PROVIDER_INFO["ollama"]
 
     def is_available(self) -> bool:
-        """Check if the Ollama SDK is installed and server may be reachable.
+        """Check if the Ollama SDK is installed and server is reachable.
 
-        Does a quick sync check: verifies the ollama package is importable
-        and that the host is configured (via constructor, env var, or default).
-        Does NOT actually ping the server to keep this fast and synchronous.
+        Verifies the ollama package is importable, then pings the server's
+        ``/api/tags`` endpoint. The result is cached for ``_HEALTH_CACHE_TTL``
+        seconds to avoid repeated network calls.
+
+        Returns:
+            True if SDK is installed and server responds, False otherwise.
         """
         try:
             import ollama  # noqa: F401
         except ImportError:
             return False
-        # SDK is installed and we have a host configured (always true since
-        # we default to localhost:11434). Return True to indicate the provider
-        # is potentially available.
-        return True
+
+        # Return cached result if still fresh
+        now = time.monotonic()
+        if self._health_cache is not None:
+            cached_time, cached_result = self._health_cache
+            if now - cached_time < _HEALTH_CACHE_TTL:
+                return cached_result
+
+        # Ping the Ollama server
+        result = self._ping_server()
+        self._health_cache = (now, result)
+        return result
+
+    def _ping_server(self) -> bool:
+        """Ping the Ollama server to check if it's running.
+
+        Makes a GET request to ``/api/tags`` with a short timeout.
+
+        Returns:
+            True if the server responds with HTTP 200, False otherwise.
+        """
+        url = f"{self._host.rstrip('/')}/api/tags"
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                return resp.status == 200
+        except (urllib.error.URLError, OSError, ValueError):
+            return False
 
     def _get_client(self) -> Any:
         """Lazy-load the async Ollama client."""

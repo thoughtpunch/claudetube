@@ -101,15 +101,99 @@ class TestInfoAndCapabilities:
 class TestIsAvailable:
     """Tests for is_available() behavior."""
 
-    def test_available_with_sdk(self):
+    def test_available_when_sdk_and_server_up(self):
         with patch.dict("sys.modules", {"ollama": MagicMock()}):
             provider = OllamaProvider()
-            assert provider.is_available() is True
+            with patch.object(provider, "_ping_server", return_value=True):
+                assert provider.is_available() is True
 
     def test_not_available_without_sdk(self):
         with patch.dict("sys.modules", {"ollama": None}):
             provider = OllamaProvider()
             assert provider.is_available() is False
+
+    def test_not_available_when_server_down(self):
+        with patch.dict("sys.modules", {"ollama": MagicMock()}):
+            provider = OllamaProvider()
+            with patch.object(provider, "_ping_server", return_value=False):
+                assert provider.is_available() is False
+
+    def test_caches_health_check_result(self):
+        with patch.dict("sys.modules", {"ollama": MagicMock()}):
+            provider = OllamaProvider()
+            with patch.object(provider, "_ping_server", return_value=True) as mock_ping:
+                assert provider.is_available() is True
+                assert provider.is_available() is True
+                # Should only ping once due to caching
+                mock_ping.assert_called_once()
+
+    def test_cache_expires(self):
+        with patch.dict("sys.modules", {"ollama": MagicMock()}):
+            provider = OllamaProvider()
+            call_count = 0
+
+            def counting_ping():
+                nonlocal call_count
+                call_count += 1
+                return True
+
+            monotonic_values = iter([0.0, 10.0, 50.0])
+
+            with (
+                patch.object(provider, "_ping_server", side_effect=counting_ping),
+                patch("claudetube.providers.ollama.client.time.monotonic", side_effect=monotonic_values),
+            ):
+                provider.is_available()  # now=0.0, no cache → ping
+                assert call_count == 1
+                provider.is_available()  # now=10.0, 10-0=10 < 30 → cached
+                assert call_count == 1
+                provider.is_available()  # now=50.0, 50-0=50 >= 30 → ping again
+                assert call_count == 2
+
+
+class TestPingServer:
+    """Tests for _ping_server() HTTP health check."""
+
+    def test_returns_true_on_200(self):
+        provider = OllamaProvider()
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("claudetube.providers.ollama.client.urllib.request.urlopen", return_value=mock_resp):
+            assert provider._ping_server() is True
+
+    def test_returns_false_on_connection_error(self):
+        import urllib.error
+
+        provider = OllamaProvider()
+        with patch(
+            "claudetube.providers.ollama.client.urllib.request.urlopen",
+            side_effect=urllib.error.URLError("Connection refused"),
+        ):
+            assert provider._ping_server() is False
+
+    def test_returns_false_on_timeout(self):
+        provider = OllamaProvider()
+        with patch(
+            "claudetube.providers.ollama.client.urllib.request.urlopen",
+            side_effect=OSError("timed out"),
+        ):
+            assert provider._ping_server() is False
+
+    def test_uses_configured_host(self):
+        provider = OllamaProvider(host="http://myserver:9999")
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("claudetube.providers.ollama.client.urllib.request.urlopen", return_value=mock_resp) as mock_open:
+            provider._ping_server()
+            # Verify the URL includes the custom host
+            req = mock_open.call_args[0][0]
+            assert req.full_url == "http://myserver:9999/api/tags"
 
 
 class TestProtocolCompliance:
