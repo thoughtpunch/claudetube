@@ -17,7 +17,7 @@ VIDEO_PROVIDERS: list[dict] = [
             "www.youtube.com",
             "music.youtube.com",
         ],
-        "pattern": r"(?:youtube\.com/(?:watch\?v=|embed/|v/|shorts/|live/)|youtu\.be/)(?P<video_id>[a-zA-Z0-9_-]{11})",
+        "pattern": r"(?:youtube\.com/(?:watch\?v=|embed/|v/|shorts/|live/)|youtu\.be/)(?P<video_id>[a-zA-Z0-9_-]{11})(?:.*?[?&]list=(?P<playlist>[a-zA-Z0-9_-]+))?",
     },
     {
         "rank": 2,
@@ -35,7 +35,7 @@ VIDEO_PROVIDERS: list[dict] = [
         "rank": 4,
         "name": "TikTok",
         "domains": ["tiktok.com", "www.tiktok.com", "vm.tiktok.com"],
-        "pattern": r"tiktok\.com/(?:@[\w.-]+/video/(?P<video_id>\d+)|t/(?P<short_id>[A-Za-z0-9]+))",
+        "pattern": r"tiktok\.com/(?:@(?P<channel>[\w.-]+)/video/(?P<video_id>\d+)|t/(?P<short_id>[A-Za-z0-9]+))",
     },
     {
         "rank": 5,
@@ -53,7 +53,7 @@ VIDEO_PROVIDERS: list[dict] = [
         "rank": 7,
         "name": "Vimeo",
         "domains": ["vimeo.com", "player.vimeo.com"],
-        "pattern": r"(?:vimeo\.com/(?:video/)?(?P<video_id>\d+)(?:/(?P<hash>[a-f0-9]+))?|vimeo\.com/(?:channels|groups)/[\w-]+/(?:videos/)?(?P<channel_video_id>\d+)|player\.vimeo\.com/video/(?P<player_video_id>\d+))",
+        "pattern": r"(?:vimeo\.com/(?:video/)?(?P<video_id>\d+)(?:/(?P<hash>[a-f0-9]+))?|vimeo\.com/(?:channels|groups)/(?P<channel>[\w-]+)/(?:videos/)?(?P<channel_video_id>\d+)|player\.vimeo\.com/video/(?P<player_video_id>\d+))",
     },
     {
         "rank": 8,
@@ -71,7 +71,7 @@ VIDEO_PROVIDERS: list[dict] = [
             "www.x.com",
             "mobile.twitter.com",
         ],
-        "pattern": r"(?:twitter|x)\.com/[^/]+/status/(?P<video_id>\d+)",
+        "pattern": r"(?:twitter|x)\.com/(?P<channel>[^/]+)/status/(?P<video_id>\d+)",
     },
     {
         "rank": 10,
@@ -113,7 +113,7 @@ VIDEO_PROVIDERS: list[dict] = [
         "rank": 16,
         "name": "Reddit",
         "domains": ["reddit.com", "www.reddit.com", "old.reddit.com", "v.redd.it"],
-        "pattern": r"(?:reddit\.com/r/[^/]+/comments/(?P<video_id>[a-z0-9]+)|v\.redd\.it/(?P<vredd_id>[a-z0-9]+))",
+        "pattern": r"(?:reddit\.com/r/(?P<channel>[^/]+)/comments/(?P<video_id>[a-z0-9]+)|v\.redd\.it/(?P<vredd_id>[a-z0-9]+))",
     },
     {
         "rank": 17,

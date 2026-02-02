@@ -45,6 +45,29 @@ class TestVideoURL:
     def test_youtube_with_extra_params(self):
         v = VideoURL.parse("https://youtube.com/watch?v=dQw4w9WgXcQ&t=120&list=PLxyz")
         assert v.video_id == "dQw4w9WgXcQ"
+        assert v.provider_data.get("playlist") == "PLxyz"
+
+    def test_youtube_watch_with_playlist(self):
+        v = VideoURL.parse("https://youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf")
+        assert v.video_id == "dQw4w9WgXcQ"
+        assert v.provider == "YouTube"
+        assert v.provider_data.get("playlist") == "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"
+
+    def test_youtube_shorturl_with_playlist(self):
+        v = VideoURL.parse("https://youtu.be/dQw4w9WgXcQ?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf")
+        assert v.video_id == "dQw4w9WgXcQ"
+        assert v.provider == "YouTube"
+        assert v.provider_data.get("playlist") == "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"
+
+    def test_youtube_without_playlist(self):
+        v = VideoURL.parse("https://youtube.com/watch?v=dQw4w9WgXcQ")
+        assert v.video_id == "dQw4w9WgXcQ"
+        assert v.provider_data.get("playlist") is None
+
+    def test_youtube_playlist_with_multiple_params(self):
+        v = VideoURL.parse("https://youtube.com/watch?v=dQw4w9WgXcQ&t=30&list=PLtest123&index=5")
+        assert v.video_id == "dQw4w9WgXcQ"
+        assert v.provider_data.get("playlist") == "PLtest123"
 
     # TikTok tests
     def test_tiktok_video_url(self):
@@ -111,6 +134,42 @@ class TestVideoURL:
         assert v.video_id == "video-title"
         assert v.provider == "Odysee"
         assert v.provider_data.get("channel") == "channel"
+
+    # Channel/playlist capture tests
+    def test_tiktok_captures_channel(self):
+        v = VideoURL.parse("https://www.tiktok.com/@celiatoks/video/7454538602173697313")
+        assert v.video_id == "7454538602173697313"
+        assert v.provider_data.get("channel") == "celiatoks"
+
+    def test_twitter_captures_channel(self):
+        v = VideoURL.parse("https://twitter.com/elonmusk/status/1855025943389229210")
+        assert v.video_id == "1855025943389229210"
+        assert v.provider_data.get("channel") == "elonmusk"
+
+    def test_x_captures_channel(self):
+        v = VideoURL.parse("https://x.com/elonmusk/status/1855025943389229210")
+        assert v.video_id == "1855025943389229210"
+        assert v.provider_data.get("channel") == "elonmusk"
+
+    def test_twitch_clip_captures_channel(self):
+        v = VideoURL.parse("https://www.twitch.tv/shroud/clip/AmusedStrongSnood-g5jFT33X")
+        assert v.video_id == "AmusedStrongSnood-g5jFT33X"
+        assert v.provider_data.get("channel") == "shroud"
+
+    def test_reddit_captures_subreddit_as_channel(self):
+        v = VideoURL.parse("https://www.reddit.com/r/funny/comments/1bnkjoh/title/")
+        assert v.video_id == "1bnkjoh"
+        assert v.provider_data.get("channel") == "funny"
+
+    def test_vimeo_channel_url_captures_channel(self):
+        v = VideoURL.parse("https://vimeo.com/channels/staffpicks/videos/347119375")
+        assert v.video_id == "347119375"
+        assert v.provider_data.get("channel") == "staffpicks"
+
+    def test_kick_captures_channel(self):
+        v = VideoURL.parse("https://kick.com/xqc/clips/abc123")
+        assert v.video_id == "abc123"
+        assert v.provider_data.get("channel") == "xqc"
 
     # BitChute tests
     def test_bitchute_url(self):
