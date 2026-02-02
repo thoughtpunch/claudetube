@@ -192,10 +192,13 @@ If you previously used bare env vars, they still work as fallbacks:
 | assemblyai     |     ✓      |        |       |        |       | $     |
 | claude-code    |            |   ✓    |       |   ✓    |       | Free* |
 | ollama         |            |   ✓    |       |   ✓    |       | Free  |
+| litellm        |     ✓      |   ✓    |       |   ✓    |   ✓   | Varies|
 | voyage         |            |        |       |        |   ✓   | $     |
 | local-embedder |            |        |       |        |   ✓   | Free  |
 
 \* Included with Claude Code subscription.
+
+**litellm** is a unified interface that routes to 100+ LLM providers (Azure, Bedrock, Vertex, etc.) using a single API. Capabilities depend on the underlying model.
 
 ### Validation
 

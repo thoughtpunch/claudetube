@@ -15,7 +15,7 @@ result = process_video("https://youtube.com/watch?v=dQw4w9WgXcQ")
 if result.success:
     print(f"Title: {result.metadata['title']}")
     print(f"Duration: {result.metadata['duration']}s")
-    print(f"Transcript: {result.transcript_txt}")
+    print(f"Transcript: {result.transcript_txt.read_text()[:200]}")
 else:
     print(f"Error: {result.error}")
 ```
@@ -23,11 +23,9 @@ else:
 ### Read the Transcript
 
 ```python
-# Plain text
-print(result.transcript_text[:500])
-
-# Or read from file
+# Read from file
 transcript = result.transcript_txt.read_text()
+print(transcript[:500])
 ```
 
 ### Extract Frames

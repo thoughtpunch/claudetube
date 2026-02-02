@@ -63,17 +63,18 @@ Uses PySceneDetect or similar tools.
 ```python
 @dataclass
 class SceneBoundary:
-    start_time: float      # 120.5
-    end_time: float        # 245.0
-    method: str            # "chapters" | "transcript" | "visual"
-    confidence: float      # 0.0-1.0
+    scene_id: int                             # 0-based index
+    start_time: float                         # 120.5 (seconds)
+    end_time: float                           # 245.0 (seconds)
+    title: str | None = None                  # Scene title/description
+    transcript: list[dict] = []               # Segments with timestamps
+    transcript_text: str = ""                 # Joined transcript text
 
 @dataclass
 class ScenesData:
     video_id: str
-    boundaries: list[SceneBoundary]
-    generated_at: str      # ISO timestamp
-    source: str            # "chapters" | "auto"
+    method: str                               # "transcript", "visual", or "hybrid"
+    scenes: list[SceneBoundary] = []
 ```
 
 ## Cache Structure
@@ -81,11 +82,12 @@ class ScenesData:
 ```
 ~/.claude/video_cache/{video_id}/
 ├── scenes/
-│   ├── scenes.json           # Scene boundaries
+│   ├── scenes.json           # Scene boundaries + metadata
 │   ├── scene_000/            # First scene
-│   │   ├── keyframe.jpg      # Representative frame
-│   │   ├── transcript.txt    # Scene transcript chunk
-│   │   └── visual.json       # Visual description (optional)
+│   │   ├── keyframes/        # Representative frames
+│   │   ├── visual.json       # Visual description
+│   │   ├── technical.json    # OCR, code detection
+│   │   └── entities.json     # Extracted entities
 │   ├── scene_001/
 │   │   └── ...
 │   └── scene_002/
@@ -97,19 +99,28 @@ class ScenesData:
 ### Get Scenes
 
 ```python
-from claudetube.cache import get_scenes
+from claudetube.cache.scenes import load_scenes_data
 
-scenes = get_scenes(cache_dir, video_id)
-if scenes:
-    for i, boundary in enumerate(scenes.boundaries):
-        print(f"Scene {i}: {boundary.start_time}s - {boundary.end_time}s")
+scenes_data = load_scenes_data(cache_dir)
+if scenes_data:
+    for scene in scenes_data.scenes:
+        print(f"Scene {scene.scene_id}: {scene.start_time}s - {scene.end_time}s")
+        if scene.title:
+            print(f"  Title: {scene.title}")
 ```
 
-### MCP (Planned)
+### MCP
 
 ```
-/yt:scenes video_id
-# Returns list of scenes with timestamps and titles
+get_scenes(video_id, enrich=False)
+# Returns list of scenes with timestamps, transcripts, and visual descriptions
+```
+
+### Slash Command
+
+```
+/yt:scenes <video_id>
+# Returns scene structure with timestamps and titles
 ```
 
 ## Scene-Aware Workflows
@@ -136,12 +147,15 @@ User: "Skip to the part about authentication"
 
 ## Status
 
-Scenes are **partially implemented**:
+Scenes are **implemented**:
 - [x] YouTube chapters extraction
 - [x] Cache structure for scenes
-- [ ] Transcript-based boundary detection
-- [ ] Visual scene detection
-- [ ] /yt:scenes MCP command
+- [x] Transcript-based boundary detection (smart segmentation)
+- [x] Visual scene change detection
+- [x] `get_scenes` MCP tool
+- [x] `/yt:scenes` slash command
+- [x] Visual transcript generation per scene
+- [x] Entity extraction per scene
 
 See the [Roadmap](../vision/roadmap.md) for progress.
 

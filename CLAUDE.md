@@ -66,55 +66,240 @@ Use claudetube when a user shares a video URL and wants you to:
 - Analyze code, diagrams, or text shown in the video (use HQ frames)
 - Get timestamps for specific moments
 
-## MCP Tools Available
+## MCP Tools Available (30 tools)
 
-### `process_video_tool`
+### Core Processing
+
+#### `process_video_tool`
 Downloads and transcribes a video. Returns metadata, transcript, and file paths.
-
 ```
-url: Video URL from any supported site
+url: Video URL, video ID, or local file path
 whisper_model: tiny (default), base, small, medium, large
+copy: For local files - copy instead of symlink (default: false)
 ```
 
-### `get_frames`
-Extract frames at a specific timestamp (480p, fast).
-
-```
-video_id_or_url: Video ID or URL
-start_time: Seconds from start
-duration: How many seconds to capture (default: 5)
-interval: Seconds between frames (default: 1)
-```
-
-### `get_hq_frames`
-Extract HIGH QUALITY frames (1280p) for reading text, code, or diagrams.
-
+#### `get_frames`
+Extract frames at a specific timestamp.
 ```
 video_id_or_url: Video ID or URL
 start_time: Seconds from start
 duration: How many seconds to capture (default: 5)
 interval: Seconds between frames (default: 1)
+quality: Quality tier - lowest/low/medium/high/highest (default: lowest)
 ```
 
-### `transcribe_video`
-Transcribe a video's audio using Whisper. Returns cached transcript instantly if available, otherwise runs Whisper. Use `force=True` to re-transcribe with a different model.
+#### `get_hq_frames`
+Extract HIGH QUALITY frames (1280px) for reading text, code, or diagrams.
+```
+video_id_or_url: Video ID or URL
+start_time: Seconds from start
+duration: How many seconds to capture (default: 5)
+interval: Seconds between frames (default: 1)
+width: Frame width in pixels (default: 1280)
+```
 
+#### `transcribe_video`
+Transcribe a video's audio. Returns cached transcript instantly if available.
 ```
 video_id_or_url: Video ID or URL
 whisper_model: small (default), tiny, base, medium, large
 force: Re-transcribe even if cached (default: false)
+provider: Override transcription provider (default: configured preference)
 ```
 
-### `get_transcript`
+#### `get_transcript`
 Get full transcript for a cached video (no 50k char limit).
-
 ```
 video_id: Video ID
 format: "txt" (plain) or "srt" (with timestamps)
 ```
 
-### `list_cached_videos`
+#### `list_cached_videos`
 List all videos that have been processed and cached.
+
+### Scenes & Analysis
+
+#### `get_scenes`
+Get scene structure of a processed video. Uses cached scenes or runs smart segmentation.
+```
+video_id: Video ID
+force: Re-run segmentation even if cached (default: false)
+enrich: Generate visual descriptions for each scene (default: false, expensive)
+```
+
+#### `generate_visual_transcripts`
+Generate visual descriptions for video scenes using vision AI.
+```
+video_id: Video ID
+scene_id: Specific scene ID, or None for all scenes
+force: Re-generate even if cached (default: false)
+provider: Override vision provider
+```
+
+#### `extract_entities_tool`
+Extract entities (objects, people, text, concepts) from video scenes.
+```
+video_id: Video ID
+scene_id: Specific scene ID, or None for all scenes
+force: Re-extract even if cached (default: false)
+generate_visual: Generate visual.json from entities (default: true)
+provider: Override AI provider
+```
+
+#### `analyze_deep_tool`
+Deep analysis with OCR, entity extraction, and code detection.
+```
+video_id: Video ID
+force: Re-run analysis even if cached (default: false)
+```
+
+#### `analyze_focus_tool`
+Exhaustive frame-by-frame analysis of a specific video section.
+```
+video_id: Video ID
+start_time: Start time in seconds
+end_time: End time in seconds
+force: Re-run analysis even if cached (default: false)
+```
+
+#### `get_analysis_status_tool`
+Get current analysis status for a video (what's cached for each scene).
+```
+video_id: Video ID
+```
+
+### People & Objects
+
+#### `track_people_tool`
+Track people across scenes in a video.
+```
+video_id: Video ID
+force: Re-generate even if cached (default: false)
+use_face_recognition: Use face_recognition library for accuracy (default: false)
+provider: Override vision/video provider
+```
+
+### Search
+
+#### `find_moments_tool`
+Find moments in a video matching a natural language query.
+```
+video_id: Video ID
+query: Natural language query (e.g., "when they discuss authentication")
+top_k: Maximum results (default: 5)
+semantic_weight: Weight for semantic vs text matching, 0.0-1.0 (default: 0.5)
+```
+
+### Watch
+
+#### `watch_video_tool`
+Actively watch and reason about a video to answer a question. Most thorough analysis mode.
+```
+video_id: Video ID
+question: Natural language question about the video
+max_iterations: Maximum scene examinations (default: 15)
+```
+
+### Playlists
+
+#### `get_playlist`
+Extract metadata from a playlist URL (title, videos, structure).
+```
+playlist_url: URL to a playlist
+```
+
+#### `list_playlists`
+List all cached playlists with IDs, titles, and types.
+
+### Audio Description (Accessibility)
+
+#### `get_descriptions`
+Get visual descriptions for accessibility. Follows Cheap First, Expensive Last.
+```
+video_id_or_url: Video ID or URL
+format: "vtt" (WebVTT) or "txt" (plain text)
+regenerate: Re-generate even if cached (default: false)
+```
+
+#### `describe_moment`
+Describe visual content at a specific moment for accessibility.
+```
+video_id_or_url: Video ID or URL
+timestamp: Time in seconds to describe
+context: Optional context about what the viewer is interested in
+```
+
+#### `get_accessible_transcript`
+Get merged transcript with audio descriptions interspersed ([AD] tags).
+```
+video_id_or_url: Video ID or URL
+format: "txt" (plain text) or "srt" (subtitles)
+```
+
+#### `has_audio_description`
+Check if a video has audio description content available.
+```
+video_id_or_url: Video ID or URL
+```
+
+### Knowledge Graph
+
+#### `find_related_videos_tool`
+Find videos related to a topic across all cached videos.
+```
+query: Search query (e.g., "python", "machine learning")
+```
+
+#### `index_video_to_graph_tool`
+Index a video's entities and concepts into the cross-video knowledge graph.
+```
+video_id: Video ID
+force: Re-index even if already present (default: false)
+```
+
+#### `get_video_connections_tool`
+Get videos connected to a specific video by shared entities/concepts.
+```
+video_id: Video ID
+```
+
+#### `get_knowledge_graph_stats_tool`
+Get statistics about the cross-video knowledge graph.
+
+### Enrichment (Progressive Learning)
+
+#### `record_qa_tool`
+Record a Q&A interaction for progressive learning.
+```
+video_id: Video ID
+question: The question that was asked
+answer: The answer that was given
+```
+
+#### `search_qa_history_tool`
+Search for previously answered questions about a video.
+```
+video_id: Video ID
+query: The question to search for
+```
+
+#### `get_scene_context_tool`
+Get all learned context for a specific scene.
+```
+video_id: Video ID
+scene_id: Scene index (0-based)
+```
+
+#### `get_enrichment_stats_tool`
+Get statistics about cache enrichment for a video.
+```
+video_id: Video ID
+```
+
+### Providers
+
+#### `list_providers_tool`
+List available AI providers and their capabilities.
 
 ## Workflow Tips
 
@@ -146,7 +331,16 @@ Structure:
     ├── audio.txt      # Plain text transcript
     ├── thumbnail.jpg  # Video thumbnail
     ├── drill/         # Quick frames (480p)
-    └── hq/            # High-quality frames (1280p)
+    ├── hq/            # High-quality frames (1280p)
+    ├── scenes/        # Scene segmentation
+    │   ├── scenes.json
+    │   └── scene_NNN/ # Per-scene data
+    │       ├── keyframes/
+    │       ├── visual.json
+    │       ├── technical.json
+    │       └── entities.json
+    ├── entities/      # People tracking, knowledge graph
+    └── enrichment/    # Q&A history, observations
 ```
 
 ## AI Provider System
@@ -166,7 +360,7 @@ Without any configuration, claudetube uses free/local providers:
 
 ### Provider Architecture
 
-- **Protocols** (`providers/base.py`): `Transcriber`, `VisionAnalyzer`, `VideoAnalyzer`, `Reasoner`, `Embedder`
+- **Protocols** (`providers/base.py`): `Transcriber`, `StreamingTranscriber`, `VisionAnalyzer`, `VideoAnalyzer`, `Reasoner`, `Embedder`
 - **Router** (`providers/router.py`): Selects provider based on config, handles fallbacks
 - **Registry** (`providers/registry.py`): Lazy-loads provider modules
 - **Config** (`providers/config.py`): YAML-based configuration with env var interpolation

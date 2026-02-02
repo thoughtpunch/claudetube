@@ -98,16 +98,19 @@ Claude will:
 | `/yt:hq <id> <timestamp>` | HQ frames (code, text, diagrams) |
 | `/yt:transcribe <id> [model]` | Transcribe with Whisper (or return cached) |
 | `/yt:transcript <id>` | Read cached transcript |
+| `/yt:scenes <id>` | Get scene structure and boundaries |
+| `/yt:find <id> <query>` | Find moments matching a query |
+| `/yt:watch <id> <question>` | Actively watch and reason about a video |
 | `/yt:list` | List all cached videos |
 
 ## Python API
 
 ```python
-from claudetube import process_video, transcribe_video, get_frames_at
+from claudetube import process_video, transcribe_video, get_frames_at, get_hq_frames_at
 
-# Transcribe a video
+# Process a video (downloads, transcribes, caches)
 result = process_video("https://youtube.com/watch?v=VIDEO_ID")
-print(result.transcript_srt.read_text())
+print(result.transcript_txt.read_text())
 
 # Standalone Whisper transcription (cache-first, no full processing)
 result = transcribe_video("VIDEO_ID", whisper_model="small")
@@ -115,6 +118,9 @@ print(result["source"])  # "cached" or "whisper"
 
 # Extract frames at a specific timestamp
 frames = get_frames_at("VIDEO_ID", start_time=120, duration=10)
+
+# Extract HQ frames for reading code/text
+hq_frames = get_hq_frames_at("VIDEO_ID", start_time=120, duration=5)
 ```
 
 ## How It Works
@@ -133,8 +139,13 @@ frames = get_frames_at("VIDEO_ID", start_time=120, duration=10)
     ├── audio.mp3      # Extracted audio
     ├── audio.srt      # Timestamped transcript
     ├── audio.txt      # Plain text transcript
+    ├── thumbnail.jpg  # Video thumbnail
     ├── drill/         # Quick frames (480p)
-    └── hq/            # High-quality frames (1280p)
+    ├── hq/            # High-quality frames (1280p)
+    ├── scenes/        # Scene segmentation data
+    │   ├── scenes.json
+    │   └── scene_NNN/ # Per-scene keyframes, visual.json, entities.json
+    └── entities/      # People tracking, knowledge graph data
 ```
 
 ### Configuration
@@ -157,7 +168,7 @@ See [Configuration Guide](documentation/guides/configuration.md) for details.
 
 ## Architecture
 
-claudetube uses a **provider-based architecture**. Video downloading is handled through `yt-dlp`, which currently supports YouTube and [1000+ other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). The transcription and frame extraction pipeline is provider-agnostic -- it works with any video source that yt-dlp supports, and the architecture is designed to accommodate additional providers in the future.
+claudetube uses a **provider-based architecture** with a modular design. Video downloading is handled through `yt-dlp` (1,500+ sites), while AI capabilities (transcription, vision analysis, reasoning, embeddings) are served by a configurable provider system supporting 11 providers (OpenAI, Anthropic, Google, Deepgram, AssemblyAI, Ollama, Voyage, and more). The MCP server exposes 30 tools for video processing, scene analysis, entity extraction, knowledge graphs, and accessibility features. See [Architecture](documentation/architecture.md) for details.
 
 ## Development
 
@@ -174,6 +185,7 @@ pytest
 ```bash
 ruff check src/ tests/
 ruff format src/ tests/
+mypy src/
 ```
 
 ## Documentation
@@ -182,7 +194,7 @@ Full documentation is available in the [documentation/](documentation/) folder:
 
 - **[Getting Started](documentation/getting-started/)** - Installation, quick start, MCP setup
 - **[Core Concepts](documentation/concepts/)** - Video understanding, transcripts, frames, scenes
-- **[Architecture](documentation/architecture/)** - Modules, data flow, tool wrappers
+- **[Architecture](documentation/architecture.md)** - Modules, data flow, tool wrappers
 - **[Vision](documentation/vision/)** - The problem space, roadmap, what makes claudetube different
 
 ## Contributing

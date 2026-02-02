@@ -17,30 +17,22 @@
 - [Scenes](concepts/scenes.md) - Semantic segmentation
 
 ### Architecture
+- [**Overview**](architecture.md) - Codebase structure, data flow, cache layout
 - [**Principles**](architecture/principles.md) - **Cheap first, expensive last** (start here)
-- [Module Overview](architecture/modules.md) - Code organization
-- [Data Flow](architecture/data-flow.md) - How data moves through the system
-- [Cache Structure](architecture/cache.md) - What gets stored and why
-- [Tool Wrappers](architecture/tools.md) - yt-dlp, ffmpeg, whisper
-
-### API Reference
-- [Core API](api/core.md) - Main functions
-- [Models](api/models.md) - Data structures
-- [Operations](api/operations.md) - High-level operations
-- [Exceptions](api/exceptions.md) - Error handling
 
 ### Guides
-- [**Configuration**](guides/configuration.md) - **Cache directory and settings**
+- [**Configuration**](guides/configuration.md) - **Cache directory, providers, and settings**
 - [**Tool Reference**](guides/tool-reference.md) - **MCP tools, CLI commands, slash commands**
-- [Processing YouTube Videos](guides/youtube.md) - YouTube-specific features
-- [Processing Local Files](guides/local-files.md) - Screen recordings, downloads
-- [Extracting Frames](guides/frames.md) - Visual analysis
-- [Searching Video Content](guides/search.md) - Finding moments
 
 ### Vision
 - [The Problem Space](vision/problem-space.md) - Why video understanding matters
 - [Beyond Transcripts](vision/beyond-transcripts.md) - What makes claudetube different
 - [Roadmap](vision/roadmap.md) - Where we're going
+
+### PRDs
+- [Audio Description Tracks](prds/audio-description-tracks.md) - Accessibility feature design
+- [Configurable AI Providers](prds/configurable-ai-providers.md) - Provider system design
+- [Provider Epics](prds/configurable-ai-providers-epics.md) - Implementation epics
 
 ---
 

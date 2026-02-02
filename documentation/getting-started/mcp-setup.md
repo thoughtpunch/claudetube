@@ -69,16 +69,77 @@ Edit your config file:
 
 Replace `/Users/YOU` with your actual home directory path.
 
-## Available MCP Tools
+## Available MCP Tools (30 tools)
+
+### Core Processing
 
 | Tool | Description |
 |------|-------------|
-| `process_video` | Download, transcribe, cache a video. Returns metadata + transcript. |
+| `process_video_tool` | Download, transcribe, cache a video. Returns metadata + transcript. |
 | `get_frames` | Extract frames at a specific time range (480px default). |
 | `get_hq_frames` | Extract high-quality frames (1280px) for code/text. |
-| `transcribe_video` | Transcribe/re-transcribe with specific Whisper model. |
+| `transcribe_video` | Transcribe/re-transcribe with specific Whisper model or provider. |
 | `get_transcript` | Get full transcript (no 50k char cap). |
 | `list_cached_videos` | List all processed videos in cache. |
+
+### Scenes & Analysis
+
+| Tool | Description |
+|------|-------------|
+| `get_scenes` | Get scene structure with timestamps and transcripts. |
+| `generate_visual_transcripts` | Generate visual descriptions for scenes using vision AI. |
+| `extract_entities_tool` | Extract entities (objects, people, text, concepts) from scenes. |
+| `analyze_deep_tool` | Deep analysis with OCR, entities, and code detection. |
+| `analyze_focus_tool` | Exhaustive frame-by-frame analysis of a time range. |
+| `get_analysis_status_tool` | Check what analysis is cached for each scene. |
+
+### People & Search
+
+| Tool | Description |
+|------|-------------|
+| `track_people_tool` | Track people across scenes with optional face recognition. |
+| `find_moments_tool` | Find moments matching a natural language query. |
+| `watch_video_tool` | Actively watch and reason about a video to answer questions. |
+
+### Playlists
+
+| Tool | Description |
+|------|-------------|
+| `get_playlist` | Extract metadata from a playlist URL. |
+| `list_playlists` | List all cached playlists. |
+
+### Audio Description (Accessibility)
+
+| Tool | Description |
+|------|-------------|
+| `get_descriptions` | Get visual descriptions for accessibility. |
+| `describe_moment` | Describe visual content at a specific timestamp. |
+| `get_accessible_transcript` | Get merged transcript with [AD] audio descriptions. |
+| `has_audio_description` | Check if audio description content is available. |
+
+### Knowledge Graph
+
+| Tool | Description |
+|------|-------------|
+| `find_related_videos_tool` | Find videos related to a topic across all cached videos. |
+| `index_video_to_graph_tool` | Index a video's entities into the knowledge graph. |
+| `get_video_connections_tool` | Get videos connected by shared entities/concepts. |
+| `get_knowledge_graph_stats_tool` | Get knowledge graph statistics. |
+
+### Enrichment (Progressive Learning)
+
+| Tool | Description |
+|------|-------------|
+| `record_qa_tool` | Record a Q&A interaction for future reference. |
+| `search_qa_history_tool` | Search previously answered questions. |
+| `get_scene_context_tool` | Get all learned context for a scene. |
+| `get_enrichment_stats_tool` | Get cache enrichment statistics. |
+
+### Providers
+
+| Tool | Description |
+|------|-------------|
+| `list_providers_tool` | List available AI providers and capabilities. |
 
 ## Usage Examples
 
