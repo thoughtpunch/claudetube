@@ -1794,6 +1794,290 @@ async def list_providers_tool() -> str:
     )
 
 
+@mcp.tool()
+async def detect_narrative_structure_tool(
+    video_id: str,
+    force: bool = False,
+) -> str:
+    """Detect narrative structure of a video.
+
+    Identifies sections (introduction, main content, conclusion, transitions)
+    using scene clustering and classifies the video type (coding_tutorial,
+    lecture, demo, etc.). Results are cached in structure/narrative.json.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        force: Re-detect even if cached (default: False).
+    """
+    from claudetube.operations.narrative_structure import detect_narrative_structure
+
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        detect_narrative_structure,
+        video_id,
+        force=force,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def get_narrative_structure_tool(
+    video_id: str,
+) -> str:
+    """Get cached narrative structure for a video.
+
+    Returns the previously detected sections and video type classification.
+    Run detect_narrative_structure_tool first if no structure is cached.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+    """
+    from claudetube.operations.narrative_structure import get_narrative_structure
+
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        get_narrative_structure,
+        video_id,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def detect_changes_tool(
+    video_id: str,
+    force: bool = False,
+) -> str:
+    """Detect changes between consecutive scenes in a video.
+
+    Analyzes visual changes, topic shifts, and content type transitions
+    between adjacent scenes. Results are cached in structure/changes.json.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        force: Re-detect even if cached (default: False).
+    """
+    from claudetube.operations.change_detection import detect_scene_changes
+
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        detect_scene_changes,
+        video_id,
+        force=force,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def get_changes_tool(
+    video_id: str,
+) -> str:
+    """Get cached scene change data for a video.
+
+    Returns previously detected changes between consecutive scenes.
+    Run detect_changes_tool first if no changes are cached.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+    """
+    from claudetube.operations.change_detection import get_scene_changes
+
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        get_scene_changes,
+        video_id,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def get_major_transitions_tool(
+    video_id: str,
+) -> str:
+    """Get only the major transitions between scenes in a video.
+
+    Filters scene changes to return only significant transitions (topic shifts,
+    content type changes). Useful for understanding video structure at a glance.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+    """
+    from claudetube.operations.change_detection import get_major_transitions
+
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        get_major_transitions,
+        video_id,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def track_code_evolution_tool(
+    video_id: str,
+    force: bool = False,
+) -> str:
+    """Track how code evolves across scenes in a video.
+
+    Analyzes code snapshots from entity extraction data to track how
+    code changes over time — additions, modifications, refactoring.
+    Results are cached in entities/code_evolution.json.
+
+    Best used on coding tutorials, live coding sessions, and code review videos.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        force: Re-track even if cached (default: False).
+    """
+    from claudetube.operations.code_evolution import track_code_evolution
+
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        track_code_evolution,
+        video_id,
+        force=force,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def get_code_evolution_tool(
+    video_id: str,
+) -> str:
+    """Get cached code evolution data for a video.
+
+    Returns how code changed across scenes. Run track_code_evolution_tool
+    first if no evolution data is cached.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+    """
+    from claudetube.operations.code_evolution import get_code_evolution
+
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        get_code_evolution,
+        video_id,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def query_code_evolution_tool(
+    video_id: str,
+    query: str,
+) -> str:
+    """Query code evolution for a specific file or code unit.
+
+    Searches the code evolution data for a specific filename, function,
+    or code pattern. Returns the evolution history for matching code units.
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        query: Filename, function name, or code pattern to search for.
+    """
+    from claudetube.operations.code_evolution import query_code_evolution
+
+    video_id = extract_video_id(video_id)
+
+    result = await asyncio.to_thread(
+        query_code_evolution,
+        video_id,
+        query,
+        output_base=get_cache_dir(),
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def build_knowledge_graph_tool(
+    playlist_id: str,
+) -> str:
+    """Build a cross-video knowledge graph for a playlist.
+
+    Analyzes relationships between videos in a playlist: shared topics,
+    entities, and prerequisite chains. The playlist must have been fetched
+    with get_playlist first.
+
+    Args:
+        playlist_id: Playlist ID (from get_playlist results).
+    """
+    from claudetube.operations.knowledge_graph import (
+        build_knowledge_graph,
+        save_knowledge_graph,
+    )
+    from claudetube.operations.playlist import load_playlist_metadata
+
+    playlist_data = load_playlist_metadata(playlist_id)
+    if not playlist_data:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache. Run get_playlist first."
+            }
+        )
+
+    graph = await asyncio.to_thread(build_knowledge_graph, playlist_data)
+    await asyncio.to_thread(save_knowledge_graph, graph)
+
+    return json.dumps(graph, indent=2, default=str)
+
+
+@mcp.tool()
+async def get_playlist_video_context_tool(
+    video_id: str,
+    playlist_id: str,
+) -> str:
+    """Get contextual information for a video within a playlist.
+
+    Returns the video's position in the playlist, related topics, prerequisite
+    videos, and shared entities with other videos. Requires a knowledge graph
+    to have been built for the playlist.
+
+    Args:
+        video_id: Video ID to get context for.
+        playlist_id: Playlist ID containing the video.
+    """
+    from claudetube.operations.knowledge_graph import get_video_context
+
+    result = await asyncio.to_thread(
+        get_video_context,
+        video_id,
+        playlist_id,
+    )
+
+    if result is None:
+        return json.dumps(
+            {
+                "error": f"No context found. Build the knowledge graph for playlist '{playlist_id}' first.",
+                "video_id": video_id,
+                "playlist_id": playlist_id,
+            }
+        )
+
+    return json.dumps(result, indent=2, default=str)
+
+
 def main():
     """Entry point for the claudetube-mcp command."""
     mcp.run()
