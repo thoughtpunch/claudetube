@@ -31,6 +31,7 @@
 
 ### Guides
 - [**Configuration**](guides/configuration.md) - **Cache directory and settings**
+- [**Tool Reference**](guides/tool-reference.md) - **MCP tools, CLI commands, slash commands**
 - [Processing YouTube Videos](guides/youtube.md) - YouTube-specific features
 - [Processing Local Files](guides/local-files.md) - Screen recordings, downloads
 - [Extracting Frames](guides/frames.md) - Visual analysis
