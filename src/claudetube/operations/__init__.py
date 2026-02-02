@@ -57,6 +57,7 @@ from claudetube.operations.transcribe import (
     transcribe_video,
 )
 from claudetube.operations.visual_transcript import (
+    VisualTranscriptOperation,
     generate_visual_transcript,
     get_visual_transcript,
 )
@@ -83,6 +84,7 @@ __all__ = [
     "find_sidecar_subtitles",
     "boundaries_to_segments",
     "segment_video_smart",
+    "VisualTranscriptOperation",
     "generate_visual_transcript",
     "get_visual_transcript",
     "get_people_tracking",

@@ -10,10 +10,9 @@ Follows the "Cheap First, Expensive Last" principle:
 
 from __future__ import annotations
 
-import base64
+import asyncio
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -22,6 +21,9 @@ from claudetube.cache.manager import CacheManager
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from claudetube.providers.base import VisionAnalyzer
+
 from claudetube.cache.scenes import (
     SceneBoundary,
     get_scene_dir,
@@ -35,8 +37,13 @@ from claudetube.utils.logging import log_timed
 
 logger = logging.getLogger(__name__)
 
-# Default vision model setting
-DEFAULT_VISION_MODEL = "claude"
+# Prompt template for visual description generation.
+# Context placeholder {context} is appended when transcript text is available.
+VISUAL_PROMPT = """\
+Describe what is visually happening in these frames from a video.
+Focus on: visual actions, people present, objects visible, any text on screen, \
+and the setting/environment.
+Be specific and factual. Avoid speculation about things not visible.{context}"""
 
 
 @dataclass
@@ -83,23 +90,89 @@ class VisualDescription:
         )
 
 
-def get_vision_model() -> str:
-    """Get configured vision model.
+class VisualTranscriptOperation:
+    """Generate visual descriptions for video scenes using a VisionAnalyzer.
 
-    Priority:
-    1. CLAUDETUBE_VISION_MODEL environment variable
-    2. Default: "claude"
+    Accepts any provider implementing the VisionAnalyzer protocol via constructor
+    injection. The execute() method analyzes keyframe images for a single scene
+    and returns a VisualDescription.
 
-    Returns:
-        Vision model identifier: "claude", "molmo", or "llava"
+    Uses the Pydantic VisualDescription schema from providers.types for structured
+    output, producing consistent results across different vision providers.
+
+    Args:
+        vision_analyzer: Provider implementing the VisionAnalyzer protocol.
+
+    Example:
+        >>> from claudetube.providers import get_provider
+        >>> provider = get_provider("anthropic")
+        >>> op = VisualTranscriptOperation(provider)
+        >>> desc = await op.execute(scene_id=0, keyframes=[Path("frame.jpg")], scene=scene)
     """
-    return os.environ.get("CLAUDETUBE_VISION_MODEL", DEFAULT_VISION_MODEL)
 
+    def __init__(self, vision_analyzer: VisionAnalyzer):
+        self.vision = vision_analyzer
 
-def _load_image_base64(path: Path) -> str:
-    """Load image file as base64 string."""
-    with open(path, "rb") as f:
-        return base64.standard_b64encode(f.read()).decode("utf-8")
+    def _build_prompt(self, scene: SceneBoundary) -> str:
+        """Build the visual analysis prompt with optional transcript context.
+
+        Args:
+            scene: Scene boundary with transcript data.
+
+        Returns:
+            Formatted prompt string.
+        """
+        context = ""
+        if scene.transcript_text:
+            context = f"\n\nTranscript context: {scene.transcript_text[:500]}"
+        return VISUAL_PROMPT.format(context=context)
+
+    async def execute(
+        self,
+        scene_id: int,
+        keyframes: list[Path],
+        scene: SceneBoundary,
+    ) -> VisualDescription:
+        """Analyze keyframes and produce a structured visual description.
+
+        Args:
+            scene_id: Scene identifier.
+            keyframes: List of keyframe image paths to analyze.
+            scene: Scene boundary for transcript context.
+
+        Returns:
+            VisualDescription populated from the vision provider's response.
+        """
+        from claudetube.providers.types import get_visual_description_model
+
+        visual_schema = get_visual_description_model()
+
+        prompt = self._build_prompt(scene)
+        result = await self.vision.analyze_images(
+            keyframes,
+            prompt,
+            schema=visual_schema,
+        )
+
+        # Provider returns dict when schema is provided, str otherwise
+        data = result if isinstance(result, dict) else json.loads(result)
+
+        # Determine model name from provider info
+        model_name = None
+        if hasattr(self.vision, "info"):
+            model_name = self.vision.info.name
+
+        return VisualDescription(
+            scene_id=scene_id,
+            description=data.get("description", ""),
+            people=data.get("people", []),
+            objects=data.get("objects", []),
+            text_on_screen=data.get("text_on_screen", []),
+            actions=data.get("actions", []),
+            setting=data.get("setting"),
+            keyframe_count=len(keyframes),
+            model_used=model_name,
+        )
 
 
 def _select_keyframes_for_scene(
@@ -240,103 +313,41 @@ def _should_skip_scene(scene: SceneBoundary) -> bool:
     return False
 
 
-def _generate_visual_claude(
-    keyframes: list[Path],
-    scene: SceneBoundary,
-) -> VisualDescription | None:
-    """Generate visual description using Claude API.
+def _get_default_vision_analyzer() -> VisionAnalyzer:
+    """Get the default vision analyzer from available providers.
 
-    Args:
-        keyframes: List of keyframe image paths
-        scene: Scene boundary for context
+    Tries anthropic first (explicit API provider), falls back to claude-code
+    (host Claude instance).
 
     Returns:
-        VisualDescription or None if failed
+        A VisionAnalyzer provider instance.
+
+    Raises:
+        RuntimeError: If no vision provider is available.
     """
+    from claudetube.providers import get_provider
+    from claudetube.providers.base import VisionAnalyzer as VisionAnalyzerProtocol
+
+    # Try anthropic first (explicit API)
     try:
-        import anthropic
-    except ImportError:
-        logger.error("anthropic package not installed. Run: pip install anthropic")
-        return None
+        provider = get_provider("anthropic")
+        if isinstance(provider, VisionAnalyzerProtocol) and provider.is_available():
+            return provider
+    except (ImportError, ValueError):
+        pass
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        logger.error("ANTHROPIC_API_KEY environment variable not set")
-        return None
-
-    client = anthropic.Anthropic(api_key=api_key)
-
-    # Build message content with images
-    content = []
-    for kf in keyframes:
-        image_data = _load_image_base64(kf)
-        content.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/jpeg",
-                "data": image_data,
-            },
-        })
-
-    # Add context from transcript if available
-    context = ""
-    if scene.transcript_text:
-        context = f"\n\nTranscript context: {scene.transcript_text[:500]}"
-
-    content.append({
-        "type": "text",
-        "text": f"""Describe what is visually happening in these frames from a video.
-Focus on: visual actions, people present, objects visible, any text on screen, and the setting/environment.
-Be specific and factual. Avoid speculation about things not visible.{context}
-
-Return a JSON object with these keys:
-- description: A 1-2 sentence natural language description of what's happening
-- people: Array of people descriptions (e.g., ["man in blue shirt", "woman at desk"])
-- objects: Array of notable objects (e.g., ["laptop", "whiteboard", "code editor"])
-- text_on_screen: Array of any visible text (e.g., ["def main():", "Chapter 3"])
-- actions: Array of actions occurring (e.g., ["typing on keyboard", "pointing at screen"])
-- setting: Brief description of the environment (e.g., "office", "conference room", "outdoors")
-
-Output only valid JSON, no markdown code blocks.""",
-    })
-
+    # Fall back to claude-code (always available in MCP context)
     try:
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",  # Fast + cheap for visual analysis
-            max_tokens=500,
-            messages=[{"role": "user", "content": content}],
-        )
+        provider = get_provider("claude-code")
+        if isinstance(provider, VisionAnalyzerProtocol) and provider.is_available():
+            return provider
+    except (ImportError, ValueError):
+        pass
 
-        # Parse JSON response
-        response_text = response.content[0].text.strip()
-        # Handle potential markdown code blocks
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        data = json.loads(response_text)
-
-        return VisualDescription(
-            scene_id=scene.scene_id,
-            description=data.get("description", ""),
-            people=data.get("people", []),
-            objects=data.get("objects", []),
-            text_on_screen=data.get("text_on_screen", []),
-            actions=data.get("actions", []),
-            setting=data.get("setting"),
-            keyframe_count=len(keyframes),
-            model_used="claude-3-haiku-20240307",
-        )
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse Claude response as JSON: {e}")
-        return None
-    except anthropic.APIError as e:
-        logger.error(f"Claude API error: {e}")
-        return None
+    raise RuntimeError(
+        "No vision provider available. "
+        "Set ANTHROPIC_API_KEY or run within Claude Code."
+    )
 
 
 def generate_visual_transcript(
@@ -344,6 +355,7 @@ def generate_visual_transcript(
     scene_id: int | None = None,
     force: bool = False,
     output_base: Path | None = None,
+    vision_analyzer: VisionAnalyzer | None = None,
 ) -> dict:
     """Generate visual transcript for a video's scenes.
 
@@ -357,6 +369,8 @@ def generate_visual_transcript(
         scene_id: Optional specific scene ID (None = all scenes)
         force: Re-generate even if cached
         output_base: Cache directory
+        vision_analyzer: Optional VisionAnalyzer provider. If None, auto-selects
+            from available providers (anthropic -> claude-code).
 
     Returns:
         Dict with results and any errors
@@ -385,6 +399,9 @@ def generate_visual_transcript(
     skipped = []
     errors = []
 
+    # Lazily resolve vision analyzer only when we actually need it
+    operation = None
+
     for scene in scenes:
         # 1. CACHE - Return instantly if already exists
         visual_path = get_visual_json_path(cache_dir, scene.scene_id)
@@ -411,28 +428,31 @@ def generate_visual_transcript(
             errors.append({"scene_id": scene.scene_id, "error": "No keyframes available"})
             continue
 
-        log_timed(f"Scene {scene.scene_id}: generating visual description...", t0)
-        model = get_vision_model()
+        # Lazily create operation on first actual use
+        if operation is None:
+            try:
+                analyzer = vision_analyzer or _get_default_vision_analyzer()
+                operation = VisualTranscriptOperation(analyzer)
+            except RuntimeError as e:
+                errors.append({"scene_id": scene.scene_id, "error": str(e)})
+                continue
 
-        visual_desc = None
-        if model == "claude":
-            visual_desc = _generate_visual_claude(keyframes, scene)
-        else:
-            # Placeholder for future local model support
-            errors.append({
-                "scene_id": scene.scene_id,
-                "error": f"Vision model '{model}' not yet supported. Use 'claude'.",
-            })
+        log_timed(f"Scene {scene.scene_id}: generating visual description...", t0)
+
+        try:
+            visual_desc = asyncio.run(
+                operation.execute(scene.scene_id, keyframes, scene)
+            )
+        except Exception as e:
+            logger.error(f"Scene {scene.scene_id}: vision analysis failed: {e}")
+            errors.append({"scene_id": scene.scene_id, "error": str(e)})
             continue
 
-        if visual_desc:
-            # Save to cache
-            visual_path.parent.mkdir(parents=True, exist_ok=True)
-            visual_path.write_text(json.dumps(visual_desc.to_dict(), indent=2))
-            results.append(visual_desc)
-            log_timed(f"Scene {scene.scene_id}: visual transcript generated", t0)
-        else:
-            errors.append({"scene_id": scene.scene_id, "error": "Failed to generate description"})
+        # Save to cache
+        visual_path.parent.mkdir(parents=True, exist_ok=True)
+        visual_path.write_text(json.dumps(visual_desc.to_dict(), indent=2))
+        results.append(visual_desc)
+        log_timed(f"Scene {scene.scene_id}: visual transcript generated", t0)
 
     # Update state.json if all scenes processed
     if scene_id is None:  # Only update when processing all scenes
