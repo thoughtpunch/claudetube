@@ -259,6 +259,12 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
         supports_structured_output=False,
         cost_per_1m_input_tokens=0.06,  # voyage-3 pricing
     ),
+    "local-embedder": ProviderInfo(
+        name="local-embedder",
+        capabilities=frozenset({Capability.EMBED}),
+        supports_structured_output=False,
+        cost_per_1m_input_tokens=0,  # Free (local)
+    ),
 }
 
 

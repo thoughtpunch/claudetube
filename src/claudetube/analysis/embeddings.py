@@ -2,8 +2,8 @@
 Multimodal scene embeddings for semantic search.
 
 Creates unified embeddings per scene combining visual + audio + text.
-Supports Voyage AI multimodal-3 (best quality) and local fallback
-(CLIP + sentence-transformers).
+Uses the provider pattern for embedding generation - supports any
+provider implementing the Embedder protocol.
 
 Architecture: Cheap First, Expensive Last
 1. CACHE - Check for cached embeddings first
@@ -11,8 +11,8 @@ Architecture: Cheap First, Expensive Last
 3. MULTIMODAL - Add visual embeddings only when needed
 
 Config via CLAUDETUBE_EMBEDDING_MODEL env var:
-- "voyage" (default): Use Voyage AI multimodal-3
-- "local": Use CLIP + sentence-transformers
+- "voyage" (default): Use Voyage AI multimodal-3 (1024d)
+- "local": Use CLIP + sentence-transformers (896d)
 """
 
 from __future__ import annotations
@@ -21,13 +21,12 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from claudetube.cache.scenes import SceneBoundary
 
 logger = logging.getLogger(__name__)
@@ -72,6 +71,23 @@ def get_embedding_model() -> str:
         logger.warning(f"Unknown embedding model '{model}', falling back to 'voyage'")
         return DEFAULT_EMBEDDING_MODEL
     return model
+
+
+def _get_embedder(model: str):
+    """Get an embedding provider by model name.
+
+    Uses the provider registry to resolve the model name to a provider
+    implementing the Embedder protocol.
+
+    Args:
+        model: Model name ("voyage" or "local").
+
+    Returns:
+        Provider instance with embed_sync() method.
+    """
+    from claudetube.providers import get_provider
+
+    return get_provider(model)
 
 
 def _build_scene_text(
@@ -129,131 +145,6 @@ def _build_scene_text(
     return "\n\n".join(parts)
 
 
-def _embed_scene_voyage(
-    scene_text: str,
-    keyframe_paths: list[str | Path],
-) -> np.ndarray:
-    """Create multimodal embedding using Voyage AI.
-
-    Args:
-        scene_text: Combined text content for the scene.
-        keyframe_paths: Paths to keyframe images (max 3 used).
-
-    Returns:
-        Embedding vector as numpy array.
-
-    Raises:
-        ImportError: If voyageai not installed.
-        RuntimeError: If VOYAGE_API_KEY not set.
-    """
-    try:
-        import voyageai
-    except ImportError as e:
-        raise ImportError(
-            "Voyage AI client required for embeddings. "
-            "Install with: pip install voyageai"
-        ) from e
-
-    if not os.environ.get("VOYAGE_API_KEY"):
-        raise RuntimeError(
-            "VOYAGE_API_KEY environment variable not set. "
-            "Get an API key from https://dash.voyageai.com/"
-        )
-
-    # Lazy import PIL only when needed
-    from PIL import Image
-
-    voyage = voyageai.Client()
-
-    # Load keyframe images (max 3)
-    images = []
-    for path in keyframe_paths[:3]:
-        try:
-            img = Image.open(path)
-            images.append(img)
-        except Exception as e:
-            logger.warning(f"Failed to load keyframe {path}: {e}")
-
-    # Build multimodal input
-    # Voyage multimodal_embed accepts list of inputs where each input
-    # is a list of [text_or_image, ...]
-    inputs = [[scene_text] + images] if images else [[scene_text]]
-
-    result = voyage.multimodal_embed(
-        inputs=inputs,
-        model="voyage-multimodal-3",
-        input_type="document",
-    )
-
-    return np.array(result.embeddings[0], dtype=np.float32)
-
-
-def _embed_scene_local(
-    scene_text: str,
-    keyframe_paths: list[str | Path],
-) -> np.ndarray:
-    """Create embedding using local models (CLIP + sentence-transformers).
-
-    Args:
-        scene_text: Combined text content for the scene.
-        keyframe_paths: Paths to keyframe images (max 3 used).
-
-    Returns:
-        Concatenated embedding vector (text: 384d + image: 512d = 896d).
-
-    Raises:
-        ImportError: If required packages not installed.
-    """
-    try:
-        from sentence_transformers import SentenceTransformer
-    except ImportError as e:
-        raise ImportError(
-            "sentence-transformers required for local embeddings. "
-            "Install with: pip install sentence-transformers"
-        ) from e
-
-    # Text embedding
-    text_model = SentenceTransformer("all-MiniLM-L6-v2")
-    text_emb = text_model.encode(scene_text, convert_to_numpy=True)
-    text_emb = text_emb.astype(np.float32)
-
-    # Image embedding (if keyframes available)
-    if keyframe_paths:
-        try:
-            import open_clip
-            import torch
-            from PIL import Image
-
-            clip_model, _, preprocess = open_clip.create_model_and_transforms(
-                "ViT-B-32", pretrained="openai"
-            )
-            clip_model.eval()
-
-            img_embs = []
-            for path in keyframe_paths[:3]:
-                try:
-                    img = preprocess(Image.open(path)).unsqueeze(0)
-                    with torch.no_grad():
-                        img_emb = clip_model.encode_image(img).squeeze().numpy()
-                    img_embs.append(img_emb)
-                except Exception as e:
-                    logger.warning(f"Failed to encode keyframe {path}: {e}")
-
-            if img_embs:
-                avg_img_emb = np.mean(img_embs, axis=0).astype(np.float32)
-            else:
-                avg_img_emb = np.zeros(LOCAL_IMAGE_DIM, dtype=np.float32)
-
-        except ImportError:
-            logger.warning("open-clip-torch not installed, using text-only embedding")
-            avg_img_emb = np.zeros(LOCAL_IMAGE_DIM, dtype=np.float32)
-    else:
-        avg_img_emb = np.zeros(LOCAL_IMAGE_DIM, dtype=np.float32)
-
-    # Concatenate text and image embeddings
-    return np.concatenate([text_emb, avg_img_emb])
-
-
 def embed_scene(
     scene: dict | SceneBoundary,
     keyframe_paths: list[str | Path] | None = None,
@@ -262,6 +153,10 @@ def embed_scene(
     model: str | None = None,
 ) -> SceneEmbedding:
     """Create embedding for a single scene.
+
+    Uses the provider pattern to generate embeddings. The model name
+    is resolved to a provider via the registry ("voyage" -> VoyageProvider,
+    "local" -> LocalEmbedderProvider).
 
     Args:
         scene: Scene data (dict or SceneBoundary).
@@ -286,12 +181,15 @@ def embed_scene(
     else:
         scene_id = scene.get("scene_id", 0)
 
-    # Generate embedding
-    kf_paths = keyframe_paths or []
-    if model == "voyage":
-        embedding = _embed_scene_voyage(scene_text, kf_paths)
-    else:
-        embedding = _embed_scene_local(scene_text, kf_paths)
+    # Convert paths to Path objects for provider
+    image_paths = None
+    if keyframe_paths:
+        image_paths = [Path(p) if not isinstance(p, Path) else p for p in keyframe_paths]
+
+    # Get provider and generate embedding
+    provider = _get_embedder(model)
+    embedding_list = provider.embed_sync(scene_text, images=image_paths)
+    embedding = np.array(embedding_list, dtype=np.float32)
 
     return SceneEmbedding(
         scene_id=scene_id,

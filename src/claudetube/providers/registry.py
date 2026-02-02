@@ -41,6 +41,7 @@ PROVIDER_MODULES: dict[str, str] = {
     "deepgram": "claudetube.providers.deepgram",
     "assemblyai": "claudetube.providers.assemblyai",
     "voyage": "claudetube.providers.voyage",
+    "local-embedder": "claudetube.providers.local_embedder",
     "ollama": "claudetube.providers.ollama",
     "claude-code": "claudetube.providers.claude_code",
 }
@@ -72,6 +73,7 @@ PROVIDER_ALIASES: dict[str, str] = {
     # Embedding aliases
     "voyage-ai": "voyage",
     "voyage-3": "voyage",
+    "local": "local-embedder",
 }
 
 
@@ -178,6 +180,7 @@ def get_provider(name: str, **kwargs) -> Provider:
             "deepgram": "pip install deepgram-sdk",
             "assemblyai": "pip install assemblyai",
             "voyage": "pip install voyageai",
+            "local-embedder": "pip install sentence-transformers",
             "whisper-local": "pip install faster-whisper",
             "ollama": "pip install ollama",
         }
