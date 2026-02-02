@@ -145,16 +145,38 @@ class YtDlpTool(VideoTool):
         """Check if a URL points to YouTube."""
         return bool(_YOUTUBE_URL_RE.search(url))
 
+    # Browsers supported by yt-dlp's --cookies-from-browser flag
+    _SUPPORTED_BROWSERS = frozenset({
+        "brave",
+        "chrome",
+        "chromium",
+        "edge",
+        "firefox",
+        "opera",
+        "safari",
+        "vivaldi",
+        "whale",
+    })
+
     def _youtube_config_args(self) -> list[str]:
-        """Build yt-dlp args from YouTube config (PO token, cookies, bgutil).
+        """Build yt-dlp args from YouTube config (cookies, PO token, bgutil).
 
         Reads optional ``youtube`` section from config YAML::
 
             youtube:
-              po_token: "..."
+              # Cookie source (pick one; first match wins):
+              cookies_from_browser: "firefox"
               cookies_file: "/path/to/cookies.txt"
+
+              # PO token (CLIENT.TYPE+TOKEN or bare token)
+              po_token: "mweb.gvs+TOKEN_VALUE_HERE"
+
+              # bgutil-ytdlp-pot-provider
               pot_server_url: "http://127.0.0.1:4416"
               pot_script_path: "/path/to/generate_once.js"
+
+        Cookie source priority: cookies_from_browser > cookies_file.
+        Only one cookie source is used (they are mutually exclusive in yt-dlp).
 
         Returns an empty list when nothing is configured.
         """
@@ -180,6 +202,38 @@ class YtDlpTool(VideoTool):
             if not isinstance(yt_cfg, dict):
                 return args
 
+            # --- Cookie source (mutually exclusive, first wins) ---
+            cookie_source_set = False
+
+            cookies_from_browser = yt_cfg.get("cookies_from_browser")
+            if cookies_from_browser:
+                browser = str(cookies_from_browser).lower().strip()
+                if browser in self._SUPPORTED_BROWSERS:
+                    args.extend(["--cookies-from-browser", browser])
+                    cookie_source_set = True
+                else:
+                    logger.warning(
+                        "Unsupported browser for cookie extraction: %r. "
+                        "Supported: %s",
+                        browser,
+                        ", ".join(sorted(self._SUPPORTED_BROWSERS)),
+                    )
+
+            if not cookie_source_set:
+                cookies_file = yt_cfg.get("cookies_file")
+                if cookies_file:
+                    from pathlib import Path
+
+                    cookies_path = Path(cookies_file).expanduser()
+                    if cookies_path.exists():
+                        args.extend(["--cookies", str(cookies_path)])
+                        cookie_source_set = True
+                    else:
+                        logger.warning(
+                            "Cookies file not found: %s", cookies_path
+                        )
+
+            # --- PO token ---
             po_token = yt_cfg.get("po_token")
             if po_token:
                 args.extend([
@@ -187,17 +241,7 @@ class YtDlpTool(VideoTool):
                     f"youtube:po_token={po_token}",
                 ])
 
-            cookies_file = yt_cfg.get("cookies_file")
-            if cookies_file:
-                from pathlib import Path
-
-                cookies_path = Path(cookies_file).expanduser()
-                if cookies_path.exists():
-                    args.extend(["--cookies", str(cookies_path)])
-                else:
-                    logger.warning("Cookies file not found: %s", cookies_path)
-
-            # bgutil-ytdlp-pot-provider: HTTP server URL
+            # --- bgutil-ytdlp-pot-provider: HTTP server URL ---
             pot_server_url = yt_cfg.get("pot_server_url")
             if pot_server_url:
                 args.extend([
@@ -205,7 +249,7 @@ class YtDlpTool(VideoTool):
                     f"youtubepot-bgutilhttp:base_url={pot_server_url}",
                 ])
 
-            # bgutil-ytdlp-pot-provider: script path (fallback mode)
+            # --- bgutil-ytdlp-pot-provider: script path (fallback mode) ---
             pot_script_path = yt_cfg.get("pot_script_path")
             if pot_script_path:
                 from pathlib import Path
@@ -265,8 +309,12 @@ class YtDlpTool(VideoTool):
         Raises:
             MetadataError: If metadata fetch fails
         """
+        yt_args: list[str] = []
+        if self._is_youtube_url(url):
+            yt_args.extend(self._youtube_config_args())
+
         result = self._run(
-            ["--dump-json", "--no-download", url],
+            [*yt_args, "--dump-json", "--no-download", url],
             timeout=timeout,
             retry_clients=False,  # Metadata doesn't hit 403 issues
         )
@@ -374,7 +422,12 @@ class YtDlpTool(VideoTool):
         Returns:
             Path to thumbnail file, or None if not available
         """
+        yt_args: list[str] = []
+        if self._is_youtube_url(url):
+            yt_args.extend(self._youtube_config_args())
+
         args = [
+            *yt_args,
             "--write-thumbnail",
             "--convert-thumbnails",
             "jpg",
@@ -417,7 +470,12 @@ class YtDlpTool(VideoTool):
         """
         import re
 
+        yt_args: list[str] = []
+        if self._is_youtube_url(url):
+            yt_args.extend(self._youtube_config_args())
+
         args = [
+            *yt_args,
             "--write-subs",
             "--write-auto-subs",
             "--sub-langs",
@@ -491,8 +549,12 @@ class YtDlpTool(VideoTool):
         Raises:
             MetadataError: If format listing fails
         """
+        yt_args: list[str] = []
+        if self._is_youtube_url(url):
+            yt_args.extend(self._youtube_config_args())
+
         result = self._run(
-            ["-j", "--no-download", url],
+            [*yt_args, "-j", "--no-download", url],
             timeout=timeout,
             retry_clients=False,
         )
@@ -573,7 +635,12 @@ class YtDlpTool(VideoTool):
                 raise DownloadError("No audio description track found")
             format_id = ad_format["format_id"]
 
+        yt_args: list[str] = []
+        if self._is_youtube_url(url):
+            yt_args.extend(self._youtube_config_args())
+
         args = [
+            *yt_args,
             "-f",
             format_id,
             "-x",
@@ -621,7 +688,12 @@ class YtDlpTool(VideoTool):
         """
         section_spec = f"*{start_time}-{end_time}"
 
+        yt_args: list[str] = []
+        if self._is_youtube_url(url):
+            yt_args.extend(self._youtube_config_args())
+
         args = [
+            *yt_args,
             "-S",
             quality_sort,
             "-N",

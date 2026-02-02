@@ -197,6 +197,200 @@ class TestYoutubeConfigArgs:
             args = tool._youtube_config_args()
             assert args == []
 
+    def test_cookies_from_browser_valid(self, tool):
+        """cookies_from_browser with supported browser → --cookies-from-browser."""
+        fake_config = {"youtube": {"cookies_from_browser": "firefox"}}
+        with patch(
+            "claudetube.config.loader._find_project_config",
+            return_value=Path("/fake/config.yaml"),
+        ), patch(
+            "claudetube.config.loader._load_yaml_config",
+            return_value=fake_config,
+        ):
+            args = tool._youtube_config_args()
+            assert "--cookies-from-browser" in args
+            assert "firefox" in args
+
+    def test_cookies_from_browser_unsupported(self, tool):
+        """cookies_from_browser with unsupported browser → warning, no args."""
+        fake_config = {"youtube": {"cookies_from_browser": "netscape"}}
+        with patch(
+            "claudetube.config.loader._find_project_config",
+            return_value=Path("/fake/config.yaml"),
+        ), patch(
+            "claudetube.config.loader._load_yaml_config",
+            return_value=fake_config,
+        ):
+            args = tool._youtube_config_args()
+            assert "--cookies-from-browser" not in args
+            assert "--cookies" not in args
+
+    def test_cookies_from_browser_takes_priority_over_cookies_file(
+        self, tool, tmp_path
+    ):
+        """cookies_from_browser wins over cookies_file when both set."""
+        cookie_file = tmp_path / "cookies.txt"
+        cookie_file.write_text("# Netscape HTTP Cookie File\n")
+
+        fake_config = {
+            "youtube": {
+                "cookies_from_browser": "chrome",
+                "cookies_file": str(cookie_file),
+            }
+        }
+        with patch(
+            "claudetube.config.loader._find_project_config",
+            return_value=Path("/fake/config.yaml"),
+        ), patch(
+            "claudetube.config.loader._load_yaml_config",
+            return_value=fake_config,
+        ):
+            args = tool._youtube_config_args()
+            assert "--cookies-from-browser" in args
+            assert "chrome" in args
+            # cookies_file should NOT be used when cookies_from_browser is set
+            assert "--cookies" not in args
+
+    def test_cookies_from_browser_case_insensitive(self, tool):
+        """Browser name is normalized to lowercase."""
+        fake_config = {"youtube": {"cookies_from_browser": "Firefox"}}
+        with patch(
+            "claudetube.config.loader._find_project_config",
+            return_value=Path("/fake/config.yaml"),
+        ), patch(
+            "claudetube.config.loader._load_yaml_config",
+            return_value=fake_config,
+        ):
+            args = tool._youtube_config_args()
+            assert "--cookies-from-browser" in args
+            assert "firefox" in args
+
+    def test_cookies_from_browser_fallback_to_cookies_file(
+        self, tool, tmp_path
+    ):
+        """Unsupported browser falls through to cookies_file."""
+        cookie_file = tmp_path / "cookies.txt"
+        cookie_file.write_text("# cookies\n")
+
+        fake_config = {
+            "youtube": {
+                "cookies_from_browser": "netscape",  # unsupported
+                "cookies_file": str(cookie_file),
+            }
+        }
+        with patch(
+            "claudetube.config.loader._find_project_config",
+            return_value=Path("/fake/config.yaml"),
+        ), patch(
+            "claudetube.config.loader._load_yaml_config",
+            return_value=fake_config,
+        ):
+            args = tool._youtube_config_args()
+            assert "--cookies-from-browser" not in args
+            assert "--cookies" in args
+            assert str(cookie_file) in args
+
+    @pytest.mark.parametrize(
+        "browser",
+        ["brave", "chrome", "chromium", "edge", "firefox",
+         "opera", "safari", "vivaldi", "whale"],
+    )
+    def test_all_supported_browsers(self, tool, browser):
+        """All documented browsers are accepted."""
+        fake_config = {"youtube": {"cookies_from_browser": browser}}
+        with patch(
+            "claudetube.config.loader._find_project_config",
+            return_value=Path("/fake/config.yaml"),
+        ), patch(
+            "claudetube.config.loader._load_yaml_config",
+            return_value=fake_config,
+        ):
+            args = tool._youtube_config_args()
+            assert "--cookies-from-browser" in args
+            assert browser in args
+
+
+# ---------------------------------------------------------------------------
+# YouTube config args applied to all methods
+# ---------------------------------------------------------------------------
+
+
+class TestYoutubeConfigArgsApplied:
+    """Verify _youtube_config_args() is called for YouTube URLs in all methods."""
+
+    def _make_success_result(self, stdout="", stderr=""):
+        """Create a mock ToolResult-like object."""
+        return type(
+            "R",
+            (),
+            {"success": True, "stdout": stdout, "stderr": stderr, "returncode": 0},
+        )()
+
+    def test_get_metadata_uses_youtube_config(self, tool):
+        """get_metadata passes YouTube config args for YouTube URLs."""
+        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
+             patch.object(tool, "_run", return_value=self._make_success_result(stdout='{"id":"x"}')):
+            tool.get_metadata("https://www.youtube.com/watch?v=abc123")
+            mock_cfg.assert_called_once()
+            run_args = tool._run.call_args[0][0]
+            assert "--cookies" in run_args
+
+    def test_get_metadata_skips_config_for_non_youtube(self, tool):
+        """get_metadata does NOT call _youtube_config_args for non-YouTube URLs."""
+        with patch.object(tool, "_youtube_config_args") as mock_cfg, \
+             patch.object(tool, "_run", return_value=self._make_success_result(stdout='{"id":"x"}')):
+            tool.get_metadata("https://vimeo.com/123456")
+            mock_cfg.assert_not_called()
+
+    def test_download_thumbnail_uses_youtube_config(self, tool, tmp_path):
+        """download_thumbnail passes YouTube config args for YouTube URLs."""
+        (tmp_path / "thumbnail.jpg").write_bytes(b"\xff\xd8")
+        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
+             patch.object(tool, "_run", return_value=self._make_success_result()):
+            tool.download_thumbnail(
+                "https://www.youtube.com/watch?v=abc123", tmp_path
+            )
+            mock_cfg.assert_called_once()
+
+    def test_fetch_subtitles_uses_youtube_config(self, tool, tmp_path):
+        """fetch_subtitles passes YouTube config args for YouTube URLs."""
+        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
+             patch.object(tool, "_run", return_value=self._make_success_result()):
+            tool.fetch_subtitles(
+                "https://www.youtube.com/watch?v=abc123", tmp_path
+            )
+            mock_cfg.assert_called_once()
+
+    def test_get_formats_uses_youtube_config(self, tool):
+        """get_formats passes YouTube config args for YouTube URLs."""
+        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
+             patch.object(tool, "_run", return_value=self._make_success_result(stdout='{"formats":[]}')):
+            tool.get_formats("https://www.youtube.com/watch?v=abc123")
+            mock_cfg.assert_called_once()
+
+    def test_download_video_segment_uses_youtube_config(self, tool, tmp_path):
+        """download_video_segment passes YouTube config args for YouTube URLs."""
+        out = tmp_path / "segment.mp4"
+        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
+             patch.object(tool, "_run", return_value=self._make_success_result()):
+            tool.download_video_segment(
+                "https://www.youtube.com/watch?v=abc123", out, 0, 10
+            )
+            mock_cfg.assert_called_once()
+
+    def test_download_audio_description_uses_youtube_config(self, tool, tmp_path):
+        """download_audio_description passes YouTube config args for YouTube URLs."""
+        out = tmp_path / "ad.mp3"
+        out.write_bytes(b"\x00")
+        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
+             patch.object(tool, "_run", return_value=self._make_success_result()):
+            tool.download_audio_description(
+                "https://www.youtube.com/watch?v=abc123",
+                out,
+                format_id="251",
+            )
+            mock_cfg.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # check_pot_providers
