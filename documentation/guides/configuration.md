@@ -82,16 +82,132 @@ cache_dir: ~/my-video-cache
 
 ## Config File Format
 
-Currently supported settings:
-
 ```yaml
 # Cache directory for all video data
 cache_dir: /path/to/cache
 
-# Future settings (not yet implemented)
-# whisper_model: small
-# default_quality: medium
+# AI Provider configuration (see Provider Configuration below)
+providers:
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    model: gpt-4o
+  # ... see full reference below
 ```
+
+## Provider Configuration
+
+claudetube supports configurable AI providers for transcription, vision, reasoning, and embeddings. Without any configuration, it defaults to free/local options.
+
+### Zero-Config Defaults
+
+| Capability     | Default Provider | Cost |
+|---------------|-----------------|------|
+| Transcription | whisper-local   | Free |
+| Vision        | claude-code     | Free |
+| Reasoning     | claude-code     | Free |
+| Embedding     | voyage          | $    |
+
+### API Provider Credentials
+
+Add API keys for cloud providers. Keys can reference environment variables:
+
+```yaml
+providers:
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    model: gpt-4o
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+  google:
+    api_key: ${GOOGLE_API_KEY}
+    model: gemini-2.0-flash
+  deepgram:
+    api_key: ${DEEPGRAM_API_KEY}
+  assemblyai:
+    api_key: ${ASSEMBLYAI_API_KEY}
+  voyage:
+    api_key: ${VOYAGE_API_KEY}
+```
+
+### Local Provider Settings
+
+```yaml
+providers:
+  local:
+    whisper_model: small       # tiny, base, small, medium, large
+    ollama_model: llava:13b    # Any Ollama model with vision support
+```
+
+### Capability Preferences
+
+Set which provider to use for each capability:
+
+```yaml
+providers:
+  preferences:
+    transcription: whisper-local  # whisper-local, openai, deepgram, assemblyai
+    vision: claude-code           # claude-code, anthropic, openai, google, ollama
+    video: google                 # google (only Gemini supports native video)
+    reasoning: claude-code        # claude-code, anthropic, openai, google, ollama
+    embedding: voyage             # voyage, local-embedder
+```
+
+### Fallback Chains
+
+If the preferred provider fails, try these in order:
+
+```yaml
+providers:
+  fallbacks:
+    transcription: [openai, whisper-local]
+    vision: [anthropic, openai, claude-code]
+    reasoning: [anthropic, openai, claude-code]
+```
+
+### Migrating from Environment Variables
+
+If you previously used bare env vars, they still work as fallbacks:
+
+| Environment Variable     | YAML Equivalent            |
+|-------------------------|---------------------------|
+| `OPENAI_API_KEY`        | `providers.openai.api_key` |
+| `ANTHROPIC_API_KEY`     | `providers.anthropic.api_key` |
+| `GOOGLE_API_KEY`        | `providers.google.api_key` |
+| `DEEPGRAM_API_KEY`      | `providers.deepgram.api_key` |
+| `ASSEMBLYAI_API_KEY`    | `providers.assemblyai.api_key` |
+| `VOYAGE_API_KEY`        | `providers.voyage.api_key` |
+| `CLAUDETUBE_CACHE_DIR`  | `cache_dir`               |
+
+`CLAUDETUBE_*_API_KEY` variants also work. YAML config takes priority over env vars.
+
+### Provider Capability Matrix
+
+| Provider       | Transcribe | Vision | Video | Reason | Embed | Cost  |
+|---------------|:----------:|:------:|:-----:|:------:|:-----:|:-----:|
+| whisper-local  |     ✓      |        |       |        |       | Free  |
+| openai         |     ✓      |   ✓    |       |   ✓    |       | $$    |
+| anthropic      |            |   ✓    |       |   ✓    |       | $$    |
+| google         |            |   ✓    |   ✓   |   ✓    |       | $     |
+| deepgram       |     ✓      |        |       |        |       | $     |
+| assemblyai     |     ✓      |        |       |        |       | $     |
+| claude-code    |            |   ✓    |       |   ✓    |       | Free* |
+| ollama         |            |   ✓    |       |   ✓    |       | Free  |
+| voyage         |            |        |       |        |   ✓   | $     |
+| local-embedder |            |        |       |        |   ✓   | Free  |
+
+\* Included with Claude Code subscription.
+
+### Validation
+
+Configuration is validated on load. Errors are logged for:
+- Invalid whisper model sizes
+- Unknown provider names
+- Capability mismatches (e.g., whisper-local set as vision preference)
+- Structural issues (wrong types)
+
+### Example Configs
+
+See `examples/config.minimal.yaml` and `examples/config.full.yaml` for complete references.
 
 ## Common Use Cases
 
