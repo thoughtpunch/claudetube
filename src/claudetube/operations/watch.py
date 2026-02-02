@@ -25,6 +25,7 @@ from claudetube.analysis.search import format_timestamp
 from claudetube.analysis.watcher import ActiveVideoWatcher
 from claudetube.cache.enrichment import record_qa_interaction, search_cached_qa
 from claudetube.cache.scenes import has_scenes, load_scenes_data
+from claudetube.cache.storage import load_state
 from claudetube.config.loader import get_cache_dir
 from claudetube.operations.extract_frames import extract_frames
 from claudetube.parsing.utils import extract_video_id
@@ -264,12 +265,19 @@ def watch_video(
                 pass
         scenes.append(scene_dict)
 
-    # Create active watcher
+    # Load video state for duration metadata
+    video_duration = 0.0
+    state = load_state(cache_dir / "state.json")
+    if state and state.duration:
+        video_duration = state.duration
+
+    # Create active watcher with attention priority model
     watcher = ActiveVideoWatcher(
         video_id=video_id,
         user_goal=question,
         scenes=scenes,
         cache_dir=cache_dir,
+        video_duration=video_duration,
     )
 
     # Active exploration loop

@@ -167,14 +167,19 @@ class TestActiveVideoWatcher:
             video_id="test123",
             user_goal="fix the bug",
             scenes=sample_scenes,
+            video_duration=150.0,
         )
         ranked = watcher.rank_unexplored_scenes()
 
         # Should have all 5 scenes
         assert len(ranked) == 5
 
-        # Scene 2 ("fix this bug") should be highly relevant
-        # Scene 1 ("bug in the auth code") should also be relevant
+        # Each result should have a priority score
+        for r in ranked:
+            assert "priority" in r
+            assert 0.0 <= r["priority"] <= 1.0
+
+        # Scene 2 ("fix this bug") should be highly ranked
         top_ids = [r["scene_id"] for r in ranked[:2]]
         assert 2 in top_ids  # "how to fix this bug"
 
@@ -183,6 +188,7 @@ class TestActiveVideoWatcher:
             video_id="test123",
             user_goal="fix the bug",
             scenes=sample_scenes,
+            video_duration=150.0,
         )
         watcher.examined.add(2)  # Mark scene 2 as examined
 
@@ -190,29 +196,6 @@ class TestActiveVideoWatcher:
         scene_ids = [r["scene_id"] for r in ranked]
         assert 2 not in scene_ids
         assert len(ranked) == 4
-
-    def test_calculate_relevance_text(self, sample_scenes):
-        watcher = ActiveVideoWatcher(
-            video_id="test123",
-            user_goal="fix the bug",
-            scenes=sample_scenes,
-        )
-
-        # Scene 2 mentions "fix" and "bug"
-        relevance_2 = watcher.calculate_relevance(sample_scenes[2])
-        # Scene 0 doesn't mention either
-        relevance_0 = watcher.calculate_relevance(sample_scenes[0])
-
-        assert relevance_2 > relevance_0
-
-    def test_calculate_relevance_empty_transcript(self, sample_scenes):
-        watcher = ActiveVideoWatcher(
-            video_id="test123",
-            user_goal="test query",
-            scenes=sample_scenes,
-        )
-        empty_scene = {"scene_id": 99, "transcript_text": ""}
-        assert watcher.calculate_relevance(empty_scene) == 0.0
 
     def test_decide_next_action_examines_relevant_scene(self, sample_scenes):
         watcher = ActiveVideoWatcher(
@@ -388,6 +371,8 @@ class TestActiveVideoWatcher:
             scenes=sample_scenes,
             confidence_threshold=0.85,
             max_examinations=15,
+            video_type="coding_tutorial",
+            video_duration=150.0,
         )
         watcher.examined = {0, 2}
         watcher.hypotheses.append(Hypothesis(
@@ -402,6 +387,8 @@ class TestActiveVideoWatcher:
         assert len(state["hypotheses"]) == 1
         assert state["confidence_threshold"] == 0.85
         assert state["max_examinations"] == 15
+        assert state["video_type"] == "coding_tutorial"
+        assert state["video_duration"] == 150.0
 
     def test_from_state(self, sample_scenes):
         state = {
@@ -413,6 +400,8 @@ class TestActiveVideoWatcher:
             ],
             "confidence_threshold": 0.9,
             "max_examinations": 20,
+            "video_type": "lecture",
+            "video_duration": 300.0,
         }
 
         watcher = ActiveVideoWatcher.from_state(state, scenes=sample_scenes)
@@ -424,6 +413,20 @@ class TestActiveVideoWatcher:
         assert watcher.hypotheses[0].claim == "Hypothesis A"
         assert watcher.confidence_threshold == 0.9
         assert watcher.max_examinations == 20
+        assert watcher.video_type == "lecture"
+        assert watcher.video_duration == 300.0
+
+    def test_from_state_defaults_missing_fields(self, sample_scenes):
+        """Test from_state with missing video_type/video_duration defaults."""
+        state = {
+            "video_id": "test123",
+            "user_goal": "test defaults",
+            "examined": [],
+            "hypotheses": [],
+        }
+        watcher = ActiveVideoWatcher.from_state(state, scenes=sample_scenes)
+        assert watcher.video_type == "unknown"
+        assert watcher.video_duration == 0.0
 
     def test_state_roundtrip(self, sample_scenes):
         """Test saving and restoring state."""
@@ -431,6 +434,8 @@ class TestActiveVideoWatcher:
             video_id="test123",
             user_goal="test roundtrip",
             scenes=sample_scenes,
+            video_type="demo",
+            video_duration=200.0,
         )
         watcher.examined = {0, 1, 2}
         watcher.hypotheses.append(Hypothesis(
@@ -445,6 +450,8 @@ class TestActiveVideoWatcher:
         assert restored.video_id == watcher.video_id
         assert restored.user_goal == watcher.user_goal
         assert restored.examined == watcher.examined
+        assert restored.video_type == watcher.video_type
+        assert restored.video_duration == watcher.video_duration
         assert len(restored.hypotheses) == len(watcher.hypotheses)
         assert restored.hypotheses[0].claim == watcher.hypotheses[0].claim
         assert restored.hypotheses[0].confidence == watcher.hypotheses[0].confidence
@@ -470,12 +477,17 @@ class TestActiveVideoWatcher:
             video_id="test123",
             user_goal="bug fix",
             scenes=scenes,
+            video_duration=60.0,
         )
 
         ranked = watcher.rank_unexplored_scenes()
         assert len(ranked) == 2
 
-        # Scene 1 should be more relevant
+        # Each result should have priority
+        for r in ranked:
+            assert "priority" in r
+
+        # Scene 1 should be higher priority (mentions "bug fix")
         assert ranked[0]["scene_id"] == 1
 
         action = watcher.decide_next_action()

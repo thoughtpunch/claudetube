@@ -20,6 +20,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from claudetube.analysis.attention import calculate_attention_priority
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -125,6 +127,8 @@ class ActiveVideoWatcher:
         cache_dir: Path | None = None,
         confidence_threshold: float = 0.8,
         max_examinations: int = 10,
+        video_type: str = "unknown",
+        video_duration: float = 0.0,
     ):
         """Initialize the active video watcher.
 
@@ -135,6 +139,10 @@ class ActiveVideoWatcher:
             cache_dir: Optional video cache directory for memory/embeddings.
             confidence_threshold: Stop when hypothesis confidence reaches this.
             max_examinations: Maximum scenes to examine before answering.
+            video_type: Video category for attention weighting (e.g.,
+                'coding_tutorial', 'lecture'). Defaults to 'unknown'.
+            video_duration: Total video duration in seconds. Used for
+                structural importance scoring.
         """
         self.video_id = video_id
         self.user_goal = user_goal
@@ -144,6 +152,8 @@ class ActiveVideoWatcher:
         self.hypotheses: list[Hypothesis] = []
         self.confidence_threshold = confidence_threshold
         self.max_examinations = max_examinations
+        self.video_type = video_type
+        self.video_duration = video_duration
 
         # Pre-compute goal words for text matching
         self._goal_words = set(user_goal.lower().split())
@@ -187,146 +197,59 @@ class ActiveVideoWatcher:
 
         best = candidates[0]
         scene_id = best["scene_id"]
-        relevance = best["relevance"]
+        priority = best["priority"]
 
-        # Decide examination depth based on relevance
-        if relevance > 0.8:
+        # Decide examination depth based on attention priority
+        if priority > 0.6:
             logger.info(
-                f"High relevance ({relevance:.2f}) - examining scene {scene_id} deeply"
+                f"High priority ({priority:.2f}) - examining scene {scene_id} deeply"
             )
             return WatcherAction("examine_deep", scene_id=scene_id)
         else:
             logger.info(
-                f"Moderate relevance ({relevance:.2f}) - quick examination of "
+                f"Moderate priority ({priority:.2f}) - quick examination of "
                 f"scene {scene_id}"
             )
             return WatcherAction("examine_quick", scene_id=scene_id)
 
     def rank_unexplored_scenes(self) -> list[dict]:
-        """Rank scenes by expected information gain.
+        """Rank scenes by attention priority (multi-factor model).
+
+        Uses the attention priority model which scores scenes by:
+        relevance, information density, novelty, visual salience,
+        audio emphasis, and structural importance.
 
         Returns:
-            List of dicts with scene_id, relevance, and scene data,
-            sorted by relevance descending.
+            List of dicts with scene_id, priority, and scene data,
+            sorted by priority descending.
         """
         candidates = []
+        previous_scenes = [
+            s for s in self.scenes
+            if self._get_scene_id(s) in self.examined
+        ]
 
         for scene in self.scenes:
             scene_id = self._get_scene_id(scene)
             if scene_id in self.examined:
                 continue
 
-            # Calculate relevance to goal
-            relevance = self.calculate_relevance(scene)
+            priority = calculate_attention_priority(
+                scene=scene,
+                user_goal=self.user_goal,
+                video_type=self.video_type,
+                previous_scenes=previous_scenes,
+                total_scenes=len(self.scenes),
+                video_duration=self.video_duration,
+            )
 
             candidates.append({
                 "scene_id": scene_id,
-                "relevance": relevance,
+                "priority": priority,
                 "scene": scene,
             })
 
-        return sorted(candidates, key=lambda x: x["relevance"], reverse=True)
-
-    def calculate_relevance(self, scene: dict | SceneBoundary) -> float:
-        """Estimate scene relevance to user goal.
-
-        Uses embedding similarity if available, otherwise falls back
-        to keyword matching.
-
-        Args:
-            scene: Scene data (dict or SceneBoundary).
-
-        Returns:
-            Relevance score from 0.0 to 1.0.
-        """
-        # Check if scene has embedding for semantic matching
-        scene_id = self._get_scene_id(scene)
-        if self.cache_dir and self._has_embeddings():
-            try:
-                relevance = self._semantic_relevance(scene_id)
-                if relevance is not None:
-                    return relevance
-            except Exception as e:
-                logger.debug(f"Semantic relevance failed for scene {scene_id}: {e}")
-
-        # Fallback: keyword matching on transcript
-        return self._text_relevance(scene)
-
-    def _text_relevance(self, scene: dict | SceneBoundary) -> float:
-        """Calculate relevance using keyword matching.
-
-        Args:
-            scene: Scene data.
-
-        Returns:
-            Relevance score based on word overlap.
-        """
-        if hasattr(scene, "transcript_text"):
-            transcript = scene.transcript_text or ""
-        else:
-            transcript = scene.get("transcript_text", "")
-
-        if not transcript:
-            return 0.0
-
-        transcript_lower = transcript.lower()
-        transcript_words = set(transcript_lower.split())
-
-        if not self._goal_words:
-            return 0.0
-
-        # Calculate word overlap
-        matches = sum(1 for w in self._goal_words if w in transcript_words)
-
-        # Bonus for exact phrase
-        goal_lower = self.user_goal.lower()
-        phrase_bonus = 0.3 if goal_lower in transcript_lower else 0.0
-
-        return min(1.0, (matches / len(self._goal_words)) + phrase_bonus)
-
-    def _semantic_relevance(self, scene_id: int) -> float | None:
-        """Calculate semantic relevance using embeddings.
-
-        Args:
-            scene_id: Scene to check.
-
-        Returns:
-            Relevance score or None if embeddings unavailable.
-        """
-        from claudetube.analysis.vector_index import (
-            has_vector_index,
-            search_scenes_by_text,
-        )
-
-        if not has_vector_index(self.cache_dir):
-            return None
-
-        try:
-            # Search for scenes matching the goal
-            results = search_scenes_by_text(
-                self.cache_dir,
-                self.user_goal,
-                top_k=len(self.scenes),
-            )
-
-            # Find this scene's relevance in results
-            for result in results:
-                if result.scene_id == scene_id:
-                    # Convert distance to relevance (lower distance = higher relevance)
-                    # Typical L2 distances range 0-2 for normalized embeddings
-                    return max(0.0, 1.0 - (result.distance / 2.0))
-
-            return 0.0
-        except Exception as e:
-            logger.debug(f"Semantic search failed: {e}")
-            return None
-
-    def _has_embeddings(self) -> bool:
-        """Check if embeddings exist for this video."""
-        if not self.cache_dir:
-            return False
-        from claudetube.analysis.vector_index import has_vector_index
-        return has_vector_index(self.cache_dir)
+        return sorted(candidates, key=lambda x: x["priority"], reverse=True)
 
     def update_understanding(self, scene_id: int, findings: list[dict]) -> None:
         """Update hypotheses based on examination findings.
@@ -524,7 +447,8 @@ class ActiveVideoWatcher:
         """Get current watcher state for serialization.
 
         Returns:
-            Dict with video_id, goal, examined scenes, and hypotheses.
+            Dict with video_id, goal, examined scenes, hypotheses,
+            and attention model parameters.
         """
         return {
             "video_id": self.video_id,
@@ -533,6 +457,8 @@ class ActiveVideoWatcher:
             "hypotheses": [h.to_dict() for h in self.hypotheses],
             "confidence_threshold": self.confidence_threshold,
             "max_examinations": self.max_examinations,
+            "video_type": self.video_type,
+            "video_duration": self.video_duration,
         }
 
     @classmethod
@@ -559,6 +485,8 @@ class ActiveVideoWatcher:
             cache_dir=cache_dir,
             confidence_threshold=state.get("confidence_threshold", 0.8),
             max_examinations=state.get("max_examinations", 10),
+            video_type=state.get("video_type", "unknown"),
+            video_duration=state.get("video_duration", 0.0),
         )
 
         watcher.examined = set(state.get("examined", []))
