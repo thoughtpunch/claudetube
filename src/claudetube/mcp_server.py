@@ -599,6 +599,74 @@ async def generate_visual_transcripts(
 
 
 @mcp.tool()
+async def extract_entities_tool(
+    video_id: str,
+    scene_id: int | None = None,
+    force: bool = False,
+    generate_visual: bool = True,
+    provider: str | None = None,
+) -> str:
+    """Extract entities (objects, people, text, concepts) from video scenes.
+
+    Uses AI-powered extraction with structured output schemas for consistent
+    results. Extracts visual entities from keyframes (VisionAnalyzer) and
+    semantic concepts from transcripts (Reasoner) concurrently.
+
+    Follows "Cheap First, Expensive Last" principle:
+    - Returns cached entities.json instantly if available
+    - Skips scenes with minimal content
+    - Only calls AI providers when needed
+
+    Entities-first architecture: entities are PRIMARY, visual.json is DERIVED
+    from entities when generate_visual=True (backwards compatible).
+
+    Args:
+        video_id: Video ID of a previously processed video.
+        scene_id: Optional specific scene ID (None = all scenes).
+        force: Re-extract even if cached (default: False).
+        generate_visual: Generate visual.json from entities (default: True).
+        provider: Override AI provider (e.g., "anthropic", "openai", "google",
+            "claude-code"). Provider must support VisionAnalyzer and/or Reasoner.
+            If None, uses configured preference.
+    """
+    from claudetube.operations.entity_extraction import extract_entities_for_video
+
+    vision_analyzer = None
+    reasoner = None
+    if provider:
+        from claudetube.providers import get_provider as _get_provider
+        from claudetube.providers.base import Reasoner as ReasonerProto
+        from claudetube.providers.base import VisionAnalyzer as VisionProto
+
+        p = _get_provider(provider)
+        if isinstance(p, VisionProto):
+            vision_analyzer = p
+        if isinstance(p, ReasonerProto):
+            reasoner = p
+    else:
+        try:
+            factory = get_factory()
+            vision_analyzer = factory.get_vision_analyzer()
+            reasoner = factory.get_reasoner()
+        except (RuntimeError, ImportError):
+            pass  # Fall back to default in extract_entities_for_video
+
+    video_id = extract_video_id(video_id)
+    result = await asyncio.to_thread(
+        extract_entities_for_video,
+        video_id,
+        scene_id=scene_id,
+        force=force,
+        generate_visual=generate_visual,
+        output_base=get_cache_dir(),
+        vision_analyzer=vision_analyzer,
+        reasoner=reasoner,
+    )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
 async def track_people_tool(
     video_id: str,
     force: bool = False,
