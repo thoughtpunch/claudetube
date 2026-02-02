@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from claudetube.providers.capabilities import Capability, ProviderInfo
+from claudetube.providers.capabilities import Capability, CostTier, ProviderInfo
 from claudetube.providers.config import ProvidersConfig
 from claudetube.providers.router import (
     NoProviderError,
@@ -90,6 +90,7 @@ def _make_config(**overrides) -> ProvidersConfig:
         "video_provider": None,
         "reasoning_provider": "claude-code",
         "embedding_provider": "voyage",
+        "cost_preference": "cost",
         "transcription_fallbacks": ["whisper-local"],
         "vision_fallbacks": ["claude-code"],
         "reasoning_fallbacks": ["claude-code"],
@@ -685,6 +686,7 @@ class TestCallWithFallback:
         config = _make_config(
             vision_provider="anthropic",
             vision_fallbacks=["openai", "claude-code"],
+            cost_preference="quality",
         )
         router = ProviderRouter(config=config)
 
@@ -1056,6 +1058,7 @@ class TestFullRoutingFlow:
         config = _make_config(
             transcription_provider="openai",
             transcription_fallbacks=["deepgram", "whisper-local"],
+            cost_preference="quality",
         )
         router = ProviderRouter(config=config)
 
@@ -1134,6 +1137,7 @@ class TestFullRoutingFlow:
         config = _make_config(
             reasoning_provider="anthropic",
             reasoning_fallbacks=["openai", "claude-code"],
+            cost_preference="quality",
         )
         router = ProviderRouter(config=config)
 
@@ -1160,6 +1164,203 @@ class TestFullRoutingFlow:
         mock_p1.reason.assert_called_once()
         mock_p2.reason.assert_called_once()
         mock_p3.reason.assert_called_once()
+
+
+# =============================================================================
+# Cost-based routing tests
+# =============================================================================
+
+
+class TestCostBasedRouting:
+    """Tests for cost-based provider selection."""
+
+    def test_fallback_sorted_by_cost_when_cost_preference(self):
+        """Fallback chain is sorted by cost tier when cost_preference='cost'."""
+        config = _make_config(
+            vision_provider="nonexistent",
+            vision_fallbacks=["anthropic", "google", "openai"],
+            cost_preference="cost",
+        )
+        router = ProviderRouter(config=config)
+
+        # anthropic=EXPENSIVE, google=CHEAP, openai=MODERATE
+        mock_google = _make_mock_provider(
+            "google",
+            frozenset({Capability.VISION, Capability.REASON}),
+        )
+
+        attempted_providers = []
+
+        def _mock_get(name, **kwargs):
+            attempted_providers.append(name)
+            if name == "google":
+                return mock_google
+            raise ImportError(f"{name} not installed")
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            side_effect=_mock_get,
+        ):
+            result = router.get_for_capability(Capability.VISION)
+
+        assert result is mock_google
+        # nonexistent tried first (preferred), then fallbacks sorted by cost:
+        # google (CHEAP) before openai (MODERATE) before anthropic (EXPENSIVE)
+        assert attempted_providers[0] == "nonexistent"
+        # After preferred fails, fallbacks should be cost-sorted
+        fallback_attempts = attempted_providers[1:]
+        assert fallback_attempts[0] == "google"
+
+    def test_fallback_not_sorted_when_quality_preference(self):
+        """Fallback chain preserves config order when cost_preference='quality'."""
+        config = _make_config(
+            vision_provider="nonexistent",
+            vision_fallbacks=["anthropic", "google", "openai"],
+            cost_preference="quality",
+        )
+        router = ProviderRouter(config=config)
+
+        mock_anthropic = _make_mock_provider(
+            "anthropic",
+            frozenset({Capability.VISION, Capability.REASON}),
+        )
+
+        attempted_providers = []
+
+        def _mock_get(name, **kwargs):
+            attempted_providers.append(name)
+            if name == "anthropic":
+                return mock_anthropic
+            raise ImportError(f"{name} not installed")
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            side_effect=_mock_get,
+        ):
+            result = router.get_for_capability(Capability.VISION)
+
+        assert result is mock_anthropic
+        # Fallbacks in config order, not cost-sorted
+        assert attempted_providers[1] == "anthropic"
+
+    def test_preferred_provider_always_first_regardless_of_cost(self):
+        """Preferred provider is tried first even if it's expensive."""
+        config = _make_config(
+            vision_provider="anthropic",  # EXPENSIVE
+            vision_fallbacks=["google"],  # CHEAP
+            cost_preference="cost",
+        )
+        router = ProviderRouter(config=config)
+
+        mock_anthropic = _make_mock_provider(
+            "anthropic",
+            frozenset({Capability.VISION, Capability.REASON}),
+        )
+
+        def _mock_get(name, **kwargs):
+            if name == "anthropic":
+                return mock_anthropic
+            raise ImportError(f"{name} not installed")
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            side_effect=_mock_get,
+        ):
+            result = router.get_for_capability(Capability.VISION)
+
+        # Even though anthropic is EXPENSIVE, it's the preferred provider
+        assert result is mock_anthropic
+
+    def test_sort_by_cost_method(self):
+        """_sort_by_cost correctly orders provider names."""
+        config = _make_config()
+        router = ProviderRouter(config=config)
+
+        names = ["anthropic", "whisper-local", "openai", "google", "claude-code"]
+        sorted_names = router._sort_by_cost(names)
+
+        # FREE: whisper-local, claude-code
+        # CHEAP: google
+        # MODERATE: openai
+        # EXPENSIVE: anthropic
+        assert sorted_names.index("whisper-local") < sorted_names.index("google")
+        assert sorted_names.index("claude-code") < sorted_names.index("google")
+        assert sorted_names.index("google") < sorted_names.index("openai")
+        assert sorted_names.index("openai") < sorted_names.index("anthropic")
+
+    def test_sort_by_cost_unknown_provider_gets_moderate(self):
+        """Unknown providers default to MODERATE cost tier."""
+        config = _make_config()
+        router = ProviderRouter(config=config)
+
+        names = ["unknown-provider", "whisper-local", "anthropic"]
+        sorted_names = router._sort_by_cost(names)
+
+        # whisper-local (FREE) < unknown (MODERATE) < anthropic (EXPENSIVE)
+        assert sorted_names.index("whisper-local") < sorted_names.index("unknown-provider")
+        assert sorted_names.index("unknown-provider") < sorted_names.index("anthropic")
+
+    def test_sort_by_cost_stable_within_same_tier(self):
+        """Providers with same cost tier preserve original order."""
+        config = _make_config()
+        router = ProviderRouter(config=config)
+
+        # whisper-local, claude-code, ollama are all FREE
+        names = ["ollama", "claude-code", "whisper-local"]
+        sorted_names = router._sort_by_cost(names)
+
+        # All FREE, so original order preserved
+        assert sorted_names == ["ollama", "claude-code", "whisper-local"]
+
+    @pytest.mark.asyncio
+    async def test_call_with_fallback_cost_sorted(self):
+        """call_with_fallback respects cost-based ordering in fallback chain."""
+        mock_google = _make_mock_provider(
+            "google",
+            frozenset({Capability.VISION, Capability.REASON}),
+        )
+        mock_google.analyze_images = AsyncMock(return_value="google result")
+
+        mock_anthropic = _make_mock_provider(
+            "anthropic",
+            frozenset({Capability.VISION, Capability.REASON}),
+        )
+        mock_anthropic.analyze_images = AsyncMock(return_value="anthropic result")
+
+        config = _make_config(
+            vision_provider="nonexistent",
+            vision_fallbacks=["anthropic", "google"],
+            cost_preference="cost",
+        )
+        router = ProviderRouter(config=config)
+
+        def _mock_get(name, **kwargs):
+            if name == "google":
+                return mock_google
+            if name == "anthropic":
+                return mock_anthropic
+            raise ImportError(f"{name} not installed")
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            side_effect=_mock_get,
+        ):
+            result = await router.call_with_fallback(
+                Capability.VISION,
+                "analyze_images",
+                ["img.jpg"],
+                prompt="describe",
+            )
+
+        # google (CHEAP) should be tried before anthropic (EXPENSIVE)
+        assert result == "google result"
+        mock_google.analyze_images.assert_called_once()
+        mock_anthropic.analyze_images.assert_not_called()
+
+    def test_default_cost_preference_is_cost(self):
+        """Default cost_preference should be 'cost'."""
+        config = ProvidersConfig()
+        assert config.cost_preference == "cost"
 
 
 # =============================================================================

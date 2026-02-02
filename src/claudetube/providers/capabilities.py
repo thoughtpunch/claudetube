@@ -53,6 +53,25 @@ class Capability(Enum):
     EMBED = auto()  # Content -> vector
 
 
+class CostTier(Enum):
+    """Cost tier classification for providers.
+
+    Used by the router to prefer cheaper providers when multiple options
+    are available for a capability. Lower numeric values are cheaper.
+
+    Attributes:
+        FREE: No cost (local models, included subscriptions).
+        CHEAP: Low cost per request.
+        MODERATE: Medium cost per request.
+        EXPENSIVE: High cost per request.
+    """
+
+    FREE = 0
+    CHEAP = 1
+    MODERATE = 2
+    EXPENSIVE = 3
+
+
 @dataclass(frozen=True)
 class ProviderInfo:
     """Immutable provider metadata and capabilities.
@@ -125,6 +144,9 @@ class ProviderInfo:
     cost_per_1m_output_tokens: float | None = None
     cost_per_minute_audio: float | None = None
 
+    # Cost tier for routing preference
+    cost_tier: CostTier = CostTier.MODERATE
+
     def can(self, capability: Capability) -> bool:
         """Check if provider has a specific capability.
 
@@ -181,6 +203,7 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
         supports_diarization=False,
         supports_translation=True,  # faster-whisper supports translation
         cost_per_minute_audio=0,  # Free (local)
+        cost_tier=CostTier.FREE,
     ),
     "openai": ProviderInfo(
         name="openai",
@@ -195,6 +218,7 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
         cost_per_minute_audio=0.006,
         cost_per_1m_input_tokens=2.50,
         cost_per_1m_output_tokens=10.00,
+        cost_tier=CostTier.MODERATE,
     ),
     "anthropic": ProviderInfo(
         name="anthropic",
@@ -206,6 +230,7 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
         max_context_tokens=200_000,
         cost_per_1m_input_tokens=3.00,
         cost_per_1m_output_tokens=15.00,
+        cost_tier=CostTier.EXPENSIVE,
     ),
     "google": ProviderInfo(
         name="google",
@@ -218,6 +243,7 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
         max_context_tokens=2_000_000,  # Gemini 2.0 Flash
         cost_per_1m_input_tokens=0.10,  # Gemini 2.0 Flash
         cost_per_1m_output_tokens=0.40,
+        cost_tier=CostTier.CHEAP,
     ),
     "deepgram": ProviderInfo(
         name="deepgram",
@@ -226,6 +252,7 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
         supports_streaming=True,
         supports_translation=False,  # Deepgram transcribes in original language
         cost_per_minute_audio=0.0043,
+        cost_tier=CostTier.CHEAP,
     ),
     "assemblyai": ProviderInfo(
         name="assemblyai",
@@ -234,6 +261,7 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
         supports_streaming=True,
         supports_translation=False,
         cost_per_minute_audio=0.006,  # Standard model
+        cost_tier=CostTier.CHEAP,
     ),
     "claude-code": ProviderInfo(
         name="claude-code",
@@ -243,6 +271,7 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
         max_images_per_request=20,  # Same as Anthropic
         cost_per_1m_input_tokens=0,  # Included with Claude Code subscription
         cost_per_1m_output_tokens=0,
+        cost_tier=CostTier.FREE,
     ),
     "ollama": ProviderInfo(
         name="ollama",
@@ -252,24 +281,28 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
         max_images_per_request=1,  # LLaVA only handles single image
         cost_per_1m_input_tokens=0,  # Local, free
         cost_per_1m_output_tokens=0,
+        cost_tier=CostTier.FREE,
     ),
     "voyage": ProviderInfo(
         name="voyage",
         capabilities=frozenset({Capability.EMBED}),
         supports_structured_output=False,
         cost_per_1m_input_tokens=0.06,  # voyage-3 pricing
+        cost_tier=CostTier.CHEAP,
     ),
     "local-embedder": ProviderInfo(
         name="local-embedder",
         capabilities=frozenset({Capability.EMBED}),
         supports_structured_output=False,
         cost_per_1m_input_tokens=0,  # Free (local)
+        cost_tier=CostTier.FREE,
     ),
     "litellm": ProviderInfo(
         name="litellm",
         capabilities=frozenset({Capability.REASON}),
         supports_structured_output=True,  # Depends on underlying model
         supports_streaming=True,
+        cost_tier=CostTier.MODERATE,
     ),
 }
 
@@ -277,6 +310,8 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
 __all__ = [
     # Capability definitions
     "Capability",
+    # Cost tier
+    "CostTier",
     # Provider info
     "ProviderInfo",
     # Pre-defined info

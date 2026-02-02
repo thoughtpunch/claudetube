@@ -24,7 +24,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from claudetube.providers.capabilities import Capability
+from claudetube.providers.capabilities import PROVIDER_INFO, Capability, CostTier
 
 if TYPE_CHECKING:
     from claudetube.providers.base import (
@@ -176,13 +176,38 @@ class ProviderRouter:
 
         return provider
 
+    def _sort_by_cost(self, names: list[str]) -> list[str]:
+        """Sort provider names by cost tier (cheapest first).
+
+        Providers not found in PROVIDER_INFO are assigned MODERATE tier.
+        Uses a stable sort so config order is preserved within the same tier.
+
+        Args:
+            names: List of provider names.
+
+        Returns:
+            New list sorted by cost tier.
+        """
+
+        def _cost_key(name: str) -> int:
+            info = PROVIDER_INFO.get(name)
+            if info is not None:
+                return info.cost_tier.value
+            return CostTier.MODERATE.value
+
+        return sorted(names, key=_cost_key)
+
     def get_for_capability(self, capability: Capability) -> Provider:
         """Get best available provider for a capability.
 
         Tries providers in this order:
         1. Preferred provider from config
-        2. Fallback chain from config
+        2. Fallback chain from config (sorted by cost if cost_preference="cost")
         3. Claude Code as ultimate fallback (VISION/REASON only)
+
+        When cost_preference is "cost" (the default), fallback providers are
+        sorted so cheaper providers are tried first. When "quality", the
+        original config order is preserved.
 
         Args:
             capability: The capability needed.
@@ -219,8 +244,12 @@ class ProviderRouter:
                 capability.name,
             )
 
-        # 2. Try fallback chain
-        for fallback_name in self._get_fallback_chain(capability):
+        # 2. Try fallback chain (optionally sorted by cost)
+        fallback_chain = self._get_fallback_chain(capability)
+        if self._config.cost_preference == "cost":
+            fallback_chain = self._sort_by_cost(fallback_chain)
+
+        for fallback_name in fallback_chain:
             if fallback_name in tried:
                 continue
             tried.add(fallback_name)
@@ -504,7 +533,9 @@ class ProviderRouter:
     ) -> list[tuple[str, Provider]]:
         """Build an ordered list of (name, provider) tuples to try.
 
-        Deduplicates and filters to only available providers.
+        Deduplicates and filters to only available providers. When
+        cost_preference is "cost", the preferred provider stays first
+        but fallback providers are sorted by cost tier.
 
         Args:
             capability: The capability needed.
@@ -515,27 +546,33 @@ class ProviderRouter:
         tried: set[str] = set()
         result: list[tuple[str, Provider]] = []
 
-        # Collect candidate names in order
-        candidate_names: list[str] = []
-
+        # 1. Preferred provider always first
         preferred = self._get_preferred_provider_name(capability)
         if preferred is not None:
-            candidate_names.append(preferred)
+            tried.add(preferred)
+            provider = self._try_load_provider(preferred)
+            if provider is not None:
+                result.append((preferred, provider))
 
-        candidate_names.extend(self._get_fallback_chain(capability))
+        # 2. Fallback chain (optionally sorted by cost)
+        fallback_chain = self._get_fallback_chain(capability)
+        if self._config.cost_preference == "cost":
+            fallback_chain = self._sort_by_cost(fallback_chain)
 
-        # Add claude-code ultimate fallback for VISION/REASON
-        if capability in _CLAUDE_CODE_CAPABILITIES:
-            candidate_names.append("claude-code")
-
-        # Load and filter
-        for name in candidate_names:
+        for name in fallback_chain:
             if name in tried:
                 continue
             tried.add(name)
             provider = self._try_load_provider(name)
             if provider is not None:
                 result.append((name, provider))
+
+        # 3. Claude-code ultimate fallback for VISION/REASON
+        if capability in _CLAUDE_CODE_CAPABILITIES and "claude-code" not in tried:
+            tried.add("claude-code")
+            provider = self._try_load_provider("claude-code")
+            if provider is not None:
+                result.append(("claude-code", provider))
 
         return result
 

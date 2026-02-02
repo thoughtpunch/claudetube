@@ -51,6 +51,7 @@ from claudetube.providers.base import (
 from claudetube.providers.capabilities import (
     PROVIDER_INFO,
     Capability,
+    CostTier,
     ProviderInfo,
 )
 
@@ -83,6 +84,7 @@ __all__ = [
     "Embedder",
     # Capability types
     "Capability",
+    "CostTier",
     "ProviderInfo",
     "PROVIDER_INFO",
     # Result types

@@ -80,8 +80,11 @@ _CAPABILITY_FOR_PREFERENCE: dict[str, str] = {
 }
 
 _VALID_PREFERENCE_KEYS = frozenset(
-    {"transcription", "vision", "video", "reasoning", "embedding"}
+    {"transcription", "vision", "video", "reasoning", "embedding", "cost_preference"}
 )
+
+# Valid cost preference values
+_VALID_COST_PREFERENCES = frozenset({"cost", "quality"})
 
 _VALID_FALLBACK_KEYS = frozenset({"transcription", "vision", "reasoning"})
 
@@ -146,6 +149,9 @@ class ProvidersConfig:
     video_provider: str | None = None
     reasoning_provider: str = "claude-code"
     embedding_provider: str = "voyage"
+
+    # Cost preference: "cost" prefers cheaper providers, "quality" uses config order
+    cost_preference: str = "cost"
 
     # Fallback chains
     transcription_fallbacks: list[str] = field(
@@ -424,6 +430,16 @@ def validate_providers_config(
                         f"Valid preferences: {', '.join(sorted(_VALID_PREFERENCE_KEYS))}"
                     )
 
+            # Validate cost_preference
+            cost_pref = prefs.get("cost_preference")
+            if cost_pref is not None:
+                cost_pref_str = str(cost_pref).lower()
+                if cost_pref_str not in _VALID_COST_PREFERENCES:
+                    result.errors.append(
+                        f"Invalid cost_preference '{cost_pref}'. "
+                        f"Valid values: {', '.join(sorted(_VALID_COST_PREFERENCES))}"
+                    )
+
             for pref_key, cap_name in _CAPABILITY_FOR_PREFERENCE.items():
                 if pref_key not in prefs:
                     continue
@@ -556,6 +572,8 @@ def load_providers_config(config_dict: dict | None = None) -> ProvidersConfig:
             config.reasoning_provider = str(prefs["reasoning"])
         if "embedding" in prefs:
             config.embedding_provider = str(prefs["embedding"])
+        if "cost_preference" in prefs:
+            config.cost_preference = str(prefs["cost_preference"]).lower()
 
     # Load fallbacks
     fallbacks = providers_section.get("fallbacks", {})

@@ -14,6 +14,7 @@ import pytest
 from claudetube.providers.capabilities import (
     PROVIDER_INFO,
     Capability,
+    CostTier,
     ProviderInfo,
 )
 
@@ -46,6 +47,40 @@ class TestCapabilityEnum:
         assert Capability.VIDEO not in caps
 
 
+class TestCostTierEnum:
+    """Tests for the CostTier enum."""
+
+    def test_all_tiers_defined(self):
+        """All expected cost tiers are defined."""
+        assert CostTier.FREE is not None
+        assert CostTier.CHEAP is not None
+        assert CostTier.MODERATE is not None
+        assert CostTier.EXPENSIVE is not None
+
+    def test_tier_count(self):
+        """Exactly 4 cost tiers are defined."""
+        assert len(CostTier) == 4
+
+    def test_ordering(self):
+        """Cost tiers have correct ordering (FREE < CHEAP < MODERATE < EXPENSIVE)."""
+        assert CostTier.FREE.value < CostTier.CHEAP.value
+        assert CostTier.CHEAP.value < CostTier.MODERATE.value
+        assert CostTier.MODERATE.value < CostTier.EXPENSIVE.value
+
+    def test_numeric_values(self):
+        """Cost tiers have expected numeric values."""
+        assert CostTier.FREE.value == 0
+        assert CostTier.CHEAP.value == 1
+        assert CostTier.MODERATE.value == 2
+        assert CostTier.EXPENSIVE.value == 3
+
+    def test_sortable(self):
+        """Cost tiers can be sorted by value."""
+        tiers = [CostTier.EXPENSIVE, CostTier.FREE, CostTier.MODERATE, CostTier.CHEAP]
+        sorted_tiers = sorted(tiers, key=lambda t: t.value)
+        assert sorted_tiers == [CostTier.FREE, CostTier.CHEAP, CostTier.MODERATE, CostTier.EXPENSIVE]
+
+
 class TestProviderInfo:
     """Tests for the ProviderInfo dataclass."""
 
@@ -69,6 +104,7 @@ class TestProviderInfo:
         assert info.max_audio_size_mb is None
         assert info.max_images_per_request is None
         assert info.cost_per_1m_input_tokens is None
+        assert info.cost_tier == CostTier.MODERATE
 
     def test_is_immutable(self):
         """ProviderInfo is frozen and cannot be modified."""
@@ -251,6 +287,7 @@ class TestPreDefinedProviderInfo:
         assert not info.can(Capability.REASON)
         assert not info.can(Capability.EMBED)
         assert info.cost_per_minute_audio == 0  # Free
+        assert info.cost_tier == CostTier.FREE
 
     def test_openai_capabilities(self):
         """openai has correct capabilities."""
@@ -297,6 +334,7 @@ class TestPreDefinedProviderInfo:
         assert info.can(Capability.REASON)
         assert not info.can(Capability.TRANSCRIBE)
         assert info.cost_per_1m_input_tokens == 0  # Included with subscription
+        assert info.cost_tier == CostTier.FREE
 
     def test_ollama_capabilities(self):
         """ollama has correct capabilities."""
@@ -305,6 +343,7 @@ class TestPreDefinedProviderInfo:
         assert info.can(Capability.REASON)
         assert info.max_images_per_request == 1  # LLaVA limitation
         assert info.cost_per_1m_input_tokens == 0  # Local
+        assert info.cost_tier == CostTier.FREE
 
     def test_voyage_capabilities(self):
         """voyage has correct capabilities."""
@@ -318,6 +357,22 @@ class TestPreDefinedProviderInfo:
         for name, info in PROVIDER_INFO.items():
             assert info.name == name, f"Mismatch: key={name}, info.name={info.name}"
 
+    def test_all_providers_have_cost_tiers(self):
+        """All pre-defined providers have a cost_tier set."""
+        for name, info in PROVIDER_INFO.items():
+            assert isinstance(info.cost_tier, CostTier), (
+                f"Provider '{name}' missing cost_tier"
+            )
+
+    def test_free_providers_have_zero_cost(self):
+        """Providers with FREE cost tier should have zero or no cost."""
+        for name, info in PROVIDER_INFO.items():
+            if info.cost_tier == CostTier.FREE:
+                if info.cost_per_1m_input_tokens is not None:
+                    assert info.cost_per_1m_input_tokens == 0, (
+                        f"FREE provider '{name}' has non-zero input token cost"
+                    )
+
 
 class TestCapabilityExports:
     """Tests for module exports."""
@@ -327,6 +382,7 @@ class TestCapabilityExports:
         from claudetube.providers import capabilities
 
         assert "Capability" in capabilities.__all__
+        assert "CostTier" in capabilities.__all__
         assert "ProviderInfo" in capabilities.__all__
         assert "PROVIDER_INFO" in capabilities.__all__
 
@@ -335,9 +391,11 @@ class TestCapabilityExports:
         from claudetube.providers.capabilities import (
             PROVIDER_INFO,
             Capability,
+            CostTier,
             ProviderInfo,
         )
 
         assert Capability is not None
+        assert CostTier is not None
         assert ProviderInfo is not None
         assert PROVIDER_INFO is not None
