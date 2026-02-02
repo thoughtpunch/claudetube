@@ -754,12 +754,16 @@ async def find_moments_tool(
     video_id: str,
     query: str,
     top_k: int = 5,
+    semantic_weight: float = 0.5,
 ) -> str:
     """Find moments in a video matching a natural language query.
 
     Uses tiered search strategy (Cheap First, Expensive Last):
     1. TEXT - Fast transcript text matching (~100ms)
     2. SEMANTIC - Vector embedding similarity (if text search fails)
+
+    When both text and semantic results exist for a scene, scores are blended
+    using semantic_weight. Falls back to text-only if embeddings are unavailable.
 
     The video must have been processed with process_video and have scene data.
 
@@ -769,6 +773,8 @@ async def find_moments_tool(
         video_id: Video ID of a previously processed video.
         query: Natural language query (e.g., "when they discuss authentication").
         top_k: Maximum number of results to return (default: 5).
+        semantic_weight: Weight for semantic similarity scores (0.0 to 1.0).
+            Text weight is 1 - semantic_weight. Default: 0.5 (equal blend).
     """
     video_id = extract_video_id(video_id)
 
@@ -778,6 +784,7 @@ async def find_moments_tool(
             video_id,
             query,
             top_k=top_k,
+            semantic_weight=semantic_weight,
         )
     except (FileNotFoundError, ValueError) as e:
         return json.dumps({"error": str(e)})

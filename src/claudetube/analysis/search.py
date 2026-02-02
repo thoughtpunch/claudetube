@@ -359,6 +359,7 @@ def find_moments(
     cache_dir: Path | None = None,
     strategy: str = "auto",
     reasoner: Reasoner | None = None,
+    semantic_weight: float = 0.5,
 ) -> list[SearchMoment]:
     """Find scenes matching a natural language query.
 
@@ -377,6 +378,10 @@ def find_moments(
             When provided, the query is expanded into related search terms
             before searching, improving recall. Falls back gracefully if
             the reasoner fails.
+        semantic_weight: Weight for semantic scores when combining with text
+            scores (0.0 to 1.0). Text weight is ``1 - semantic_weight``.
+            Only used when both text and semantic results exist for a scene.
+            Default 0.5 (equal weight).
 
     Returns:
         List of SearchMoment objects sorted by relevance.
@@ -455,8 +460,9 @@ def find_moments(
     if has_vector_index(cache_dir):
         semantic_results = _search_embedding(cache_dir, query, top_k)
         if semantic_results:
-            # Merge results, preferring higher relevance
-            all_results = _merge_results(text_results, semantic_results, top_k)
+            all_results = _merge_results(
+                text_results, semantic_results, top_k, semantic_weight
+            )
             logger.info(
                 f"Combined search found {len(all_results)} results "
                 f"(text: {len(text_results)}, semantic: {len(semantic_results)})"
@@ -472,24 +478,65 @@ def _merge_results(
     text_results: list[SearchMoment],
     semantic_results: list[SearchMoment],
     top_k: int,
+    semantic_weight: float = 0.5,
 ) -> list[SearchMoment]:
-    """Merge text and semantic search results, deduplicating by scene_id.
+    """Merge text and semantic search results, combining scores for shared scenes.
+
+    When a scene appears in both text and semantic results, the scores are
+    blended using the configured weight::
+
+        combined = (1 - semantic_weight) * text_score + semantic_weight * semantic_score
+
+    Scenes that appear in only one result set keep their original score.
 
     Args:
         text_results: Results from text search.
         semantic_results: Results from semantic search.
         top_k: Maximum number of results.
+        semantic_weight: Weight for semantic scores (0.0 to 1.0).
+            Text weight is ``1 - semantic_weight``. Default 0.5.
 
     Returns:
-        Merged and deduplicated results.
+        Merged and deduplicated results sorted by combined relevance.
     """
-    # Index by scene_id, preferring higher relevance
+    text_weight = 1.0 - semantic_weight
+
+    # Index results by scene_id
+    text_by_scene: dict[int, SearchMoment] = {}
+    for moment in text_results:
+        existing = text_by_scene.get(moment.scene_id)
+        if existing is None or moment.relevance > existing.relevance:
+            text_by_scene[moment.scene_id] = moment
+
+    semantic_by_scene: dict[int, SearchMoment] = {}
+    for moment in semantic_results:
+        existing = semantic_by_scene.get(moment.scene_id)
+        if existing is None or moment.relevance > existing.relevance:
+            semantic_by_scene[moment.scene_id] = moment
+
+    # Combine scores
+    all_scene_ids = set(text_by_scene) | set(semantic_by_scene)
     by_scene: dict[int, SearchMoment] = {}
 
-    for moment in text_results + semantic_results:
-        existing = by_scene.get(moment.scene_id)
-        if existing is None or moment.relevance > existing.relevance:
-            by_scene[moment.scene_id] = moment
+    for scene_id in all_scene_ids:
+        text_moment = text_by_scene.get(scene_id)
+        semantic_moment = semantic_by_scene.get(scene_id)
+
+        if text_moment and semantic_moment:
+            # Both present: blend scores
+            combined_relevance = (
+                text_weight * text_moment.relevance
+                + semantic_weight * semantic_moment.relevance
+            )
+            # Use the text moment as the base (it has a better preview)
+            text_moment.relevance = min(combined_relevance, 1.0)
+            text_moment.match_type = "text+semantic"
+            by_scene[scene_id] = text_moment
+        elif text_moment:
+            by_scene[scene_id] = text_moment
+        else:
+            assert semantic_moment is not None
+            by_scene[scene_id] = semantic_moment
 
     # Sort by relevance and take top_k
     sorted_moments = sorted(

@@ -337,6 +337,19 @@ class TestFindMoments:
                 strategy="semantic",
             )
 
+    def test_semantic_weight_parameter(self, tmp_path, video_cache_dir):
+        """Should accept semantic_weight parameter without error."""
+        from claudetube.analysis.search import find_moments
+
+        results = find_moments(
+            "test_video_123",
+            "fix the bug",
+            cache_dir=tmp_path,
+            semantic_weight=0.7,
+        )
+
+        assert len(results) >= 1
+
 
 @pytest.mark.skipif(not _has_chromadb(), reason="chromadb not installed")
 class TestFindMomentsWithEmbeddings:
@@ -419,18 +432,79 @@ class TestMergeResults:
         scene_ids = [m.scene_id for m in merged]
         assert len(scene_ids) == len(set(scene_ids))  # No duplicates
 
-    def test_prefers_higher_relevance(self):
-        """Should keep result with higher relevance."""
+    def test_combines_scores_for_shared_scenes(self):
+        """Should blend text and semantic scores for scenes in both sets."""
         from claudetube.analysis.search import SearchMoment, _merge_results
 
         text_results = [
-            SearchMoment(1, 0, 0.0, 30.0, 0.3, "text preview", "0:00", "text"),
+            SearchMoment(1, 0, 0.0, 30.0, 0.6, "text preview", "0:00", "text"),
         ]
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.8, "semantic preview", "0:00", "semantic"),
+        ]
+
+        # Equal weight (default)
+        merged = _merge_results(text_results, semantic_results, top_k=10)
+
+        assert len(merged) == 1
+        # 0.5 * 0.6 + 0.5 * 0.8 = 0.7
+        assert merged[0].relevance == pytest.approx(0.7)
+        assert merged[0].match_type == "text+semantic"
+
+    def test_semantic_weight_configurable(self):
+        """Should use configurable weight for blending scores."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 1.0, "text preview", "0:00", "text"),
+        ]
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.0, "semantic preview", "0:00", "semantic"),
+        ]
+
+        # Heavy text weight
+        merged = _merge_results(
+            text_results, semantic_results, top_k=10, semantic_weight=0.2
+        )
+        assert merged[0].relevance == pytest.approx(0.8)
+
+        # Recreate moments (relevance was mutated)
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 1.0, "text preview", "0:00", "text"),
+        ]
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.0, "semantic preview", "0:00", "semantic"),
+        ]
+
+        # Heavy semantic weight
+        merged = _merge_results(
+            text_results, semantic_results, top_k=10, semantic_weight=0.8
+        )
+        assert merged[0].relevance == pytest.approx(0.2)
+
+    def test_text_only_scene_keeps_original_score(self):
+        """Scenes only in text results should keep their score."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.6, "text preview", "0:00", "text"),
+        ]
+
+        merged = _merge_results(text_results, [], top_k=10)
+
+        assert len(merged) == 1
+        assert merged[0].relevance == 0.6
+        assert merged[0].match_type == "text"
+
+    def test_semantic_only_scene_keeps_original_score(self):
+        """Scenes only in semantic results should keep their score."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
         semantic_results = [
             SearchMoment(1, 0, 0.0, 30.0, 0.9, "semantic preview", "0:00", "semantic"),
         ]
 
-        merged = _merge_results(text_results, semantic_results, top_k=10)
+        merged = _merge_results([], semantic_results, top_k=10)
 
         assert len(merged) == 1
         assert merged[0].relevance == 0.9
@@ -462,6 +536,21 @@ class TestMergeResults:
 
         assert merged[0].rank == 1
         assert merged[1].rank == 2
+
+    def test_combined_score_capped_at_one(self):
+        """Combined relevance should not exceed 1.0."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 1.0, "preview", "0:00", "text"),
+        ]
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 1.0, "preview", "0:00", "semantic"),
+        ]
+
+        merged = _merge_results(text_results, semantic_results, top_k=10)
+
+        assert merged[0].relevance <= 1.0
 
 
 class TestExpandQuery:
