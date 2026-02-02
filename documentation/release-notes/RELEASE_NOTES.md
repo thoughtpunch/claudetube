@@ -92,12 +92,24 @@ Generate WCAG 2.1 Level AA compliant audio descriptions from video content. Dete
 existing AD tracks, or generates descriptions from scene analysis using configured
 vision providers.
 
-### 30 MCP Tools
+### YouTube Authentication & SABR Support
 
-The MCP server exposes 30 tools covering the full feature set: video processing,
+YouTube's migration to SABR streaming and PO token enforcement broke many third-party
+tools. claudetube now handles this transparently:
+
+- Smart client fallback chain with retry on 403 errors
+- Cookie management (`cookies_file` or `cookies_from_browser`)
+- PO token support (manual or automated via bgutil plugin)
+- deno recommended for yt-dlp JS challenge solving
+- `youtube_auth_status_tool` MCP tool for diagnostics (reports auth level 0–4)
+- Tiered setup guide from zero-config to fully automated
+
+### 31 MCP Tools
+
+The MCP server exposes 31 tools covering the full feature set: video processing,
 transcription, frame extraction, scene analysis, entity tracking, semantic search,
-active watching, audio descriptions, playlist analysis, knowledge graphs, and provider
-management.
+active watching, audio descriptions, playlist analysis, knowledge graphs, YouTube
+auth diagnostics, and provider management.
 
 ---
 
@@ -115,7 +127,8 @@ management.
 | Accessibility | None | Audio description generation |
 | Playlists | Not supported | Metadata + cross-video knowledge graph |
 | Configuration | None | Hierarchical YAML config + env vars |
-| MCP Tools | 5 | 30 |
+| YouTube Auth | None | PO tokens, cookies, bgutil plugin, auth diagnostics |
+| MCP Tools | 5 | 31 |
 | Tests | Minimal | 2,000+ |
 | Slash Commands | 2 | 9 |
 
@@ -139,6 +152,7 @@ pip install "claudetube[embeddings-local]==1.0.0rc1"    # Local embeddings
 - Python 3.10+
 - ffmpeg (for audio/video processing)
 - yt-dlp (bundled as dependency)
+- deno (recommended for YouTube JS challenge solving)
 
 ---
 
@@ -155,13 +169,14 @@ Implemented features that need to be connected to their public interfaces:
 - [ ] Add MCP tools for knowledge graph operations
 - [ ] Route AudioDescriptionGenerator through ProviderRouter
 - [ ] Auto-detect video type for attention model weighting
-- [ ] Wire embedding-based attention scoring
+- [x] ~~Wire embedding-based attention scoring~~ (done)
+- [x] ~~Wire visual transcripts through ProviderRouter~~ (done)
 
 ### Test & Quality (Epic: claudetube-axf)
 Quality gates for release confidence:
 
-- [ ] Unit tests for download, transcribe, and URL processor modules
-- [ ] pytest-cov coverage baseline
+- [x] ~~Unit tests for download, transcribe, and URL processor modules~~ (done)
+- [x] ~~pytest-cov coverage baseline~~ (done)
 - [ ] Integration test framework for real API calls
 - [ ] Fix fragile async/sync bridge in OCR
 - [ ] Complete mypy type checking setup
@@ -170,10 +185,21 @@ Quality gates for release confidence:
 Nice-to-have improvements tracked for v1.0.x:
 
 - [ ] `/yt:deep` and `/yt:focus` slash commands
-- [ ] Multilingual audio descriptions
+- [x] ~~Multilingual audio descriptions~~ (done)
 - [ ] Streaming transcription support
-- [ ] OCR vs Vision quality benchmarking
+- [x] ~~OCR vs Vision quality benchmarking~~ (done)
 - [ ] Local vision model support for visual transcripts
+
+### Recently Completed
+
+The following were resolved after the initial RC build:
+
+- **YouTube SABR/403 fix**: Upgraded yt-dlp, added smart client fallback chain
+- **YouTube auth support**: PO tokens, cookies, bgutil plugin, auth diagnostics tool
+- **deno prerequisite**: Recommended in install.sh, logged if missing at runtime
+- **Rotating file logging**: MCP server logs to `~/Library/Logs/Claude/claudetube-mcp.log`
+- **Python 3.10 compatibility**: Fixed mock.patch name collision and protocol test portability
+- **Documentation reorganization**: All docs navigable as a wiki from `documentation/README.md`
 
 ---
 

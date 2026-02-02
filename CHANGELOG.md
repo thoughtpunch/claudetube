@@ -4,7 +4,7 @@ All notable changes to claudetube are documented in this file.
 
 ## [1.0.0rc1] - 2026-02-02
 
-**260 commits since v0.1.1** — A complete evolution from a video download-and-transcribe
+**270+ commits since v0.1.1** — A complete evolution from a video download-and-transcribe
 script into a modular video understanding platform.
 
 ### Features
@@ -92,6 +92,21 @@ Cross-video analysis for playlists and series:
 - Cross-video knowledge graph with topic extraction and prerequisite chains
 - `get_playlist` and `list_playlists` MCP tools
 
+#### YouTube Authentication & SABR Support
+Full support for YouTube's evolving authentication requirements:
+
+- **PO Token support**: Manual token config and automated generation via
+  [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) plugin
+- **Cookie management**: `cookies_file` and `cookies_from_browser` config options applied
+  to all yt-dlp operations (metadata, subtitles, audio, thumbnails, video segments)
+- **deno prerequisite**: Recommended for yt-dlp JS challenge solving; `install.sh` checks
+  for deno and logs a warning if missing
+- **Auth diagnostics**: `youtube_auth_status_tool` MCP tool reports deno availability,
+  PO token plugin status, cookie config, POT server reachability, and auth level (0–4)
+- **Smart client fallback**: `default,mweb` client chain with retry on 403 and
+  "Requested format is not available" errors
+- **Tiered setup guide**: Levels 0–4 from zero-config to fully automated PO token refresh
+
 #### Configurable Cache Directory
 - `CLAUDETUBE_CACHE_DIR` environment variable
 - Project-level `.claudetube/config.yaml`
@@ -111,6 +126,13 @@ Cross-video analysis for playlists and series:
 - OCR enhanced with VisionAnalyzer fallback for low-confidence results
 - Embedder-based semantic query blending in search
 - Slash commands check cache before invoking Python
+- Visual transcripts wired through ProviderRouter (was direct registry access)
+- Embedding-based attention scoring wired into ActiveVideoWatcher
+- Multilingual audio descriptions (was English-only)
+- Rotating file logging for MCP server (`~/Library/Logs/Claude/claudetube-mcp.log`,
+  5 MB rotation, 3 backups)
+- `CacheManager.get_video_path()` shared utility for consistent path resolution
+- OCR vs Vision quality benchmarking script (`scripts/benchmark_ocr_vision.py`)
 
 ### Architecture
 
@@ -130,6 +152,10 @@ Cross-video analysis for playlists and series:
 - Fix import ordering issues
 - Fix PyYAML missing from dependencies
 - Fix requirements.txt / pyproject.toml sync
+- Fix YouTube SABR/403 breakage: pin yt-dlp>=2026.01.15, pass system PATH to
+  subprocess, retry with client fallback chain
+- Fix `mock.patch` module/function name collision on Python 3.10
+- Fix protocol tests to be portable across Python 3.10–3.12
 
 ### Infrastructure
 
@@ -137,6 +163,9 @@ Cross-video analysis for playlists and series:
 - Cross-platform installer: `install.sh` (macOS/Linux) and `install.ps1` (Windows)
 - CI/CD: GitHub Actions with ruff linting and mypy type checking
 - PyPI publishing workflow
+- pytest-cov coverage configuration with baseline thresholds
+- Unit tests for `operations/download.py`, `operations/transcribe.py`, and
+  `operations/processor.py` URL processing flows
 
 ### Dependencies
 
@@ -144,7 +173,9 @@ Core: yt-dlp, faster-whisper, pysubs2, pyyaml, scikit-learn, scenedetect, numpy,
 pydantic, Pillow
 
 Optional groups: `[mcp]`, `[openai]`, `[anthropic]`, `[google]`, `[deepgram]`,
-`[assemblyai]`, `[ollama]`, `[embeddings-local]`, `[all-providers]`
+`[assemblyai]`, `[ollama]`, `[embeddings-local]`, `[youtube-pot]`, `[all-providers]`
+
+Recommended: [deno](https://deno.land) (for yt-dlp YouTube JS challenge solving)
 
 ### Known Issues (RC)
 
@@ -152,9 +183,7 @@ The following are tracked for resolution before v1.0.0 final:
 
 - AudioDescriptionGenerator uses registry directly instead of ProviderRouter
 - Video type not auto-detected for attention model weighting
-- AD language hardcoded to English
 - Fragile async/sync bridge in OCR vision integration
-- Missing unit tests for download.py, transcribe.py, and URL-based processor flow
 
 See beads epic `claudetube-lgb` (Wire Up All Implemented Features) and
 `claudetube-axf` (Test Coverage and Quality Gates) for full tracking.
