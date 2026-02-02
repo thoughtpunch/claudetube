@@ -49,6 +49,9 @@ output/
 *.mp3
 *.m4a
 
+# Benchmark artifacts
+.benchmark_frames/
+
 # OS
 .DS_Store
 Thumbs.db
