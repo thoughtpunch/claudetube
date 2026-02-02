@@ -43,6 +43,11 @@ from claudetube.operations.extract_frames import (
     extract_hq_frames,
     extract_hq_frames_local,
 )
+from claudetube.operations.factory import (
+    OperationFactory,
+    clear_factory_cache,
+    get_factory,
+)
 from claudetube.operations.person_tracking import (
     PersonTrackingOperation,
     get_people_tracking,
@@ -113,4 +118,7 @@ __all__ = [
     "EntityExtractionSceneResult",
     "extract_entities_for_video",
     "get_extracted_entities",
+    "OperationFactory",
+    "get_factory",
+    "clear_factory_cache",
 ]
