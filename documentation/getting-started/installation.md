@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # Installation
 
 > Get claudetube running on your system.
@@ -7,6 +9,7 @@
 - **Python 3.10+**
 - **ffmpeg** - For video/audio processing
 - **yt-dlp** - For video downloading (installed automatically)
+- **deno** (recommended for YouTube) - Required by yt-dlp for YouTube JS challenge solving
 
 ## Quick Install
 
@@ -46,6 +49,30 @@ Or use Chocolatey:
 choco install ffmpeg
 ```
 
+## Installing deno
+
+deno is recommended for YouTube support. yt-dlp uses it to solve YouTube's JavaScript challenges.
+
+### macOS
+
+```bash
+brew install deno
+```
+
+### Linux
+
+```bash
+curl -fsSL https://deno.land/install.sh | sh
+```
+
+### Windows
+
+```powershell
+irm https://deno.land/install.ps1 | iex
+```
+
+For YouTube authentication setup (cookies, PO tokens), see the [YouTube Authentication Guide](../guides/youtube-auth.md).
+
 ## Verify Installation
 
 ```bash
@@ -57,6 +84,9 @@ ffmpeg -version
 
 # Check yt-dlp (installed with claudetube)
 yt-dlp --version
+
+# Check deno (recommended for YouTube)
+deno --version
 
 # Test claudetube
 python -c "from claudetube import process_video; print('OK')"

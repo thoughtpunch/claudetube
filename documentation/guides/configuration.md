@@ -1,3 +1,5 @@
+[← Documentation](../README.md)
+
 # Configuration Guide
 
 > How to configure claudetube's cache directory and other settings.
@@ -211,6 +213,32 @@ Configuration is validated on load. Errors are logged for:
 ### Example Configs
 
 See `examples/config.minimal.yaml` and `examples/config.full.yaml` for complete references.
+
+## YouTube Configuration
+
+YouTube requires additional authentication for some content. All YouTube options are under the `youtube:` key.
+
+```yaml
+youtube:
+  # Extract cookies directly from browser (browser must not be running)
+  cookies_from_browser: "firefox"
+
+  # Or: Netscape-format cookie file exported from browser
+  cookies_file: "~/.config/claudetube/youtube-cookies.txt"
+
+  # Manual PO token (expires ~12hr)
+  po_token: "mweb.gvs+TOKEN_VALUE"
+
+  # bgutil server URL for automated PO token generation
+  pot_server_url: "http://127.0.0.1:4416"
+
+  # bgutil script path (alternative to server, slower)
+  pot_script_path: "~/bgutil-ytdlp-pot-provider/server/build/generate_once.js"
+```
+
+All YouTube fields are optional. Without configuration, claudetube uses yt-dlp's default client selection (`android_vr`).
+
+For the full setup guide including prerequisites, step-by-step instructions, and troubleshooting, see [YouTube Authentication](youtube-auth.md).
 
 ## Common Use Cases
 
