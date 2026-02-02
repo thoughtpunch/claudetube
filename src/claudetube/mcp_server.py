@@ -1106,6 +1106,414 @@ async def get_video_connections_tool(
 
 
 @mcp.tool()
+async def get_descriptions(
+    video_id_or_url: str,
+    format: str = "vtt",
+    regenerate: bool = False,
+) -> str:
+    """Get visual descriptions for accessibility (audio description).
+
+    Returns cached descriptions instantly if available. Otherwise generates
+    them following "Cheap First, Expensive Last":
+    1. Return cached .ad.vtt/.ad.txt if they exist
+    2. Check for source AD track via yt-dlp and transcribe it
+    3. Compile from existing scene visual.json data
+    4. Generate via AI provider (VIDEO -> VISION fallback)
+
+    Args:
+        video_id_or_url: Video ID or URL.
+        format: Output format — "vtt" for WebVTT or "txt" for plain text.
+        regenerate: Re-generate even if cached (default: False).
+    """
+    from claudetube.operations.audio_description import (
+        AudioDescriptionGenerator,
+        compile_scene_descriptions,
+        get_scene_descriptions,
+    )
+
+    video_id = extract_video_id(video_id_or_url)
+    cache_dir = get_cache_dir() / video_id
+
+    if not cache_dir.exists():
+        return json.dumps({
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        })
+
+    cache = CacheManager(get_cache_dir())
+
+    # 1. CACHE — Return instantly if AD files exist
+    if not regenerate and cache.has_ad(video_id):
+        result = get_scene_descriptions(video_id, output_base=get_cache_dir())
+        if format == "txt" and "txt" in result:
+            result["content"] = result.pop("txt", "")
+            result.pop("vtt", None)
+        elif "vtt" in result:
+            result["content"] = result.pop("vtt", "")
+            result.pop("txt", None)
+        result["source"] = "cache"
+        return json.dumps(result, indent=2)
+
+    # 2. YT-DLP — Check for source AD track
+    state = cache.get_state(video_id)
+    if state and state.url and state.ad_track_available is None:
+        try:
+            from claudetube.tools.yt_dlp import YtDlpTool
+
+            yt = YtDlpTool()
+            ad_format = await asyncio.to_thread(yt.check_audio_description, state.url)
+            state.ad_track_available = ad_format is not None
+            cache.save_state(video_id, state)
+
+            if ad_format is not None:
+                ad_audio_path = cache_dir / "audio_description.mp3"
+                if not ad_audio_path.exists():
+                    await asyncio.to_thread(
+                        yt.download_audio_description,
+                        state.url,
+                        ad_audio_path,
+                        format_id=ad_format.get("format_id"),
+                    )
+
+                if ad_audio_path.exists():
+                    generator = AudioDescriptionGenerator()
+                    result = await generator.transcribe_ad_track(
+                        video_id,
+                        ad_audio_path,
+                        output_base=get_cache_dir(),
+                    )
+                    if "error" not in result:
+                        ad_result = get_scene_descriptions(video_id, output_base=get_cache_dir())
+                        if format == "txt" and "txt" in ad_result:
+                            ad_result["content"] = ad_result.pop("txt", "")
+                            ad_result.pop("vtt", None)
+                        elif "vtt" in ad_result:
+                            ad_result["content"] = ad_result.pop("vtt", "")
+                            ad_result.pop("txt", None)
+                        ad_result["source"] = "source_track"
+                        return json.dumps(ad_result, indent=2)
+        except Exception as e:
+            logger.warning(f"AD track detection failed: {e}")
+
+    # 3. SCENE COMPILATION — Compile from existing visual.json
+    if has_scenes(cache_dir):
+        result = await asyncio.to_thread(
+            compile_scene_descriptions,
+            video_id,
+            force=regenerate,
+            output_base=get_cache_dir(),
+        )
+        if "error" not in result:
+            ad_result = get_scene_descriptions(video_id, output_base=get_cache_dir())
+            if format == "txt" and "txt" in ad_result:
+                ad_result["content"] = ad_result.pop("txt", "")
+                ad_result.pop("vtt", None)
+            elif "vtt" in ad_result:
+                ad_result["content"] = ad_result.pop("vtt", "")
+                ad_result.pop("txt", None)
+            ad_result["source"] = result.get("source", "scene_compilation")
+            return json.dumps(ad_result, indent=2)
+
+    # 4. PROVIDER GENERATION — Use AI providers (expensive)
+    try:
+        generator = AudioDescriptionGenerator()
+        result = await generator.generate(
+            video_id,
+            force=regenerate,
+            output_base=get_cache_dir(),
+        )
+        if "error" not in result:
+            ad_result = get_scene_descriptions(video_id, output_base=get_cache_dir())
+            if format == "txt" and "txt" in ad_result:
+                ad_result["content"] = ad_result.pop("txt", "")
+                ad_result.pop("vtt", None)
+            elif "vtt" in ad_result:
+                ad_result["content"] = ad_result.pop("vtt", "")
+                ad_result.pop("txt", None)
+            ad_result["source"] = result.get("source", "generated")
+            return json.dumps(ad_result, indent=2)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({
+            "error": f"Audio description generation failed: {e}",
+            "video_id": video_id,
+            "suggestion": "Run get_scenes and generate_visual_transcripts first, then try again.",
+        })
+
+
+@mcp.tool()
+async def describe_moment(
+    video_id_or_url: str,
+    timestamp: float,
+    context: str | None = None,
+) -> str:
+    """Describe visual content at a specific moment for accessibility.
+
+    Extracts HQ frames around the timestamp and generates an audio
+    description using the best available AI vision provider. This is
+    an expensive on-demand operation.
+
+    Args:
+        video_id_or_url: Video ID or URL.
+        timestamp: Time in seconds to describe.
+        context: Optional context about what the viewer is interested in.
+    """
+    video_id = extract_video_id(video_id_or_url)
+    cache_dir = get_cache_dir() / video_id
+
+    if not cache_dir.exists():
+        return json.dumps({
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        })
+
+    # Extract HQ frames around the timestamp
+    frames = await asyncio.to_thread(
+        get_hq_frames_at,
+        video_id_or_url,
+        start_time=max(0, timestamp - 1),
+        duration=3,
+        interval=1,
+        output_base=get_cache_dir(),
+        width=1280,
+    )
+
+    if not frames:
+        return json.dumps({
+            "error": "Could not extract frames at the given timestamp.",
+            "video_id": video_id,
+            "timestamp": timestamp,
+        })
+
+    # Try to get a vision provider for description
+    try:
+        factory = get_factory()
+        vision = factory.get_vision_analyzer()
+    except Exception:
+        vision = None
+
+    if vision is None:
+        return json.dumps({
+            "video_id": video_id,
+            "timestamp": timestamp,
+            "frame_count": len(frames),
+            "frame_paths": [str(f) for f in frames],
+            "description": None,
+            "note": "No vision provider available. Frames extracted for manual inspection.",
+        }, indent=2)
+
+    # Build prompt
+    prompt_parts = [
+        "Describe what is visually happening at this moment for a vision-impaired viewer.",
+        "Focus on: people present, their actions, objects visible, any text on screen,",
+        "and the setting. Be concise (2-4 sentences). Do not describe audio or dialogue.",
+    ]
+    if context:
+        prompt_parts.append(f"\nContext: {context}")
+
+    prompt = " ".join(prompt_parts)
+
+    try:
+        result = await vision.analyze_images(
+            images=[Path(f) for f in frames],
+            prompt=prompt,
+        )
+        description = result if isinstance(result, str) else json.dumps(result)
+    except Exception as e:
+        description = None
+        logger.warning(f"Vision analysis failed for moment at {timestamp}s: {e}")
+
+    return json.dumps({
+        "video_id": video_id,
+        "timestamp": timestamp,
+        "frame_count": len(frames),
+        "frame_paths": [str(f) for f in frames],
+        "description": description,
+        "provider": vision.info.name if vision else None,
+    }, indent=2)
+
+
+@mcp.tool()
+async def get_accessible_transcript(
+    video_id_or_url: str,
+    format: str = "txt",
+) -> str:
+    """Get a merged transcript with audio descriptions interspersed.
+
+    Combines the spoken transcript with visual descriptions to create
+    a fully accessible text version. Audio descriptions are marked with
+    [AD] tags to distinguish them from dialogue.
+
+    The video must have both a transcript and audio descriptions cached.
+
+    Args:
+        video_id_or_url: Video ID or URL.
+        format: Output format — "txt" for plain text or "srt" for subtitles.
+    """
+    from claudetube.operations.audio_description import get_scene_descriptions
+
+    video_id = extract_video_id(video_id_or_url)
+    cache_dir = get_cache_dir() / video_id
+
+    if not cache_dir.exists():
+        return json.dumps({
+            "error": "Video not cached. Run process_video first.",
+            "video_id": video_id,
+        })
+
+    # Load transcript
+    if format == "srt":
+        transcript_path = cache_dir / "audio.srt"
+    else:
+        transcript_path = cache_dir / "audio.txt"
+
+    if not transcript_path.exists():
+        fallback = cache_dir / ("audio.srt" if format == "txt" else "audio.txt")
+        if fallback.exists():
+            transcript_path = fallback
+        else:
+            return json.dumps({
+                "error": "No transcript found. Run process_video or transcribe_video first.",
+                "video_id": video_id,
+            })
+
+    transcript_text = transcript_path.read_text()
+
+    # Load audio descriptions
+    cache = CacheManager(get_cache_dir())
+    if not cache.has_ad(video_id):
+        return json.dumps({
+            "error": "No audio descriptions found. Run get_descriptions first.",
+            "video_id": video_id,
+            "transcript_available": True,
+        })
+
+    ad_data = get_scene_descriptions(video_id, output_base=get_cache_dir())
+    ad_txt = ad_data.get("txt", "")
+
+    if not ad_txt:
+        return json.dumps({
+            "error": "Audio description file is empty.",
+            "video_id": video_id,
+        })
+
+    # Parse AD lines into (timestamp_seconds, description) tuples
+    ad_entries = []
+    for line in ad_txt.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Format: [MM:SS] description text
+        if line.startswith("[") and "]" in line:
+            bracket_end = line.index("]")
+            ts_str = line[1:bracket_end]
+            desc = line[bracket_end + 1:].strip()
+            parts = ts_str.split(":")
+            try:
+                if len(parts) == 2:
+                    seconds = int(parts[0]) * 60 + int(parts[1])
+                elif len(parts) == 3:
+                    seconds = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                else:
+                    continue
+                ad_entries.append((seconds, desc))
+            except ValueError:
+                continue
+
+    # Build merged output with [AD] markers
+    merged_lines = [
+        "=== ACCESSIBLE TRANSCRIPT ===",
+        f"Video ID: {video_id}",
+        "",
+        "--- Spoken Transcript ---",
+        transcript_text,
+        "",
+        "--- Visual Descriptions (Audio Description) ---",
+    ]
+    for ts, desc in ad_entries:
+        minutes = ts // 60
+        secs = ts % 60
+        merged_lines.append(f"[AD {minutes:02d}:{secs:02d}] {desc}")
+
+    merged = "\n".join(merged_lines)
+
+    return json.dumps({
+        "video_id": video_id,
+        "format": "accessible_transcript",
+        "transcript_length": len(transcript_text),
+        "ad_entry_count": len(ad_entries),
+        "content": merged,
+    }, indent=2)
+
+
+@mcp.tool()
+async def has_audio_description(
+    video_id_or_url: str,
+) -> str:
+    """Check if a video has audio description content available.
+
+    Checks three sources:
+    1. Cached AD files (.ad.vtt / .ad.txt)
+    2. Source AD track from the video platform (via yt-dlp)
+    3. Generated AD from scene analysis
+
+    Args:
+        video_id_or_url: Video ID or URL.
+    """
+    video_id = extract_video_id(video_id_or_url)
+    cache_dir = get_cache_dir() / video_id
+    cache = CacheManager(get_cache_dir())
+
+    result: dict = {
+        "video_id": video_id,
+        "has_cached_ad": False,
+        "has_source_ad_track": None,
+        "ad_source": None,
+        "ad_complete": False,
+    }
+
+    if not cache_dir.exists():
+        result["error"] = "Video not cached. Run process_video first."
+        return json.dumps(result, indent=2)
+
+    # 1. Check cached AD files
+    result["has_cached_ad"] = cache.has_ad(video_id)
+
+    # 2. Check state for AD info
+    state = cache.get_state(video_id)
+    if state:
+        result["ad_complete"] = state.ad_complete
+        result["ad_source"] = state.ad_source
+        result["has_source_ad_track"] = state.ad_track_available
+
+    # 3. If source AD track status unknown, check via yt-dlp
+    if state and state.url and state.ad_track_available is None:
+        try:
+            from claudetube.tools.yt_dlp import YtDlpTool
+
+            yt = YtDlpTool()
+            ad_format = await asyncio.to_thread(yt.check_audio_description, state.url)
+            has_track = ad_format is not None
+            result["has_source_ad_track"] = has_track
+
+            state.ad_track_available = has_track
+            cache.save_state(video_id, state)
+
+            if ad_format:
+                result["source_ad_format"] = {
+                    "format_id": ad_format.get("format_id"),
+                    "format_note": ad_format.get("format_note"),
+                    "language": ad_format.get("language"),
+                }
+        except Exception as e:
+            logger.warning(f"AD track check failed: {e}")
+            result["has_source_ad_track"] = None
+            result["source_check_error"] = str(e)
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
 async def get_knowledge_graph_stats_tool() -> str:
     """Get statistics about the cross-video knowledge graph.
 
@@ -1158,8 +1566,8 @@ async def list_providers_tool() -> str:
     try:
         factory = get_factory()
         config = factory.config
-        capabilities["transcription"]["preferred"] = config.transcription_provider
-        capabilities["transcription"]["fallbacks"] = config.transcription_fallbacks
+        capabilities["transcribe"]["preferred"] = config.transcription_provider
+        capabilities["transcribe"]["fallbacks"] = config.transcription_fallbacks
         capabilities["vision"]["preferred"] = config.vision_provider
         capabilities["vision"]["fallbacks"] = config.vision_fallbacks
         capabilities["video"]["preferred"] = config.video_provider
