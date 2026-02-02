@@ -24,6 +24,7 @@ import pytest
 from claudetube.cache.scenes import SceneBoundary
 from claudetube.operations.entity_extraction import (
     SEMANTIC_CONCEPT_PROMPT,
+    VIDEO_ENTITY_PROMPT,
     VISUAL_ENTITY_PROMPT,
     EntityExtractionOperation,
     EntityExtractionSceneResult,
@@ -36,6 +37,17 @@ from claudetube.operations.entity_extraction import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_video_analyzer():
+    """Create a mock VideoAnalyzer with structured output support."""
+    analyzer = AsyncMock()
+    info_mock = MagicMock()
+    info_mock.name = "google"
+    type(analyzer).info = PropertyMock(return_value=info_mock)
+    analyzer.is_available.return_value = True
+    return analyzer
 
 
 @pytest.fixture
@@ -93,6 +105,14 @@ def sample_keyframes(tmp_path):
     return frames
 
 
+@pytest.fixture
+def sample_video_path(tmp_path):
+    """Create a sample video file."""
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"\x00" * 100)  # Dummy video file
+    return video
+
+
 # ---------------------------------------------------------------------------
 # EntityExtractionOperation Init Tests
 # ---------------------------------------------------------------------------
@@ -101,21 +121,31 @@ def sample_keyframes(tmp_path):
 class TestEntityExtractionOperationInit:
     """Tests for operation instantiation."""
 
+    def test_accepts_video_analyzer(self, mock_video_analyzer):
+        op = EntityExtractionOperation(video_analyzer=mock_video_analyzer)
+        assert op.video_analyzer is mock_video_analyzer
+        assert op.vision is None
+        assert op.reasoner is None
+
     def test_accepts_vision_analyzer(self, mock_vision_analyzer):
         op = EntityExtractionOperation(vision_analyzer=mock_vision_analyzer)
         assert op.vision is mock_vision_analyzer
+        assert op.video_analyzer is None
         assert op.reasoner is None
 
     def test_accepts_reasoner(self, mock_reasoner):
         op = EntityExtractionOperation(reasoner=mock_reasoner)
         assert op.reasoner is mock_reasoner
+        assert op.video_analyzer is None
         assert op.vision is None
 
-    def test_accepts_both(self, mock_vision_analyzer, mock_reasoner):
+    def test_accepts_all(self, mock_video_analyzer, mock_vision_analyzer, mock_reasoner):
         op = EntityExtractionOperation(
+            video_analyzer=mock_video_analyzer,
             vision_analyzer=mock_vision_analyzer,
             reasoner=mock_reasoner,
         )
+        assert op.video_analyzer is mock_video_analyzer
         assert op.vision is mock_vision_analyzer
         assert op.reasoner is mock_reasoner
 
@@ -414,6 +444,218 @@ class TestExecute:
 
 
 # ---------------------------------------------------------------------------
+# VideoAnalyzer Execute Tests
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteWithVideoAnalyzer:
+    """Tests for VideoAnalyzer support in execute."""
+
+    @pytest.mark.asyncio
+    async def test_video_analyzer_used_when_available(
+        self, mock_video_analyzer, mock_vision_analyzer, sample_scene,
+        sample_keyframes, sample_video_path,
+    ):
+        """VideoAnalyzer is preferred over VisionAnalyzer."""
+        mock_video_analyzer.analyze_video.return_value = {
+            "objects": [{"name": "laptop", "category": "object", "first_seen_sec": 10.0, "confidence": 0.9}],
+            "people": [],
+            "text_on_screen": [],
+            "concepts": [],
+            "code_snippets": [],
+        }
+
+        op = EntityExtractionOperation(
+            video_analyzer=mock_video_analyzer,
+            vision_analyzer=mock_vision_analyzer,
+        )
+        result = await op.execute(
+            scene_id=0,
+            keyframes=sample_keyframes,
+            scene=sample_scene,
+            video_path=sample_video_path,
+        )
+
+        assert len(result.objects) == 1
+        assert result.objects[0]["name"] == "laptop"
+        assert result.model_used == "google"
+        # VideoAnalyzer called, VisionAnalyzer NOT called
+        mock_video_analyzer.analyze_video.assert_called_once()
+        mock_vision_analyzer.analyze_images.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_video_analyzer_passes_time_range(
+        self, mock_video_analyzer, sample_scene, sample_video_path,
+    ):
+        """VideoAnalyzer receives start_time and end_time."""
+        mock_video_analyzer.analyze_video.return_value = {
+            "objects": [], "people": [], "text_on_screen": [],
+            "concepts": [], "code_snippets": [],
+        }
+
+        op = EntityExtractionOperation(video_analyzer=mock_video_analyzer)
+        await op.execute(
+            scene_id=0,
+            keyframes=[],
+            scene=sample_scene,
+            video_path=sample_video_path,
+        )
+
+        call_kwargs = mock_video_analyzer.analyze_video.call_args[1]
+        assert call_kwargs["start_time"] == 10.0
+        assert call_kwargs["end_time"] == 25.0
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_vision_on_video_error(
+        self, mock_video_analyzer, mock_vision_analyzer, sample_scene,
+        sample_keyframes, sample_video_path,
+    ):
+        """When VideoAnalyzer fails, falls back to VisionAnalyzer."""
+        mock_video_analyzer.analyze_video.side_effect = RuntimeError("Gemini API error")
+        mock_vision_analyzer.analyze_images.return_value = {
+            "objects": [{"name": "monitor", "category": "object", "first_seen_sec": 10.0}],
+            "people": [],
+            "text_on_screen": [],
+            "concepts": [],
+            "code_snippets": [],
+        }
+
+        op = EntityExtractionOperation(
+            video_analyzer=mock_video_analyzer,
+            vision_analyzer=mock_vision_analyzer,
+        )
+        result = await op.execute(
+            scene_id=0,
+            keyframes=sample_keyframes,
+            scene=sample_scene,
+            video_path=sample_video_path,
+        )
+
+        assert len(result.objects) == 1
+        assert result.objects[0]["name"] == "monitor"
+        mock_video_analyzer.analyze_video.assert_called_once()
+        mock_vision_analyzer.analyze_images.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_video_path_uses_vision(
+        self, mock_video_analyzer, mock_vision_analyzer, sample_scene,
+        sample_keyframes,
+    ):
+        """Without video_path, VisionAnalyzer is used even when VideoAnalyzer is set."""
+        mock_vision_analyzer.analyze_images.return_value = {
+            "objects": [{"name": "keyboard", "category": "object", "first_seen_sec": 10.0}],
+            "people": [],
+            "text_on_screen": [],
+            "concepts": [],
+            "code_snippets": [],
+        }
+
+        op = EntityExtractionOperation(
+            video_analyzer=mock_video_analyzer,
+            vision_analyzer=mock_vision_analyzer,
+        )
+        result = await op.execute(
+            scene_id=0,
+            keyframes=sample_keyframes,
+            scene=sample_scene,
+            video_path=None,
+        )
+
+        assert len(result.objects) == 1
+        mock_video_analyzer.analyze_video.assert_not_called()
+        mock_vision_analyzer.analyze_images.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_video_analyzer_with_reasoner(
+        self, mock_video_analyzer, mock_reasoner, sample_scene,
+        sample_video_path,
+    ):
+        """VideoAnalyzer and Reasoner run concurrently."""
+        mock_video_analyzer.analyze_video.return_value = {
+            "objects": [{"name": "laptop", "category": "object", "first_seen_sec": 10.0}],
+            "people": [],
+            "text_on_screen": [],
+            "concepts": [],
+            "code_snippets": [],
+        }
+        mock_reasoner.reason.return_value = {
+            "concepts": [
+                {"term": "Python", "definition": "A language", "importance": "primary", "first_mention_sec": 10.0}
+            ]
+        }
+
+        op = EntityExtractionOperation(
+            video_analyzer=mock_video_analyzer,
+            reasoner=mock_reasoner,
+        )
+        result = await op.execute(
+            scene_id=0,
+            keyframes=[],
+            scene=sample_scene,
+            video_path=sample_video_path,
+        )
+
+        assert len(result.objects) == 1
+        assert len(result.concepts) == 1
+        mock_video_analyzer.analyze_video.assert_called_once()
+        mock_reasoner.reason.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_video_analyzer_handles_string_response(
+        self, mock_video_analyzer, sample_scene, sample_video_path,
+    ):
+        """VideoAnalyzer returning JSON string is parsed correctly."""
+        mock_video_analyzer.analyze_video.return_value = json.dumps({
+            "objects": [{"name": "mouse", "category": "object", "first_seen_sec": 10.0}],
+            "people": [],
+            "text_on_screen": [],
+            "concepts": [],
+            "code_snippets": [],
+        })
+
+        op = EntityExtractionOperation(video_analyzer=mock_video_analyzer)
+        result = await op.execute(
+            scene_id=0,
+            keyframes=[],
+            scene=sample_scene,
+            video_path=sample_video_path,
+        )
+
+        assert len(result.objects) == 1
+        assert result.objects[0]["name"] == "mouse"
+
+
+# ---------------------------------------------------------------------------
+# Video Prompt Tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildVideoPrompt:
+    """Tests for video prompt building."""
+
+    def test_video_prompt_has_time_range(self, mock_video_analyzer, sample_scene):
+        op = EntityExtractionOperation(video_analyzer=mock_video_analyzer)
+        prompt = op._build_video_prompt(sample_scene)
+        assert "10.0" in prompt  # start_time
+        assert "25.0" in prompt  # end_time
+
+    def test_video_prompt_with_transcript(self, mock_video_analyzer, sample_scene):
+        op = EntityExtractionOperation(video_analyzer=mock_video_analyzer)
+        prompt = op._build_video_prompt(sample_scene)
+        assert "Transcript context: Hello and welcome" in prompt
+
+    def test_video_prompt_without_transcript(self, mock_video_analyzer, sample_scene_no_transcript):
+        op = EntityExtractionOperation(video_analyzer=mock_video_analyzer)
+        prompt = op._build_video_prompt(sample_scene_no_transcript)
+        assert "Transcript context" not in prompt
+
+    def test_video_prompt_constant_has_placeholders(self):
+        assert "{start_time" in VIDEO_ENTITY_PROMPT
+        assert "{end_time" in VIDEO_ENTITY_PROMPT
+        assert "{context}" in VIDEO_ENTITY_PROMPT
+
+
+# ---------------------------------------------------------------------------
 # EntityExtractionSceneResult Tests
 # ---------------------------------------------------------------------------
 
@@ -569,47 +811,65 @@ class TestShouldSkipEntityExtraction:
 class TestGetDefaultProviders:
     """Tests for _get_default_providers."""
 
-    def _make_provider_mock(self, available=True, has_vision=True, has_reasoner=True):
+    def _make_provider_mock(self, available=True, has_video=False, has_vision=True, has_reasoner=True):
         """Create a mock provider with specified capabilities."""
         mock = MagicMock()
         mock.is_available.return_value = available
+        if has_video:
+            mock.analyze_video = AsyncMock()
         if has_vision:
             mock.analyze_images = AsyncMock()
         if has_reasoner:
             mock.reason = AsyncMock()
         return mock
 
-    def test_returns_both_from_single_provider(self):
-        """Single provider can satisfy both roles."""
-        mock_provider = self._make_provider_mock()
+    def test_returns_all_from_single_provider(self):
+        """Single provider with all capabilities satisfies all roles."""
+        mock_provider = self._make_provider_mock(has_video=True)
 
         with patch(
             "claudetube.providers.registry.get_provider",
             return_value=mock_provider,
         ):
-            vision, reasoner = _get_default_providers()
+            video, vision, reasoner = _get_default_providers()
+            assert video is mock_provider
+            assert vision is mock_provider
+            assert reasoner is mock_provider
+
+    def test_returns_vision_and_reasoner_without_video(self):
+        """Provider without VideoAnalyzer returns None for video."""
+        mock_provider = self._make_provider_mock(has_video=False)
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            return_value=mock_provider,
+        ):
+            video, vision, reasoner = _get_default_providers()
+            assert video is None
             assert vision is mock_provider
             assert reasoner is mock_provider
 
     def test_returns_none_when_unavailable(self):
-        """Unavailable provider returns None for both."""
+        """Unavailable provider returns None for all."""
         mock_provider = self._make_provider_mock(available=False)
 
         with patch(
             "claudetube.providers.registry.get_provider",
             return_value=mock_provider,
         ):
-            vision, reasoner = _get_default_providers()
+            video, vision, reasoner = _get_default_providers()
+            assert video is None
             assert vision is None
             assert reasoner is None
 
     def test_handles_import_error(self):
-        """Import error returns None for both."""
+        """Import error returns None for all."""
         with patch(
             "claudetube.providers.registry.get_provider",
             side_effect=ImportError("No module"),
         ):
-            vision, reasoner = _get_default_providers()
+            video, vision, reasoner = _get_default_providers()
+            assert video is None
             assert vision is None
             assert reasoner is None
 

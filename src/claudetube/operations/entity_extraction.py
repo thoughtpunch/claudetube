@@ -26,7 +26,7 @@ from claudetube.cache.manager import CacheManager
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from claudetube.providers.base import Reasoner, VisionAnalyzer
+    from claudetube.providers.base import Reasoner, VideoAnalyzer, VisionAnalyzer
 
 from claudetube.cache.scenes import (
     SceneBoundary,
@@ -66,6 +66,19 @@ For each concept, provide:
 
 Transcript:
 {transcript}"""
+
+# Prompt for video-level entity extraction (VideoAnalyzer / Gemini)
+VIDEO_ENTITY_PROMPT = """\
+Analyze this video segment and extract all entities you can identify.
+
+For each entity, provide:
+- name: A clear, specific name
+- category: One of "object", "person", "text", "code", "ui_element"
+- first_seen_sec: Approximate timestamp (scene runs from {start_time:.1f}s to {end_time:.1f}s)
+- confidence: How confident you are (0.0-1.0)
+- attributes: Any notable attributes (color, size, position, etc.)
+
+Be thorough but factual. Only report entities you can clearly see.{context}"""
 
 
 @dataclass
@@ -142,28 +155,38 @@ class EntityExtractionSceneResult:
 class EntityExtractionOperation:
     """Extract entities from video scenes using AI providers.
 
-    Accepts VisionAnalyzer for visual entities (objects, people, text) and
-    Reasoner for semantic concepts (topics, themes). Uses the Pydantic
-    EntityExtractionResult schema for structured output.
+    Accepts VideoAnalyzer for native video analysis (most efficient),
+    VisionAnalyzer for frame-by-frame visual entities, and Reasoner for
+    semantic concepts. Uses the Pydantic EntityExtractionResult schema
+    for structured output.
+
+    Provider priority:
+    1. VideoAnalyzer (Gemini) - Analyze video segment directly
+    2. VisionAnalyzer - Frame-by-frame analysis
+    3. Reasoner only - Transcript-based concept extraction
 
     Args:
+        video_analyzer: Provider implementing VideoAnalyzer for native video
+            analysis. If available, used instead of VisionAnalyzer.
         vision_analyzer: Provider implementing VisionAnalyzer for frame analysis.
-            If None, only semantic extraction from transcript is performed.
+            Falls back to this when VideoAnalyzer is unavailable.
         reasoner: Provider implementing Reasoner for transcript analysis.
-            If None, only visual extraction from keyframes is performed.
+            If None, only visual extraction is performed.
 
     Example:
         >>> from claudetube.providers import get_provider
-        >>> provider = get_provider("anthropic")
-        >>> op = EntityExtractionOperation(vision_analyzer=provider, reasoner=provider)
-        >>> result = await op.execute(scene_id=0, keyframes=[Path("f.jpg")], scene=scene)
+        >>> provider = get_provider("google")
+        >>> op = EntityExtractionOperation(video_analyzer=provider, vision_analyzer=provider)
+        >>> result = await op.execute(scene_id=0, keyframes=[], scene=scene)
     """
 
     def __init__(
         self,
+        video_analyzer: VideoAnalyzer | None = None,
         vision_analyzer: VisionAnalyzer | None = None,
         reasoner: Reasoner | None = None,
     ):
+        self.video_analyzer = video_analyzer
         self.vision = vision_analyzer
         self.reasoner = reasoner
 
@@ -198,6 +221,60 @@ class EntityExtractionOperation:
             start_time=scene.start_time,
             transcript=transcript[:2000],
         )
+
+    def _build_video_prompt(self, scene: SceneBoundary) -> str:
+        """Build the video-level entity extraction prompt.
+
+        Args:
+            scene: Scene boundary with transcript data.
+
+        Returns:
+            Formatted prompt string.
+        """
+        context = ""
+        if scene.transcript_text:
+            context = f"\n\nTranscript context: {scene.transcript_text[:500]}"
+        return VIDEO_ENTITY_PROMPT.format(
+            start_time=scene.start_time,
+            end_time=scene.end_time,
+            context=context,
+        )
+
+    async def _extract_video_entities(
+        self,
+        video_path: Path,
+        scene: SceneBoundary,
+    ) -> dict:
+        """Extract entities from a scene using native video analysis.
+
+        Uses VideoAnalyzer to process the video segment directly, which is
+        more efficient than frame-by-frame analysis.
+
+        Args:
+            video_path: Path to video file.
+            scene: Scene boundary for time range and context.
+
+        Returns:
+            Dict with objects, people, text_on_screen, code_snippets keys.
+        """
+        if not self.video_analyzer:
+            return {}
+
+        from claudetube.providers.types import get_entity_extraction_result_model
+
+        schema = get_entity_extraction_result_model()
+        prompt = self._build_video_prompt(scene)
+
+        result = await self.video_analyzer.analyze_video(
+            video_path,
+            prompt,
+            schema=schema,
+            start_time=scene.start_time,
+            end_time=scene.end_time,
+        )
+
+        data = result if isinstance(result, dict) else json.loads(result)
+        return data
 
     async def _extract_visual_entities(
         self,
@@ -275,26 +352,38 @@ class EntityExtractionOperation:
         scene_id: int,
         keyframes: list[Path],
         scene: SceneBoundary,
+        video_path: Path | None = None,
     ) -> EntityExtractionSceneResult:
         """Extract entities from a scene using available providers.
 
-        Runs visual entity extraction and semantic concept extraction
-        concurrently when both providers are available.
+        Tries VideoAnalyzer first (native video, most efficient), falls back
+        to VisionAnalyzer (frame-by-frame), and runs semantic concept extraction
+        concurrently when Reasoner is available.
 
         Args:
             scene_id: Scene identifier.
             keyframes: List of keyframe image paths to analyze.
             scene: Scene boundary for transcript context.
+            video_path: Path to video file (required for VideoAnalyzer).
 
         Returns:
             EntityExtractionSceneResult with all extracted entities.
         """
         # Run visual and semantic extraction concurrently
         tasks = []
+        has_video = bool(
+            self.video_analyzer and video_path and video_path.exists()
+        )
         has_visual = bool(self.vision and keyframes)
         has_reasoner = bool(self.reasoner and scene.transcript_text)
 
-        if has_visual:
+        # VideoAnalyzer takes priority over VisionAnalyzer
+        use_video = has_video
+        use_visual = has_visual and not has_video
+
+        if use_video:
+            tasks.append(self._extract_video_entities(video_path, scene))
+        elif use_visual:
             tasks.append(self._extract_visual_entities(keyframes, scene))
         if has_reasoner:
             tasks.append(self._extract_semantic_concepts(scene))
@@ -304,9 +393,20 @@ class EntityExtractionOperation:
         # Unpack results
         visual_data: dict = {}
         concepts: list[dict] = []
+        video_failed = False
 
         idx = 0
-        if has_visual:
+        if use_video:
+            if isinstance(results[idx], dict):
+                visual_data = results[idx]
+            elif isinstance(results[idx], Exception):
+                logger.warning(
+                    f"Scene {scene_id}: video entity extraction failed, "
+                    f"falling back to vision: {results[idx]}"
+                )
+                video_failed = True
+            idx += 1
+        elif use_visual:
             if isinstance(results[idx], dict):
                 visual_data = results[idx]
             elif isinstance(results[idx], Exception):
@@ -318,9 +418,18 @@ class EntityExtractionOperation:
             elif isinstance(results[idx], Exception):
                 logger.warning(f"Scene {scene_id}: concept extraction failed: {results[idx]}")
 
+        # If VideoAnalyzer failed, fall back to VisionAnalyzer
+        if video_failed and has_visual:
+            try:
+                visual_data = await self._extract_visual_entities(keyframes, scene)
+            except Exception as e:
+                logger.warning(f"Scene {scene_id}: vision fallback also failed: {e}")
+
         # Determine model name
         model_name = None
-        if self.vision and hasattr(self.vision, "info"):
+        if use_video and not video_failed and self.video_analyzer and hasattr(self.video_analyzer, "info"):
+            model_name = self.video_analyzer.info.name
+        elif self.vision and hasattr(self.vision, "info"):
             model_name = self.vision.info.name
         elif self.reasoner and hasattr(self.reasoner, "info"):
             model_name = self.reasoner.info.name
@@ -346,6 +455,33 @@ class EntityExtractionOperation:
         )
 
 
+def _get_video_path(cache_dir: Path) -> Path | None:
+    """Get the video file path from state.json.
+
+    Args:
+        cache_dir: Video cache directory.
+
+    Returns:
+        Path to video file, or None if unavailable.
+    """
+    state_file = cache_dir / "state.json"
+    if not state_file.exists():
+        return None
+
+    try:
+        state = json.loads(state_file.read_text())
+    except json.JSONDecodeError:
+        return None
+
+    cached_file = state.get("cached_file")
+    if cached_file:
+        video_path = cache_dir / cached_file
+        if video_path.exists():
+            return video_path
+
+    return None
+
+
 def _should_skip_entity_extraction(scene: SceneBoundary) -> bool:
     """Determine if a scene can be skipped for entity extraction.
 
@@ -365,38 +501,44 @@ def _should_skip_entity_extraction(scene: SceneBoundary) -> bool:
     return duration < 2.0 and not has_transcript
 
 
-def _get_default_providers() -> tuple[VisionAnalyzer | None, Reasoner | None]:
-    """Get default vision and reasoner providers.
+def _get_default_providers() -> (
+    tuple[VideoAnalyzer | None, VisionAnalyzer | None, Reasoner | None]
+):
+    """Get default video, vision, and reasoner providers.
 
-    Tries anthropic first, falls back to claude-code.
+    Tries google first (for VideoAnalyzer), then anthropic, then claude-code.
 
     Returns:
-        Tuple of (vision_analyzer, reasoner) - either may be None.
+        Tuple of (video_analyzer, vision_analyzer, reasoner) - any may be None.
     """
     from claudetube.providers import get_provider
     from claudetube.providers.base import Reasoner as ReasonerProtocol
+    from claudetube.providers.base import VideoAnalyzer as VideoAnalyzerProtocol
     from claudetube.providers.base import VisionAnalyzer as VisionAnalyzerProtocol
 
+    video: VideoAnalyzer | None = None
     vision: VisionAnalyzer | None = None
     reasoner: Reasoner | None = None
 
-    for provider_name in ("anthropic", "claude-code"):
+    for provider_name in ("google", "anthropic", "claude-code"):
         try:
             provider = get_provider(provider_name)
             if not provider.is_available():
                 continue
 
+            if video is None and isinstance(provider, VideoAnalyzerProtocol):
+                video = provider
             if vision is None and isinstance(provider, VisionAnalyzerProtocol):
                 vision = provider
             if reasoner is None and isinstance(provider, ReasonerProtocol):
                 reasoner = provider
 
-            if vision is not None and reasoner is not None:
+            if video is not None and vision is not None and reasoner is not None:
                 break
         except (ImportError, ValueError):
             continue
 
-    return vision, reasoner
+    return video, vision, reasoner
 
 
 def extract_entities_for_video(
@@ -405,6 +547,7 @@ def extract_entities_for_video(
     force: bool = False,
     generate_visual: bool = True,
     output_base: Path | None = None,
+    video_analyzer: VideoAnalyzer | None = None,
     vision_analyzer: VisionAnalyzer | None = None,
     reasoner: Reasoner | None = None,
 ) -> dict:
@@ -424,6 +567,7 @@ def extract_entities_for_video(
         force: Re-extract even if cached.
         generate_visual: Generate visual.json from entities (default True).
         output_base: Cache directory.
+        video_analyzer: Optional VideoAnalyzer provider. If None, auto-selects.
         vision_analyzer: Optional VisionAnalyzer provider. If None, auto-selects.
         reasoner: Optional Reasoner provider. If None, auto-selects.
 
@@ -456,6 +600,7 @@ def extract_entities_for_video(
 
     # Lazily resolve providers only when we actually need them
     operation = None
+    video_path = None
 
     for scene in scenes:
         # 1. CACHE - Return instantly if already exists
@@ -482,18 +627,22 @@ def extract_entities_for_video(
         # Lazily create operation on first actual use
         if operation is None:
             try:
-                if vision_analyzer is None and reasoner is None:
-                    vision_analyzer, reasoner = _get_default_providers()
-                if vision_analyzer is None and reasoner is None:
+                if video_analyzer is None and vision_analyzer is None and reasoner is None:
+                    video_analyzer, vision_analyzer, reasoner = _get_default_providers()
+                if video_analyzer is None and vision_analyzer is None and reasoner is None:
                     errors.append({
                         "scene_id": scene.scene_id,
                         "error": "No AI provider available for entity extraction",
                     })
                     continue
                 operation = EntityExtractionOperation(
+                    video_analyzer=video_analyzer,
                     vision_analyzer=vision_analyzer,
                     reasoner=reasoner,
                 )
+                # Resolve video path for VideoAnalyzer
+                if video_analyzer is not None:
+                    video_path = _get_video_path(cache_dir)
             except RuntimeError as e:
                 errors.append({"scene_id": scene.scene_id, "error": str(e)})
                 continue
@@ -502,7 +651,9 @@ def extract_entities_for_video(
 
         try:
             entity_result = asyncio.run(
-                operation.execute(scene.scene_id, keyframes, scene)
+                operation.execute(
+                    scene.scene_id, keyframes, scene, video_path=video_path
+                )
             )
         except Exception as e:
             logger.error(f"Scene {scene.scene_id}: entity extraction failed: {e}")

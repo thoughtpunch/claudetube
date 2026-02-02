@@ -254,9 +254,10 @@ class OperationFactory:
     def get_entity_extraction_operation(self):
         """Create an EntityExtractionOperation with configured providers.
 
-        Uses VisionAnalyzer for visual entity extraction and Reasoner for
-        semantic concept extraction. Either or both may be None if unavailable;
-        the operation handles partial availability gracefully.
+        Uses VideoAnalyzer (most efficient, native video), VisionAnalyzer
+        (frame-by-frame fallback), and Reasoner for semantic concept extraction.
+        Any may be None if unavailable; the operation handles partial
+        availability gracefully.
 
         Returns:
             EntityExtractionOperation ready to execute.
@@ -265,10 +266,13 @@ class OperationFactory:
             EntityExtractionOperation,
         )
 
+        video_analyzer = self.get_video_analyzer()
         vision = self.get_vision_analyzer()
         reasoner = self.get_reasoner()
         return EntityExtractionOperation(
-            vision_analyzer=vision, reasoner=reasoner
+            video_analyzer=video_analyzer,
+            vision_analyzer=vision,
+            reasoner=reasoner,
         )
 
     def get_person_tracking_operation(self):
