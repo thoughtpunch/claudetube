@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -17,6 +19,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Pattern to detect YouTube URLs
+_YOUTUBE_URL_RE = re.compile(
+    r"(?:https?://)?(?:www\.|m\.)?(?:youtube\.com|youtu\.be)/", re.IGNORECASE
+)
 
 
 class YtDlpTool(VideoTool):
@@ -43,41 +50,83 @@ class YtDlpTool(VideoTool):
         """Get path to yt-dlp executable."""
         return find_tool("yt-dlp")
 
+    def _subprocess_env(self) -> dict[str, str]:
+        """Build env dict that preserves system PATH for subprocess calls.
+
+        When running inside a venv, the subprocess inherits the venv's
+        restricted PATH. yt-dlp needs access to system tools like ``deno``
+        (for YouTube JS challenge solving) and ``ffmpeg``, so we merge the
+        full system PATH back in.
+        """
+        env = os.environ.copy()
+        # Ensure common system tool paths are included (Homebrew, system bin)
+        system_paths = ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"]
+        current = env.get("PATH", "")
+        for p in system_paths:
+            if p not in current:
+                current = f"{current}:{p}"
+        env["PATH"] = current
+        return env
+
     def _run(
         self,
         args: list[str],
         timeout: int | None = None,
-        retry_mweb: bool = True,
+        retry_clients: bool = True,
     ) -> ToolResult:
         """Run yt-dlp with given arguments.
 
         Args:
             args: Command arguments (without the yt-dlp executable)
             timeout: Command timeout in seconds
-            retry_mweb: Retry with mweb client on 403 errors
+            retry_clients: Retry with alternative YouTube clients on 403 /
+                format-not-available errors
         """
         cmd = [self.get_path()] + args
+        env = self._subprocess_env()
         try:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=env,
             )
 
-            # Handle 403 errors by retrying with mweb client
-            if result.returncode != 0 and retry_mweb:
+            # Handle 403 / format errors by retrying with alternative clients
+            if result.returncode != 0 and retry_clients:
                 stderr = result.stderr or ""
-                if "403" in stderr:
-                    logger.info("Retrying with YouTube mweb client (403 workaround)")
-                    mweb_args = ["--extractor-args", "youtube:player_client=mweb"]
-                    cmd_retry = [self.get_path()] + mweb_args + args
+                if "403" in stderr or "Requested format is not available" in stderr:
+                    logger.info(
+                        "Retrying with alternative YouTube clients "
+                        "(403 / format-not-available workaround)"
+                    )
+                    first_stderr = stderr
+                    client_args = [
+                        "--extractor-args",
+                        "youtube:player_client=default,mweb",
+                    ]
+                    cmd_retry = [self.get_path()] + client_args + args
                     result = subprocess.run(
                         cmd_retry,
                         capture_output=True,
                         text=True,
                         timeout=timeout,
+                        env=env,
                     )
+                    # If retry also failed, combine both errors for debugging
+                    if result.returncode != 0:
+                        retry_stderr = result.stderr or ""
+                        combined = (
+                            f"[First attempt] {first_stderr.strip()}\n"
+                            f"[Retry with default,mweb] {retry_stderr.strip()}"
+                        )
+                        result = subprocess.CompletedProcess(
+                            args=cmd_retry,
+                            returncode=result.returncode,
+                            stdout=result.stdout,
+                            stderr=combined,
+                        )
 
             return ToolResult(
                 success=result.returncode == 0,
@@ -91,6 +140,65 @@ class YtDlpTool(VideoTool):
         except Exception as e:
             return ToolResult.from_error(str(e))
 
+    @staticmethod
+    def _is_youtube_url(url: str) -> bool:
+        """Check if a URL points to YouTube."""
+        return bool(_YOUTUBE_URL_RE.search(url))
+
+    def _youtube_config_args(self) -> list[str]:
+        """Build yt-dlp args from YouTube config (PO token, cookies).
+
+        Reads optional ``youtube`` section from config YAML::
+
+            youtube:
+              po_token: "..."
+              cookies_file: "/path/to/cookies.txt"
+
+        Returns an empty list when nothing is configured.
+        """
+        args: list[str] = []
+        try:
+            from claudetube.config.loader import (
+                _find_project_config,
+                _get_user_config_path,
+                _load_yaml_config,
+            )
+
+            yaml_config: dict | None = None
+            project_path = _find_project_config()
+            if project_path:
+                yaml_config = _load_yaml_config(project_path)
+            if yaml_config is None:
+                user_path = _get_user_config_path()
+                yaml_config = _load_yaml_config(user_path)
+            if yaml_config is None:
+                return args
+
+            yt_cfg = yaml_config.get("youtube", {})
+            if not isinstance(yt_cfg, dict):
+                return args
+
+            po_token = yt_cfg.get("po_token")
+            if po_token:
+                args.extend([
+                    "--extractor-args",
+                    f"youtube:po_token={po_token}",
+                ])
+
+            cookies_file = yt_cfg.get("cookies_file")
+            if cookies_file:
+                from pathlib import Path
+
+                cookies_path = Path(cookies_file).expanduser()
+                if cookies_path.exists():
+                    args.extend(["--cookies", str(cookies_path)])
+                else:
+                    logger.warning("Cookies file not found: %s", cookies_path)
+        except Exception:
+            logger.debug("Failed to load YouTube config", exc_info=True)
+
+        return args
+
     def get_metadata(self, url: str, timeout: int = 30) -> dict:
         """Fetch video metadata without downloading.
 
@@ -103,7 +211,7 @@ class YtDlpTool(VideoTool):
         result = self._run(
             ["--dump-json", "--no-download", url],
             timeout=timeout,
-            retry_mweb=False,  # Metadata doesn't hit 403 issues
+            retry_clients=False,  # Metadata doesn't hit 403 issues
         )
 
         if not result.success:
@@ -136,7 +244,17 @@ class YtDlpTool(VideoTool):
         Raises:
             DownloadError: If download fails
         """
+        # YouTube-specific: add extractor client args and config-driven opts
+        yt_args: list[str] = []
+        if self._is_youtube_url(url):
+            yt_args.extend([
+                "--extractor-args",
+                "youtube:player_client=default,mweb",
+            ])
+            yt_args.extend(self._youtube_config_args())
+
         args = [
+            *yt_args,
             "-f",
             "ba",
             "-x",
@@ -152,11 +270,13 @@ class YtDlpTool(VideoTool):
         ]
 
         result = self._run(args)
+        first_error = result.stderr if not result.success else ""
 
         # Fallback: extract from smallest video if no audio-only stream
         if not result.success or not output_path.exists():
             logger.info("No audio-only format, extracting from video...")
             args = [
+                *yt_args,
                 "-S",
                 "+size,+br",
                 "-x",
@@ -173,7 +293,16 @@ class YtDlpTool(VideoTool):
             result = self._run(args)
 
         if not result.success or not output_path.exists():
-            raise DownloadError(f"Audio download failed: {result.stderr[:200]}")
+            fallback_error = result.stderr[:200] if result.stderr else ""
+            # Include both errors when the fallback also fails
+            if first_error and fallback_error:
+                error_detail = (
+                    f"[audio-only] {first_error[:200]} "
+                    f"[video fallback] {fallback_error}"
+                )
+            else:
+                error_detail = fallback_error or first_error[:200]
+            raise DownloadError(f"Audio download failed: {error_detail}")
 
         return output_path
 
@@ -308,7 +437,7 @@ class YtDlpTool(VideoTool):
         result = self._run(
             ["-j", "--no-download", url],
             timeout=timeout,
-            retry_mweb=False,
+            retry_clients=False,
         )
 
         if not result.success:

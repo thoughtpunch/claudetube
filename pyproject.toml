@@ -23,7 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "yt-dlp",
+    "yt-dlp>=2026.01.15",
     "faster-whisper>=1.0.0",
     "pysubs2>=1.6.0",
     "pyyaml>=6.0",
