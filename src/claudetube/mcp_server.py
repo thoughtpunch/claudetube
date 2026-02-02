@@ -1760,6 +1760,37 @@ async def watch_video_tool(
 
 
 @mcp.tool()
+async def youtube_auth_status_tool() -> str:
+    """Check YouTube authentication status and configuration.
+
+    Returns a diagnostic report with:
+    - deno availability and version
+    - PO token provider plugin status
+    - Cookie configuration
+    - PO token configuration
+    - POT server reachability (if configured)
+    - Overall auth level (0-4)
+    - Actionable recommendations to improve YouTube access
+
+    Auth levels:
+    - 0: No authentication (may break as YouTube tightens access)
+    - 1: Deno only (android_vr HLS formats)
+    - 2: Cookies + deno (Premium: full access; Free: android_vr)
+    - 3: Manual PO token + cookies + deno (tokens expire ~12hr)
+    - 4: bgutil server + cookies + deno (automated, full access)
+
+    Use this when YouTube downloads fail with 403 errors.
+    """
+    from claudetube.tools.yt_dlp import YtDlpTool
+
+    yt = YtDlpTool()
+
+    status = await asyncio.to_thread(yt.check_youtube_auth_status)
+
+    return json.dumps(status, indent=2)
+
+
+@mcp.tool()
 async def list_providers_tool() -> str:
     """List available AI providers and their capabilities.
 

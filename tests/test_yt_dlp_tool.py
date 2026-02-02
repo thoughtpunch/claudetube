@@ -1,9 +1,10 @@
-"""Tests for tools/yt_dlp.py — YouTube config args and POT provider detection."""
+"""Tests for tools/yt_dlp.py — YouTube config args, POT provider detection, and auth health checks."""
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -476,3 +477,332 @@ class TestIsYoutubeUrl:
     )
     def test_non_youtube_urls(self, url):
         assert YtDlpTool._is_youtube_url(url) is False
+
+
+# ---------------------------------------------------------------------------
+# check_youtube_auth_status
+# ---------------------------------------------------------------------------
+
+
+class TestCheckYoutubeAuthStatus:
+    """Tests for check_youtube_auth_status() method."""
+
+    def test_level_0_nothing_configured(self, tool):
+        """No deno, no config → auth level 0."""
+        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch("shutil.which", return_value=None), \
+             patch.object(tool, "check_pot_providers", return_value=[]), \
+             patch.object(tool, "_load_youtube_config", return_value={}):
+            status = tool.check_youtube_auth_status()
+            assert status["auth_level"] == 0
+            assert status["deno_available"] is False
+            assert status["cookies_configured"] is False
+            assert status["po_token_configured"] is False
+            assert status["pot_plugin_loaded"] is False
+            assert len(status["recommendations"]) > 0
+
+    def test_level_1_deno_only(self, tool):
+        """Deno available, nothing else → auth level 1."""
+        fake_proc = MagicMock()
+        fake_proc.returncode = 0
+        fake_proc.stdout = "deno 2.1.4\n"
+
+        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch("shutil.which", return_value="/usr/local/bin/deno"), \
+             patch("subprocess.run", return_value=fake_proc), \
+             patch.object(tool, "check_pot_providers", return_value=[]), \
+             patch.object(tool, "_load_youtube_config", return_value={}):
+            status = tool.check_youtube_auth_status()
+            assert status["auth_level"] == 1
+            assert status["deno_available"] is True
+            assert status["deno_version"] == "2.1.4"
+
+    def test_level_2_cookies_and_deno(self, tool, tmp_path):
+        """Deno + cookies → auth level 2."""
+        cookie_file = tmp_path / "cookies.txt"
+        cookie_file.write_text("# cookies\n")
+
+        fake_proc = MagicMock()
+        fake_proc.returncode = 0
+        fake_proc.stdout = "deno 2.1.4\n"
+
+        yt_cfg = {"cookies_file": str(cookie_file)}
+
+        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch("shutil.which", return_value="/usr/local/bin/deno"), \
+             patch("subprocess.run", return_value=fake_proc), \
+             patch.object(tool, "check_pot_providers", return_value=[]), \
+             patch.object(tool, "_load_youtube_config", return_value=yt_cfg):
+            status = tool.check_youtube_auth_status()
+            assert status["auth_level"] == 2
+            assert status["cookies_configured"] is True
+            assert status["cookies_source"] == f"file:{cookie_file}"
+
+    def test_level_3_po_token_cookies_deno(self, tool, tmp_path):
+        """Deno + cookies + manual PO token → auth level 3."""
+        cookie_file = tmp_path / "cookies.txt"
+        cookie_file.write_text("# cookies\n")
+
+        fake_proc = MagicMock()
+        fake_proc.returncode = 0
+        fake_proc.stdout = "deno 2.1.4\n"
+
+        yt_cfg = {
+            "cookies_file": str(cookie_file),
+            "po_token": "mweb.gvs+TOKENVALUE",
+        }
+
+        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch("shutil.which", return_value="/usr/local/bin/deno"), \
+             patch("subprocess.run", return_value=fake_proc), \
+             patch.object(tool, "check_pot_providers", return_value=[]), \
+             patch.object(tool, "_load_youtube_config", return_value=yt_cfg):
+            status = tool.check_youtube_auth_status()
+            assert status["auth_level"] == 3
+            assert status["po_token_configured"] is True
+            assert status["po_token_type"] == "mweb.gvs"
+
+    def test_level_4_plugin_cookies_deno(self, tool, tmp_path):
+        """Deno + cookies + POT plugin → auth level 4."""
+        cookie_file = tmp_path / "cookies.txt"
+        cookie_file.write_text("# cookies\n")
+
+        fake_proc = MagicMock()
+        fake_proc.returncode = 0
+        fake_proc.stdout = "deno 2.1.4\n"
+
+        yt_cfg = {"cookies_file": str(cookie_file)}
+
+        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch("shutil.which", return_value="/usr/local/bin/deno"), \
+             patch("subprocess.run", return_value=fake_proc), \
+             patch.object(tool, "check_pot_providers", return_value=["bgutil:http-1.2.2 (external)"]), \
+             patch.object(tool, "_load_youtube_config", return_value=yt_cfg):
+            status = tool.check_youtube_auth_status()
+            assert status["auth_level"] == 4
+            assert status["pot_plugin_loaded"] is True
+            assert status["pot_plugin_version"] == "1.2.2"
+
+    def test_cookies_from_browser_detected(self, tool):
+        """cookies_from_browser in config is correctly detected."""
+        fake_proc = MagicMock()
+        fake_proc.returncode = 0
+        fake_proc.stdout = "deno 2.1.4\n"
+
+        yt_cfg = {"cookies_from_browser": "firefox"}
+
+        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch("shutil.which", return_value="/usr/local/bin/deno"), \
+             patch("subprocess.run", return_value=fake_proc), \
+             patch.object(tool, "check_pot_providers", return_value=[]), \
+             patch.object(tool, "_load_youtube_config", return_value=yt_cfg):
+            status = tool.check_youtube_auth_status()
+            assert status["cookies_configured"] is True
+            assert status["cookies_source"] == "browser:firefox"
+
+    def test_pot_server_reachable_check(self, tool):
+        """pot_server_url triggers reachability check."""
+        yt_cfg = {"pot_server_url": "http://localhost:4416"}
+
+        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch("shutil.which", return_value=None), \
+             patch.object(tool, "check_pot_providers", return_value=[]), \
+             patch.object(tool, "_load_youtube_config", return_value=yt_cfg), \
+             patch("urllib.request.urlopen", side_effect=ConnectionRefusedError):
+            status = tool.check_youtube_auth_status()
+            assert status["pot_server_reachable"] is False
+
+    def test_pot_server_not_configured(self, tool):
+        """No pot_server_url → pot_server_reachable is None."""
+        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch("shutil.which", return_value=None), \
+             patch.object(tool, "check_pot_providers", return_value=[]), \
+             patch.object(tool, "_load_youtube_config", return_value={}):
+            status = tool.check_youtube_auth_status()
+            assert status["pot_server_reachable"] is None
+
+    def test_recommendations_when_nothing_configured(self, tool):
+        """No config → recommendations include deno, cookies, and PO token."""
+        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch("shutil.which", return_value=None), \
+             patch.object(tool, "check_pot_providers", return_value=[]), \
+             patch.object(tool, "_load_youtube_config", return_value={}):
+            status = tool.check_youtube_auth_status()
+            recs = status["recommendations"]
+            assert any("deno" in r.lower() for r in recs)
+            assert any("cookies" in r.lower() for r in recs)
+            assert any("bgutil" in r.lower() for r in recs)
+
+    def test_no_recommendations_when_fully_configured(self, tool, tmp_path):
+        """Level 4 → no recommendations."""
+        cookie_file = tmp_path / "cookies.txt"
+        cookie_file.write_text("# cookies\n")
+
+        fake_proc = MagicMock()
+        fake_proc.returncode = 0
+        fake_proc.stdout = "deno 2.1.4\n"
+
+        yt_cfg = {"cookies_file": str(cookie_file)}
+
+        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch("shutil.which", return_value="/usr/local/bin/deno"), \
+             patch("subprocess.run", return_value=fake_proc), \
+             patch.object(tool, "check_pot_providers", return_value=["bgutil:http-1.2.2 (external)"]), \
+             patch.object(tool, "_load_youtube_config", return_value=yt_cfg):
+            status = tool.check_youtube_auth_status()
+            assert status["recommendations"] == []
+
+
+# ---------------------------------------------------------------------------
+# format_auth_error_message
+# ---------------------------------------------------------------------------
+
+
+class TestFormatAuthErrorMessage:
+    """Tests for format_auth_error_message() method."""
+
+    def test_includes_auth_level(self, tool):
+        """Message includes auth level."""
+        status = {
+            "auth_level": 0,
+            "deno_available": False,
+            "deno_version": None,
+            "cookies_configured": False,
+            "cookies_source": None,
+            "pot_plugin_loaded": False,
+            "pot_plugin_version": None,
+            "po_token_configured": False,
+            "po_token_type": None,
+            "pot_server_reachable": None,
+            "recommendations": ["Install deno"],
+        }
+        msg = tool.format_auth_error_message(status)
+        assert "auth level: 0/4" in msg
+        assert "403" in msg
+        assert "youtube-auth.md" in msg
+
+    def test_includes_po_token_expiry_warning(self, tool):
+        """When PO token configured but 403, mentions expiry."""
+        status = {
+            "auth_level": 3,
+            "deno_available": True,
+            "deno_version": "2.1.4",
+            "cookies_configured": True,
+            "cookies_source": "browser:firefox",
+            "pot_plugin_loaded": False,
+            "pot_plugin_version": None,
+            "po_token_configured": True,
+            "po_token_type": "mweb.gvs",
+            "pot_server_reachable": None,
+            "recommendations": [],
+        }
+        msg = tool.format_auth_error_message(status)
+        assert "expire" in msg.lower()
+        assert "12 hours" in msg
+
+    def test_uses_computed_status_when_none(self, tool):
+        """When auth_status is None, computes it."""
+        with patch.object(tool, "check_youtube_auth_status", return_value={
+            "auth_level": 0,
+            "deno_available": False,
+            "deno_version": None,
+            "cookies_configured": False,
+            "cookies_source": None,
+            "pot_plugin_loaded": False,
+            "pot_plugin_version": None,
+            "po_token_configured": False,
+            "po_token_type": None,
+            "pot_server_reachable": None,
+            "recommendations": [],
+        }) as mock_check:
+            msg = tool.format_auth_error_message()
+            mock_check.assert_called_once()
+            assert "403" in msg
+
+
+# ---------------------------------------------------------------------------
+# _run 403 actionable error
+# ---------------------------------------------------------------------------
+
+
+class TestRunActionableError:
+    """Tests for _run() emitting actionable error on 403 failures."""
+
+    def test_403_retry_includes_auth_guidance(self, tool):
+        """When 403 retry fails, stderr includes auth guidance."""
+        # First call returns 403 error, second call also fails
+        first_result = subprocess.CompletedProcess(
+            args=["yt-dlp"],
+            returncode=1,
+            stdout="",
+            stderr="ERROR: HTTP Error 403: Forbidden",
+        )
+        retry_result = subprocess.CompletedProcess(
+            args=["yt-dlp"],
+            returncode=1,
+            stdout="",
+            stderr="ERROR: HTTP Error 403: Forbidden (retry)",
+        )
+
+        with patch("subprocess.run", side_effect=[first_result, retry_result]), \
+             patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
+             patch.object(tool, "format_auth_error_message", return_value="\nAuth guidance here"):
+            result = tool._run(["--dump-json", "https://youtube.com/watch?v=x"], retry_clients=True)
+            assert not result.success
+            assert "Auth guidance here" in result.stderr
+
+    def test_non_403_error_no_auth_guidance(self, tool):
+        """Non-403 errors don't include auth guidance."""
+        error_result = subprocess.CompletedProcess(
+            args=["yt-dlp"],
+            returncode=1,
+            stdout="",
+            stderr="ERROR: Video unavailable",
+        )
+
+        with patch("subprocess.run", return_value=error_result), \
+             patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}):
+            result = tool._run(["--dump-json", "https://example.com/video"], retry_clients=True)
+            assert not result.success
+            assert "auth" not in result.stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# _load_youtube_config
+# ---------------------------------------------------------------------------
+
+
+class TestLoadYoutubeConfig:
+    """Tests for _load_youtube_config() helper."""
+
+    def test_returns_youtube_section(self, tool):
+        """Returns the youtube config dict."""
+        fake_config = {"youtube": {"po_token": "mweb.gvs+TOKEN"}}
+        with patch(
+            "claudetube.config.loader._find_project_config",
+            return_value=Path("/fake/config.yaml"),
+        ), patch(
+            "claudetube.config.loader._load_yaml_config",
+            return_value=fake_config,
+        ):
+            cfg = tool._load_youtube_config()
+            assert cfg == {"po_token": "mweb.gvs+TOKEN"}
+
+    def test_returns_empty_when_no_config(self, tool):
+        """No config → empty dict."""
+        with patch(
+            "claudetube.config.loader._find_project_config", return_value=None
+        ), patch(
+            "claudetube.config.loader._load_yaml_config", return_value=None
+        ):
+            cfg = tool._load_youtube_config()
+            assert cfg == {}
+
+    def test_returns_empty_on_exception(self, tool):
+        """Exception → empty dict, no crash."""
+        with patch(
+            "claudetube.config.loader._find_project_config",
+            side_effect=RuntimeError("boom"),
+        ):
+            cfg = tool._load_youtube_config()
+            assert cfg == {}
