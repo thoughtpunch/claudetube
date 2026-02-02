@@ -5,6 +5,7 @@ claudetube CLI - Let Claude watch YouTube videos.
 Usage:
     claudetube "https://youtube.com/watch?v=VIDEO_ID"
     claudetube "https://youtube.com/watch?v=VIDEO_ID" --frames
+    claudetube validate-config
     claudetube extract-entities VIDEO_ID
 """
 
@@ -38,6 +39,80 @@ def _cmd_process(args):
             print(f"Frames: {len(result.frames)}")
     else:
         print(f"ERROR: {result.error}")
+
+
+def _cmd_validate_config(args):
+    """Handle the validate-config subcommand."""
+    from claudetube.config.loader import (
+        _find_project_config,
+        _get_user_config_path,
+        _load_yaml_config,
+    )
+    from claudetube.providers.config import validate_providers_config
+    from claudetube.providers.registry import list_all, list_available
+
+    # Find and load config file
+    config_path = None
+    yaml_config = None
+
+    project_path = _find_project_config()
+    if project_path:
+        config_path = project_path
+        yaml_config = _load_yaml_config(project_path)
+
+    if yaml_config is None:
+        user_path = _get_user_config_path()
+        if user_path.exists():
+            config_path = user_path
+            yaml_config = _load_yaml_config(user_path)
+
+    if config_path:
+        print(f"Config file: {config_path}")
+    else:
+        print("No config file found.")
+        print("  Searched: .claudetube/config.yaml (project)")
+        print(f"  Searched: {_get_user_config_path()} (user)")
+        print("\nUsing defaults (no validation needed).")
+        sys.exit(0)
+
+    if yaml_config is None:
+        print("  Failed to parse config file.")
+        sys.exit(1)
+
+    # Run validation
+    result = validate_providers_config(yaml_config)
+
+    # Print errors
+    if result.errors:
+        print(f"\nErrors ({len(result.errors)}):")
+        for error in result.errors:
+            print(f"  ✗ {error}")
+
+    # Print warnings
+    if result.warnings:
+        print(f"\nWarnings ({len(result.warnings)}):")
+        for warning in result.warnings:
+            print(f"  ! {warning}")
+
+    # Check provider availability
+    if not args.skip_availability:
+        print("\nProvider availability:")
+        all_providers = list_all()
+        available = list_available()
+        for name in all_providers:
+            status = "available" if name in available else "not available"
+            marker = "+" if name in available else "-"
+            print(f"  {marker} {name}: {status}")
+
+    # Summary
+    if result.is_valid and not result.warnings:
+        print("\nConfig is valid.")
+    elif result.is_valid:
+        print(f"\nConfig is valid with {len(result.warnings)} warning(s).")
+    else:
+        print(f"\nConfig is invalid: {len(result.errors)} error(s), {len(result.warnings)} warning(s).")
+
+    sys.exit(0 if result.is_valid else 1)
 
 
 def _cmd_extract_entities(args):
@@ -92,12 +167,24 @@ Examples:
     %(prog)s "https://youtube.com/watch?v=VIDEO_ID"
     %(prog)s "https://youtube.com/watch?v=VIDEO_ID" --frames
     %(prog)s "https://youtube.com/watch?v=VIDEO_ID" --model base
+    %(prog)s validate-config
+    %(prog)s validate-config --skip-availability
     %(prog)s extract-entities VIDEO_ID
     %(prog)s extract-entities VIDEO_ID --scene-id 0 --force
         """,
     )
 
     subparsers = parser.add_subparsers(dest="command")
+
+    # validate-config subcommand
+    vc_parser = subparsers.add_parser(
+        "validate-config",
+        help="Validate provider configuration",
+    )
+    vc_parser.add_argument(
+        "--skip-availability", action="store_true",
+        help="Skip checking provider availability (faster)",
+    )
 
     # extract-entities subcommand
     ee_parser = subparsers.add_parser(
@@ -134,7 +221,9 @@ Examples:
 
     args = parser.parse_args()
 
-    if args.command == "extract-entities":
+    if args.command == "validate-config":
+        _cmd_validate_config(args)
+    elif args.command == "extract-entities":
         _cmd_extract_entities(args)
     elif args.url:
         _cmd_process(args)
