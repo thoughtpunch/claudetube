@@ -6,12 +6,15 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 from urllib.parse import parse_qs, urlparse
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from claudetube.config.providers import VIDEO_PROVIDERS
+
+if TYPE_CHECKING:
+    from claudetube.models.video_path import VideoPath
 
 # Build domain lookup for fast matching
 _DOMAIN_TO_PROVIDER: dict[str, dict] = {}
@@ -35,6 +38,19 @@ _VIDEO_ID_PRIORITY = [
     "channel",
     "user",
 ]
+
+
+def _merge_query_params(url: str, provider_name: str, regex_data: dict) -> dict:
+    """Merge query params into regex-extracted data. Regex captures take priority."""
+    from claudetube.parsing.params import extract_query_params
+
+    query_params = extract_query_params(url, provider_name)
+    # Query params fill gaps -- don't overwrite regex captures
+    merged = dict(regex_data)
+    for key, value in query_params.items():
+        if key not in merged:
+            merged[key] = value
+    return merged
 
 
 class VideoURL(BaseModel):
@@ -97,9 +113,14 @@ class VideoURL(BaseModel):
                 if vid:
                     self.video_id = vid
                     self.provider = provider["name"]
-                    self.provider_data = {
+                    # Start with regex captures
+                    regex_data = {
                         k: v for k, v in groups.items() if v is not None
                     }
+                    # Merge query params (regex captures take priority)
+                    self.provider_data = _merge_query_params(
+                        self.url, provider["name"], regex_data
+                    )
                     return self
 
         # Fallback: generic extraction
@@ -220,6 +241,37 @@ class VideoURL(BaseModel):
         if len(self.video_id) <= 50 and re.match(r"^[\w-]+$", self.video_id):
             return self.video_id
         return hashlib.sha256(self.video_id.encode()).hexdigest()[:16]
+
+    @property
+    def video_path(self) -> VideoPath:
+        """Construct a VideoPath from this parsed URL.
+
+        Extracts domain from the URL hostname, and uses provider_data
+        for channel/playlist if available.
+        """
+        from claudetube.models.video_path import (
+            VideoPath,
+            _sanitize_path_component,
+            sanitize_domain,
+        )
+
+        parsed = urlparse(self.url)
+        domain = sanitize_domain(parsed.netloc)
+
+        channel = self.provider_data.get("channel")
+        playlist = self.provider_data.get("playlist")
+
+        if channel:
+            channel = _sanitize_path_component(channel)
+        if playlist:
+            playlist = _sanitize_path_component(playlist)
+
+        return VideoPath(
+            domain=domain,
+            channel=channel or None,
+            playlist=playlist or None,
+            video_id=self.video_id,
+        )
 
     def __str__(self) -> str:
         if self.provider:

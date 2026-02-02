@@ -2,7 +2,19 @@
 VideoState dataclass for cache state management.
 """
 
+from __future__ import annotations
+
+import re
 from dataclasses import dataclass, field
+
+# Regex for sanitizing channel/playlist values for filesystem safety
+_UNSAFE_CHARS_RE = re.compile(r"[^\w-]")
+_MAX_FIELD_LEN = 60
+
+
+def _sanitize_field(value: str) -> str:
+    """Sanitize a string for filesystem safety: replace unsafe chars, truncate."""
+    return _UNSAFE_CHARS_RE.sub("_", value)[:_MAX_FIELD_LEN]
 
 
 @dataclass
@@ -12,6 +24,10 @@ class VideoState:
     video_id: str
     url: str | None = None
     playlist_id: str | None = None
+
+    # Hierarchical path context (populated from URL/metadata)
+    domain: str | None = None
+    channel_id: str | None = None
 
     # Source type: "url" for remote videos, "local" for local files
     source_type: str = "url"
@@ -66,6 +82,8 @@ class VideoState:
             "video_id": self.video_id,
             "url": self.url,
             "playlist_id": self.playlist_id,
+            "domain": self.domain,
+            "channel_id": self.channel_id,
             "source_type": self.source_type,
             "source_path": self.source_path,
             "cache_mode": self.cache_mode,
@@ -101,12 +119,14 @@ class VideoState:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "VideoState":
+    def from_dict(cls, data: dict) -> VideoState:
         """Create from dictionary (JSON deserialization)."""
         return cls(
             video_id=data.get("video_id", ""),
             url=data.get("url"),
             playlist_id=data.get("playlist_id"),
+            domain=data.get("domain"),
+            channel_id=data.get("channel_id"),
             source_type=data.get("source_type", "url"),
             source_path=data.get("source_path"),
             cache_mode=data.get("cache_mode"),
@@ -144,12 +164,24 @@ class VideoState:
         )
 
     @classmethod
-    def from_metadata(cls, video_id: str, url: str, meta: dict) -> "VideoState":
+    def from_metadata(cls, video_id: str, url: str, meta: dict) -> VideoState:
         """Create from yt-dlp metadata response."""
+        # Extract domain from URL hostname or extractor_key
+        domain = cls._extract_domain(url, meta)
+
+        # Extract channel_id from yt-dlp metadata
+        channel_id = cls._extract_channel_id(meta)
+
+        # Extract playlist_id from yt-dlp metadata
+        playlist_id = cls._extract_playlist_id(meta)
+
         return cls(
             video_id=video_id,
             url=url,
             source_type="url",
+            domain=domain,
+            channel_id=channel_id,
+            playlist_id=playlist_id,
             title=meta.get("title"),
             duration=meta.get("duration"),
             duration_string=meta.get("duration_string"),
@@ -165,6 +197,66 @@ class VideoState:
             thumbnail=meta.get("thumbnail"),
         )
 
+    @staticmethod
+    def _extract_domain(url: str, meta: dict) -> str | None:
+        """Extract sanitized domain from URL hostname or extractor_key."""
+        # Try URL hostname first
+        if url:
+            try:
+                from urllib.parse import urlparse
+
+                from claudetube.models.video_path import sanitize_domain
+
+                parsed = urlparse(url)
+                if parsed.netloc:
+                    return sanitize_domain(parsed.netloc)
+            except (ValueError, ImportError):
+                pass
+
+        # Fallback: extractor_key from yt-dlp (e.g. "Youtube", "Vimeo")
+        extractor = meta.get("extractor_key") or meta.get("extractor")
+        if extractor:
+            # Lowercase, strip non-alpha chars
+            clean = re.sub(r"[^a-z]", "", extractor.lower())
+            if clean:
+                return clean
+
+        return None
+
+    @staticmethod
+    def _extract_channel_id(meta: dict) -> str | None:
+        """Extract channel_id from yt-dlp metadata.
+
+        Priority: channel_id > uploader_id > sanitized channel name.
+        """
+        for key in ("channel_id", "uploader_id"):
+            value = meta.get(key)
+            if value:
+                return _sanitize_field(str(value))
+
+        # Fallback: channel display name (sanitized)
+        channel_name = meta.get("channel")
+        if channel_name:
+            return _sanitize_field(str(channel_name))
+
+        return None
+
+    @staticmethod
+    def _extract_playlist_id(meta: dict) -> str | None:
+        """Extract playlist_id from yt-dlp metadata.
+
+        Priority: playlist_id > sanitized playlist_title.
+        """
+        playlist_id = meta.get("playlist_id")
+        if playlist_id:
+            return _sanitize_field(str(playlist_id))
+
+        playlist_title = meta.get("playlist_title")
+        if playlist_title:
+            return _sanitize_field(str(playlist_title))
+
+        return None
+
     @classmethod
     def from_local_file(
         cls,
@@ -178,7 +270,7 @@ class VideoState:
         fps: float | None = None,
         codec: str | None = None,
         creation_time: str | None = None,
-    ) -> "VideoState":
+    ) -> VideoState:
         """Create from a local file with optional ffprobe metadata.
 
         Args:
