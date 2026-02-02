@@ -25,6 +25,9 @@ from claudetube.analysis.attention import calculate_attention_priority
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import numpy as np
+
+    from claudetube.analysis.embeddings import SceneEmbedding
     from claudetube.cache.scenes import SceneBoundary
 
 logger = logging.getLogger(__name__)
@@ -129,6 +132,8 @@ class ActiveVideoWatcher:
         max_examinations: int = 10,
         video_type: str = "unknown",
         video_duration: float = 0.0,
+        scene_embeddings: list[SceneEmbedding] | None = None,
+        goal_embedding: np.ndarray | None = None,
     ):
         """Initialize the active video watcher.
 
@@ -143,6 +148,10 @@ class ActiveVideoWatcher:
                 'coding_tutorial', 'lecture'). Defaults to 'unknown'.
             video_duration: Total video duration in seconds. Used for
                 structural importance scoring.
+            scene_embeddings: Pre-loaded scene embeddings. If None, attempts
+                to load from cache_dir.
+            goal_embedding: Pre-computed goal embedding. If None, attention
+                scoring falls back to keyword matching.
         """
         self.video_id = video_id
         self.user_goal = user_goal
@@ -158,9 +167,26 @@ class ActiveVideoWatcher:
         # Pre-compute goal words for text matching
         self._goal_words = set(user_goal.lower().split())
 
+        # Embeddings for semantic attention scoring
+        self._scene_embeddings: list[SceneEmbedding] | None = scene_embeddings
+        self._goal_embedding: np.ndarray | None = goal_embedding
+        self._embedding_lookup: dict[int, SceneEmbedding] | None = None
+        self._embeddings_loaded = scene_embeddings is not None
+
+        # Try loading cached embeddings if not provided
+        if self._scene_embeddings is None and cache_dir is not None:
+            self._load_embeddings()
+
+        # Build lookup for fast access
+        if self._scene_embeddings is not None:
+            self._embedding_lookup = {
+                e.scene_id: e for e in self._scene_embeddings
+            }
+
         logger.info(
             f"ActiveVideoWatcher initialized for '{user_goal}' with "
-            f"{len(scenes)} scenes (threshold={confidence_threshold})"
+            f"{len(scenes)} scenes (threshold={confidence_threshold}, "
+            f"embeddings={'yes' if self._scene_embeddings else 'no'})"
         )
 
     def decide_next_action(self) -> WatcherAction:
@@ -212,12 +238,38 @@ class ActiveVideoWatcher:
             )
             return WatcherAction("examine_quick", scene_id=scene_id)
 
+    def _load_embeddings(self) -> None:
+        """Try to load cached scene embeddings from cache_dir.
+
+        Sets self._scene_embeddings if embeddings are found on disk.
+        Silently does nothing if no embeddings are cached.
+        """
+        if self._embeddings_loaded or self.cache_dir is None:
+            return
+
+        self._embeddings_loaded = True
+
+        try:
+            from claudetube.analysis.embeddings import load_embeddings
+
+            embeddings = load_embeddings(self.cache_dir)
+            if embeddings:
+                self._scene_embeddings = embeddings
+                logger.info(
+                    f"Loaded {len(embeddings)} cached scene embeddings "
+                    "for attention scoring"
+                )
+        except Exception as e:
+            logger.debug(f"Could not load cached embeddings: {e}")
+
     def rank_unexplored_scenes(self) -> list[dict]:
         """Rank scenes by attention priority (multi-factor model).
 
         Uses the attention priority model which scores scenes by:
         relevance, information density, novelty, visual salience,
-        audio emphasis, and structural importance.
+        audio emphasis, and structural importance. When embeddings
+        are available, uses semantic similarity for relevance and
+        novelty scoring.
 
         Returns:
             List of dicts with scene_id, priority, and scene data,
@@ -228,10 +280,28 @@ class ActiveVideoWatcher:
             s for s in self.scenes if self._get_scene_id(s) in self.examined
         ]
 
+        # Build previous embeddings list for novelty calculation
+        previous_embeddings: list[SceneEmbedding] | None = None
+        if self._embedding_lookup and previous_scenes:
+            previous_embeddings = [
+                self._embedding_lookup[self._get_scene_id(s)]
+                for s in previous_scenes
+                if self._get_scene_id(s) in self._embedding_lookup
+            ]
+            if not previous_embeddings:
+                previous_embeddings = None
+
         for scene in self.scenes:
             scene_id = self._get_scene_id(scene)
             if scene_id in self.examined:
                 continue
+
+            # Look up scene embedding if available
+            scene_embedding = (
+                self._embedding_lookup.get(scene_id)
+                if self._embedding_lookup
+                else None
+            )
 
             priority = calculate_attention_priority(
                 scene=scene,
@@ -240,6 +310,9 @@ class ActiveVideoWatcher:
                 previous_scenes=previous_scenes,
                 total_scenes=len(self.scenes),
                 video_duration=self.video_duration,
+                scene_embedding=scene_embedding,
+                goal_embedding=self._goal_embedding,
+                previous_embeddings=previous_embeddings,
             )
 
             candidates.append(
@@ -542,6 +615,8 @@ class ActiveVideoWatcher:
         state: dict,
         scenes: list[dict | SceneBoundary],
         cache_dir: Path | None = None,
+        scene_embeddings: list[SceneEmbedding] | None = None,
+        goal_embedding: np.ndarray | None = None,
     ) -> ActiveVideoWatcher:
         """Restore watcher from saved state.
 
@@ -549,6 +624,8 @@ class ActiveVideoWatcher:
             state: State dict from get_state().
             scenes: Scene data (required, not serialized).
             cache_dir: Optional cache directory.
+            scene_embeddings: Pre-loaded scene embeddings.
+            goal_embedding: Pre-computed goal embedding.
 
         Returns:
             Restored ActiveVideoWatcher instance.
@@ -562,6 +639,8 @@ class ActiveVideoWatcher:
             max_examinations=state.get("max_examinations", 10),
             video_type=state.get("video_type", "unknown"),
             video_duration=state.get("video_duration", 0.0),
+            scene_embeddings=scene_embeddings,
+            goal_embedding=goal_embedding,
         )
 
         watcher.examined = set(state.get("examined", []))

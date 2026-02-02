@@ -1,5 +1,6 @@
 """Tests for analysis/attention.py attention priority modeling."""
 
+import numpy as np
 import pytest
 
 from claudetube.analysis.attention import (
@@ -17,6 +18,7 @@ from claudetube.analysis.attention import (
     get_weights_for_video_type,
     rank_scenes_by_attention,
 )
+from claudetube.analysis.embeddings import SceneEmbedding
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -614,3 +616,368 @@ class TestRankScenesByAttention:
             examined_scene_ids={0, 1, 2, 3, 4},
         )
         assert ranked == []
+
+
+# ---------------------------------------------------------------------------
+# Embedding fixtures
+# ---------------------------------------------------------------------------
+
+
+def _make_embedding(scene_id: int, vector: list[float]) -> SceneEmbedding:
+    """Helper to create a SceneEmbedding with a numpy vector."""
+    return SceneEmbedding(
+        scene_id=scene_id,
+        embedding=np.array(vector, dtype=np.float32),
+        model="test",
+    )
+
+
+@pytest.fixture
+def goal_embedding():
+    """A unit vector representing the user's goal embedding."""
+    vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    return vec / np.linalg.norm(vec)
+
+
+@pytest.fixture
+def similar_scene_embedding():
+    """Scene embedding very similar to goal_embedding (cosine ~0.97)."""
+    return _make_embedding(0, [0.95, 0.1, 0.1, 0.05])
+
+
+@pytest.fixture
+def dissimilar_scene_embedding():
+    """Scene embedding very different from goal_embedding (cosine ~0.0)."""
+    return _make_embedding(1, [0.0, 0.0, 1.0, 0.0])
+
+
+@pytest.fixture
+def orthogonal_scene_embedding():
+    """Scene embedding orthogonal to goal_embedding (cosine = 0)."""
+    return _make_embedding(2, [0.0, 1.0, 0.0, 0.0])
+
+
+# ---------------------------------------------------------------------------
+# calculate_relevance — embedding paths
+# ---------------------------------------------------------------------------
+
+
+class TestCalculateRelevanceWithEmbeddings:
+    def test_similar_embedding_scores_high(
+        self, goal_embedding, similar_scene_embedding
+    ):
+        scene = {"scene_id": 0, "transcript_text": "irrelevant text"}
+        score = calculate_relevance(
+            scene, "irrelevant", similar_scene_embedding, goal_embedding
+        )
+        # Cosine similarity of [1,0,0,0] and normalized [0.95,0.1,0.1,0.05]
+        # should be high, mapped to [0,1] range
+        assert score > 0.7
+
+    def test_dissimilar_embedding_scores_low(
+        self, goal_embedding, dissimilar_scene_embedding
+    ):
+        scene = {"scene_id": 1, "transcript_text": "irrelevant text"}
+        score = calculate_relevance(
+            scene, "irrelevant", dissimilar_scene_embedding, goal_embedding
+        )
+        assert score < 0.6
+
+    def test_orthogonal_embedding_scores_midpoint(
+        self, goal_embedding, orthogonal_scene_embedding
+    ):
+        scene = {"scene_id": 2, "transcript_text": "irrelevant text"}
+        score = calculate_relevance(
+            scene, "irrelevant", orthogonal_scene_embedding, goal_embedding
+        )
+        # Cosine = 0, mapped to (0+1)/2 = 0.5
+        assert abs(score - 0.5) < 0.01
+
+    def test_embedding_overrides_keyword_matching(self, goal_embedding):
+        """When embeddings are provided, keyword matching is not used."""
+        # Transcript matches goal perfectly by keywords
+        scene = {"scene_id": 0, "transcript_text": "fix the bug"}
+        # But embedding is orthogonal to goal
+        orthogonal_emb = _make_embedding(0, [0.0, 1.0, 0.0, 0.0])
+        score_with_emb = calculate_relevance(
+            scene, "fix the bug", orthogonal_emb, goal_embedding
+        )
+        score_keyword = calculate_relevance(scene, "fix the bug")
+        # Embedding path gives ~0.5, keyword gives >0.5
+        assert score_with_emb < score_keyword
+
+    def test_falls_back_to_keywords_when_scene_embedding_none(self, goal_embedding):
+        """If scene_embedding is None, falls back to keyword matching."""
+        scene = {"scene_id": 0, "transcript_text": "fix the bug"}
+        score = calculate_relevance(scene, "fix the bug", None, goal_embedding)
+        # Should use keyword path
+        assert score > 0.5
+
+    def test_falls_back_to_keywords_when_goal_embedding_none(
+        self, similar_scene_embedding
+    ):
+        """If goal_embedding is None, falls back to keyword matching."""
+        scene = {"scene_id": 0, "transcript_text": "fix the bug"}
+        score = calculate_relevance(
+            scene, "fix the bug", similar_scene_embedding, None
+        )
+        # Should use keyword path
+        assert score > 0.5
+
+    def test_score_in_valid_range(self, goal_embedding, similar_scene_embedding):
+        scene = {"scene_id": 0, "transcript_text": "anything"}
+        score = calculate_relevance(
+            scene, "query", similar_scene_embedding, goal_embedding
+        )
+        assert 0.0 <= score <= 1.0
+
+    def test_negative_cosine_maps_to_near_zero(self, goal_embedding):
+        """Anti-correlated embeddings should score near 0."""
+        anti_emb = _make_embedding(0, [-1.0, 0.0, 0.0, 0.0])
+        scene = {"scene_id": 0, "transcript_text": ""}
+        score = calculate_relevance(scene, "query", anti_emb, goal_embedding)
+        assert score < 0.05
+
+
+# ---------------------------------------------------------------------------
+# calculate_novelty — embedding paths
+# ---------------------------------------------------------------------------
+
+
+class TestCalculateNoveltyWithEmbeddings:
+    def test_novel_scene_scores_high(self):
+        """Scene dissimilar to all previous scenes should have high novelty."""
+        scene = {"scene_id": 2, "transcript_text": "new topic"}
+        scene_emb = _make_embedding(2, [1.0, 0.0, 0.0, 0.0])
+        prev_embs = [
+            _make_embedding(0, [0.0, 1.0, 0.0, 0.0]),
+            _make_embedding(1, [0.0, 0.0, 1.0, 0.0]),
+        ]
+        prev_scenes = [
+            {"scene_id": 0, "transcript_text": "old topic"},
+            {"scene_id": 1, "transcript_text": "another old topic"},
+        ]
+        score = calculate_novelty(scene, prev_scenes, scene_emb, prev_embs)
+        # Orthogonal to both -> max similarity is 0 -> novelty = 1 - (0+1)/2 = 0.5
+        assert score >= 0.5
+
+    def test_duplicate_scene_scores_low(self):
+        """Scene identical to a previous scene should have low novelty."""
+        scene = {"scene_id": 1, "transcript_text": "same topic"}
+        scene_emb = _make_embedding(1, [1.0, 0.0, 0.0, 0.0])
+        prev_embs = [_make_embedding(0, [1.0, 0.0, 0.0, 0.0])]
+        prev_scenes = [{"scene_id": 0, "transcript_text": "same topic"}]
+        score = calculate_novelty(scene, prev_scenes, scene_emb, prev_embs)
+        # Identical -> cosine=1 -> novelty = 1 - (1+1)/2 = 0.0
+        assert score < 0.05
+
+    def test_partially_similar_scene(self):
+        """Scene partially similar to previous should have moderate novelty."""
+        scene = {"scene_id": 1, "transcript_text": "mixed topic"}
+        # 45-degree angle from previous
+        scene_emb = _make_embedding(1, [0.707, 0.707, 0.0, 0.0])
+        prev_embs = [_make_embedding(0, [1.0, 0.0, 0.0, 0.0])]
+        prev_scenes = [{"scene_id": 0, "transcript_text": "old topic"}]
+        score = calculate_novelty(scene, prev_scenes, scene_emb, prev_embs)
+        # Cosine ~0.707, novelty = 1 - (0.707+1)/2 ≈ 0.146
+        assert 0.05 < score < 0.5
+
+    def test_falls_back_without_previous_embeddings(self):
+        """No previous embeddings -> falls back to keyword novelty."""
+        scene = {"scene_id": 1, "transcript_text": "completely unique words here"}
+        scene_emb = _make_embedding(1, [1.0, 0.0, 0.0, 0.0])
+        prev_scenes = [{"scene_id": 0, "transcript_text": "different vocabulary"}]
+        score = calculate_novelty(scene, prev_scenes, scene_emb, None)
+        # Uses keyword fallback, should still return a valid score
+        assert 0.0 <= score <= 1.0
+
+    def test_falls_back_without_scene_embedding(self):
+        """No scene embedding -> falls back to keyword novelty."""
+        scene = {"scene_id": 1, "transcript_text": "completely unique words here"}
+        prev_embs = [_make_embedding(0, [1.0, 0.0, 0.0, 0.0])]
+        prev_scenes = [{"scene_id": 0, "transcript_text": "different vocabulary"}]
+        score = calculate_novelty(scene, prev_scenes, None, prev_embs)
+        assert 0.0 <= score <= 1.0
+
+    def test_empty_previous_returns_neutral(self):
+        """No previous scenes -> returns 0.5 regardless of embeddings."""
+        scene = {"scene_id": 0, "transcript_text": "first scene"}
+        scene_emb = _make_embedding(0, [1.0, 0.0, 0.0, 0.0])
+        score = calculate_novelty(scene, [], scene_emb, [])
+        assert score == 0.5
+
+    def test_novelty_in_valid_range(self):
+        """Score should always be between 0 and 1."""
+        scene = {"scene_id": 1, "transcript_text": "text"}
+        scene_emb = _make_embedding(1, [0.5, 0.5, 0.5, 0.5])
+        prev_embs = [_make_embedding(0, [0.3, 0.7, 0.1, 0.6])]
+        prev_scenes = [{"scene_id": 0, "transcript_text": "other"}]
+        score = calculate_novelty(scene, prev_scenes, scene_emb, prev_embs)
+        assert 0.0 <= score <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# calculate_attention_priority — embedding paths
+# ---------------------------------------------------------------------------
+
+
+class TestCalculateAttentionPriorityWithEmbeddings:
+    def test_embeddings_affect_priority(self, simple_scenes, goal_embedding):
+        """Priority should differ when embeddings are provided vs not."""
+        scene = simple_scenes[2]  # "Let me show you how to fix this bug"
+
+        # Without embeddings (keyword path)
+        priority_keyword = calculate_attention_priority(
+            scene=scene,
+            user_goal="fix the bug",
+            video_type="unknown",
+            total_scenes=5,
+            video_duration=150.0,
+        )
+
+        # With embeddings - use a dissimilar embedding so result differs
+        scene_emb = _make_embedding(2, [0.0, 0.0, 1.0, 0.0])
+        priority_embedding = calculate_attention_priority(
+            scene=scene,
+            user_goal="fix the bug",
+            video_type="unknown",
+            total_scenes=5,
+            video_duration=150.0,
+            scene_embedding=scene_emb,
+            goal_embedding=goal_embedding,
+        )
+
+        # They should differ because embedding gives different relevance
+        assert priority_keyword != priority_embedding
+
+    def test_similar_embedding_boosts_relevance(self, simple_scenes, goal_embedding):
+        """Scene with similar embedding to goal should get higher relevance."""
+        scene = simple_scenes[4]  # "Thanks for watching" - irrelevant keywords
+
+        # With similar embedding, should boost relevance despite bad keywords
+        similar_emb = _make_embedding(4, [0.95, 0.1, 0.1, 0.0])
+        priority = calculate_attention_priority(
+            scene=scene,
+            user_goal="unrelated query words",
+            video_type="unknown",
+            total_scenes=5,
+            video_duration=150.0,
+            scene_embedding=similar_emb,
+            goal_embedding=goal_embedding,
+            custom_weights={
+                "relevance": 1.0,
+                "density": 0.0,
+                "novelty": 0.0,
+                "visual": 0.0,
+                "audio": 0.0,
+                "structure": 0.0,
+            },
+        )
+
+        # With 100% relevance weight and similar embedding -> high score
+        assert priority > 0.7
+
+    def test_previous_embeddings_affect_novelty(
+        self, simple_scenes, goal_embedding
+    ):
+        """Previous embeddings should affect novelty scoring."""
+        scene = simple_scenes[2]
+
+        # Scene is identical to previous (same embedding)
+        scene_emb = _make_embedding(2, [1.0, 0.0, 0.0, 0.0])
+        prev_embs = [_make_embedding(1, [1.0, 0.0, 0.0, 0.0])]
+
+        priority_duplicate = calculate_attention_priority(
+            scene=scene,
+            user_goal="query",
+            video_type="unknown",
+            previous_scenes=[simple_scenes[1]],
+            total_scenes=5,
+            video_duration=150.0,
+            scene_embedding=scene_emb,
+            goal_embedding=goal_embedding,
+            previous_embeddings=prev_embs,
+            custom_weights={
+                "relevance": 0.0,
+                "density": 0.0,
+                "novelty": 1.0,
+                "visual": 0.0,
+                "audio": 0.0,
+                "structure": 0.0,
+            },
+        )
+
+        # Duplicate should have very low novelty
+        assert priority_duplicate < 0.1
+
+
+# ---------------------------------------------------------------------------
+# rank_scenes_by_attention — embedding paths
+# ---------------------------------------------------------------------------
+
+
+class TestRankScenesByAttentionWithEmbeddings:
+    def test_embeddings_change_ranking(self, simple_scenes):
+        """Providing embeddings should change how scenes are ranked."""
+        goal_emb = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+        # Make scene 4 (normally irrelevant) have the most similar embedding
+        embeddings = [
+            _make_embedding(0, [0.0, 1.0, 0.0, 0.0]),
+            _make_embedding(1, [0.0, 0.0, 1.0, 0.0]),
+            _make_embedding(2, [0.0, 0.0, 0.0, 1.0]),
+            _make_embedding(3, [0.1, 0.1, 0.1, 0.9]),
+            _make_embedding(4, [0.99, 0.01, 0.0, 0.0]),  # Most similar to goal
+        ]
+
+        ranked = rank_scenes_by_attention(
+            scenes=simple_scenes,
+            user_goal="semantic query with no keyword overlap",
+            video_duration=150.0,
+            embeddings=embeddings,
+            goal_embedding=goal_emb,
+        )
+
+        # Scene 4 should be ranked relatively high due to embedding similarity
+        scene_4_result = next(r for r in ranked if r["scene_id"] == 4)
+        assert scene_4_result["priority"] > 0.0
+
+    def test_embedding_ranking_still_sorted(self, simple_scenes):
+        """Results should still be sorted by priority descending."""
+        goal_emb = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        embeddings = [
+            _make_embedding(i, [float(i == 2), float(i != 2), 0.0, 0.0])
+            for i in range(5)
+        ]
+
+        ranked = rank_scenes_by_attention(
+            scenes=simple_scenes,
+            user_goal="anything",
+            video_duration=150.0,
+            embeddings=embeddings,
+            goal_embedding=goal_emb,
+        )
+
+        priorities = [r["priority"] for r in ranked]
+        assert priorities == sorted(priorities, reverse=True)
+
+    def test_partial_embeddings_handled(self, simple_scenes):
+        """Only some scenes having embeddings should work fine."""
+        goal_emb = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        # Only scenes 0 and 2 have embeddings
+        embeddings = [
+            _make_embedding(0, [0.9, 0.1, 0.0, 0.0]),
+            _make_embedding(2, [0.1, 0.9, 0.0, 0.0]),
+        ]
+
+        ranked = rank_scenes_by_attention(
+            scenes=simple_scenes,
+            user_goal="query",
+            video_duration=150.0,
+            embeddings=embeddings,
+            goal_embedding=goal_emb,
+        )
+
+        assert len(ranked) == 5
+        for r in ranked:
+            assert 0.0 <= r["priority"] <= 1.0

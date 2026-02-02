@@ -296,7 +296,11 @@ def watch_video(
     # Auto-detect video_type for attention model weighting
     video_type = _detect_video_type(cache_dir, scenes_data.scenes)
 
+    # Try to compute goal embedding for semantic attention scoring
+    goal_embedding = _compute_goal_embedding(question)
+
     # Create active watcher with attention priority model
+    # Scene embeddings are loaded from cache_dir automatically
     watcher = ActiveVideoWatcher(
         video_id=video_id,
         user_goal=question,
@@ -304,6 +308,7 @@ def watch_video(
         cache_dir=cache_dir,
         video_duration=video_duration,
         video_type=video_type,
+        goal_embedding=goal_embedding,
     )
 
     # Active exploration loop
@@ -383,6 +388,33 @@ def watch_video(
         "scenes_examined": answer.get("scenes_examined", 0),
         "comprehension_verified": verification.get("ready_to_answer", False),
     }
+
+
+def _compute_goal_embedding(question: str):
+    """Compute an embedding vector for the user's question.
+
+    Uses the configured Embedder provider. Returns None if embedding
+    fails (no API key, provider unavailable, etc.) so attention
+    scoring falls back to keyword matching.
+
+    Args:
+        question: User's question string.
+
+    Returns:
+        numpy.ndarray embedding vector, or None on failure.
+    """
+    try:
+        import numpy as np
+
+        from claudetube.analysis.embeddings import _get_embedder, get_embedding_model
+
+        model = get_embedding_model()
+        embedder = _get_embedder(model)
+        embedding_list = embedder.embed_sync(question)
+        return np.array(embedding_list, dtype=np.float32)
+    except Exception as e:
+        logger.debug(f"Could not compute goal embedding: {e}")
+        return None
 
 
 def _detect_video_type(cache_dir: Path, scenes: list) -> str:

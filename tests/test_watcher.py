@@ -1,5 +1,6 @@
 """Tests for ActiveVideoWatcher and related classes."""
 
+import numpy as np
 import pytest
 
 from claudetube.analysis import (
@@ -7,6 +8,7 @@ from claudetube.analysis import (
     Hypothesis,
     WatcherAction,
 )
+from claudetube.analysis.embeddings import SceneEmbedding
 from claudetube.cache.scenes import SceneBoundary
 
 
@@ -600,3 +602,173 @@ class TestWatcherIntegration:
 
         assert action.action == "answer"
         assert len(watcher.examined) <= 5
+
+
+class TestActiveVideoWatcherEmbeddings:
+    """Tests for ActiveVideoWatcher embedding integration."""
+
+    @pytest.fixture
+    def sample_scenes(self):
+        return [
+            {
+                "scene_id": 0,
+                "start_time": 0.0,
+                "end_time": 30.0,
+                "transcript_text": "Welcome to this tutorial about Python",
+            },
+            {
+                "scene_id": 1,
+                "start_time": 30.0,
+                "end_time": 60.0,
+                "transcript_text": "Here we have a bug in the authentication code",
+            },
+            {
+                "scene_id": 2,
+                "start_time": 60.0,
+                "end_time": 90.0,
+                "transcript_text": "Let me show you how to fix this bug",
+            },
+            {
+                "scene_id": 3,
+                "start_time": 90.0,
+                "end_time": 120.0,
+                "transcript_text": "Now the authentication is working correctly",
+            },
+            {
+                "scene_id": 4,
+                "start_time": 120.0,
+                "end_time": 150.0,
+                "transcript_text": "Thanks for watching this video",
+            },
+        ]
+
+    @pytest.fixture
+    def scene_embeddings(self):
+        """Scene embeddings where scene 4 is most similar to goal."""
+        return [
+            SceneEmbedding(0, np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32), "test"),
+            SceneEmbedding(1, np.array([0.0, 0.0, 1.0, 0.0], dtype=np.float32), "test"),
+            SceneEmbedding(2, np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32), "test"),
+            SceneEmbedding(3, np.array([0.1, 0.1, 0.1, 0.9], dtype=np.float32), "test"),
+            SceneEmbedding(4, np.array([0.99, 0.01, 0.0, 0.0], dtype=np.float32), "test"),
+        ]
+
+    @pytest.fixture
+    def goal_embedding(self):
+        return np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+    def test_init_with_embeddings(self, sample_scenes, scene_embeddings, goal_embedding):
+        watcher = ActiveVideoWatcher(
+            video_id="test",
+            user_goal="test query",
+            scenes=sample_scenes,
+            scene_embeddings=scene_embeddings,
+            goal_embedding=goal_embedding,
+        )
+        assert watcher._scene_embeddings is not None
+        assert watcher._goal_embedding is not None
+        assert watcher._embedding_lookup is not None
+        assert len(watcher._embedding_lookup) == 5
+
+    def test_init_without_embeddings(self, sample_scenes):
+        watcher = ActiveVideoWatcher(
+            video_id="test",
+            user_goal="test query",
+            scenes=sample_scenes,
+        )
+        assert watcher._scene_embeddings is None
+        assert watcher._goal_embedding is None
+        assert watcher._embedding_lookup is None
+
+    def test_embeddings_affect_ranking(
+        self, sample_scenes, scene_embeddings, goal_embedding
+    ):
+        """Scene 4 has embedding most similar to goal, should rank higher."""
+        watcher_no_emb = ActiveVideoWatcher(
+            video_id="test",
+            user_goal="completely unrelated query no keyword match",
+            scenes=sample_scenes,
+            video_duration=150.0,
+        )
+        watcher_with_emb = ActiveVideoWatcher(
+            video_id="test",
+            user_goal="completely unrelated query no keyword match",
+            scenes=sample_scenes,
+            video_duration=150.0,
+            scene_embeddings=scene_embeddings,
+            goal_embedding=goal_embedding,
+        )
+
+        ranked_no_emb = watcher_no_emb.rank_unexplored_scenes()
+        ranked_with_emb = watcher_with_emb.rank_unexplored_scenes()
+
+        # Priorities should differ because embeddings change relevance scores
+        priorities_no_emb = {r["scene_id"]: r["priority"] for r in ranked_no_emb}
+        priorities_with_emb = {r["scene_id"]: r["priority"] for r in ranked_with_emb}
+        assert priorities_no_emb != priorities_with_emb
+
+    def test_previous_embeddings_used_for_novelty(
+        self, sample_scenes, scene_embeddings, goal_embedding
+    ):
+        """After examining a scene, its embedding should affect novelty of similar scenes."""
+        watcher = ActiveVideoWatcher(
+            video_id="test",
+            user_goal="test query",
+            scenes=sample_scenes,
+            video_duration=150.0,
+            scene_embeddings=scene_embeddings,
+            goal_embedding=goal_embedding,
+        )
+
+        # Examine scene 4 (which has similar embedding to goal)
+        watcher.examined.add(4)
+
+        ranked_after = watcher.rank_unexplored_scenes()
+
+        # Scene 4 should no longer be in results
+        assert 4 not in {r["scene_id"] for r in ranked_after}
+
+    def test_from_state_with_embeddings(
+        self, sample_scenes, scene_embeddings, goal_embedding
+    ):
+        """Test that from_state accepts embedding parameters."""
+        watcher = ActiveVideoWatcher(
+            video_id="test",
+            user_goal="test query",
+            scenes=sample_scenes,
+            scene_embeddings=scene_embeddings,
+            goal_embedding=goal_embedding,
+        )
+        watcher.examined.add(0)
+        state = watcher.get_state()
+
+        restored = ActiveVideoWatcher.from_state(
+            state,
+            sample_scenes,
+            scene_embeddings=scene_embeddings,
+            goal_embedding=goal_embedding,
+        )
+        assert restored._scene_embeddings is not None
+        assert restored._goal_embedding is not None
+        assert restored._embedding_lookup is not None
+        assert restored.examined == {0}
+
+    def test_graceful_with_partial_embeddings(self, sample_scenes, goal_embedding):
+        """Watcher works when only some scenes have embeddings."""
+        partial_embeddings = [
+            SceneEmbedding(0, np.array([0.9, 0.1, 0.0, 0.0], dtype=np.float32), "test"),
+            SceneEmbedding(2, np.array([0.1, 0.9, 0.0, 0.0], dtype=np.float32), "test"),
+        ]
+        watcher = ActiveVideoWatcher(
+            video_id="test",
+            user_goal="test query",
+            scenes=sample_scenes,
+            video_duration=150.0,
+            scene_embeddings=partial_embeddings,
+            goal_embedding=goal_embedding,
+        )
+
+        ranked = watcher.rank_unexplored_scenes()
+        assert len(ranked) == 5
+        for r in ranked:
+            assert 0.0 <= r["priority"] <= 1.0
