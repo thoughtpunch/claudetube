@@ -95,3 +95,8 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 - 2026-02-02 08:33 | claudetube-mku [P3] | Add tests for operations/processor.py URL-based processing
 - 2026-02-02 08:38 | claudetube-bzz [P4] | Wire embedding-based attention scoring into ActiveVideoWatcher
 - 2026-02-02 08:47 | claudetube-cst [P4] | Add multilingual support for audio descriptions
+- 2026-02-02 16:34 | claudetube-5vi [P3] | Integrate bgutil-ytdlp-pot-provider plugin
+- 2026-02-02 16:43 | claudetube-6m7 [P3] | Add YouTube cookie management to config
+- 2026-02-02 16:49 | claudetube-il9 [P3] | Add deno as recommended prerequisite and verify in install.sh
+- 2026-02-02 16:54 | claudetube-e65 [P4] | SABR protocol documentation and troubleshooting guide
+- 2026-02-02 16:58 | claudetube-4ds [P4] | Add PO token auto-refresh and health checks

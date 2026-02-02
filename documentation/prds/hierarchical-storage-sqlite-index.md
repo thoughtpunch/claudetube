@@ -17,6 +17,8 @@ These reinforce each other: the hierarchical tree makes the cache human-navigabl
 3. **Progressive enrichment** -- when yt-dlp returns richer metadata, UPSERT the database AND `shutil.move()` the directory to the correct hierarchical path. Paths are living -- they improve as we learn more.
 4. **NULL = unknown** -- `channel` and `playlist` are NULL in the database until populated. Filesystem uses `no_channel`/`no_playlist` as human-readable placeholders; the `VideoPath` model translates between the two representations. Domain is always required (every URL has one).
 5. **Strict validation** -- Pydantic `strict=True` + SQLite CHECK constraints. Fail on construction, fail on INSERT. No silent data corruption.
+6. **Every artifact is a first-class entity** -- Frames, audio tracks, transcriptions, visual descriptions, technical content, audio descriptions are all modeled as database tables with proper FKs. No orphan files -- if it's on disk, it's in SQLite.
+7. **Pipeline state tracking** -- Every processing step (download, transcribe, scene detect, etc.) is tracked in a `pipeline_steps` table with status, provider, timing, and error info. Processing state is queried from this table, not scattered boolean flags.
 
 ---
 
@@ -344,10 +346,13 @@ Existing caches at `{cache_dir}/{video_id}/` need to be discoverable. Three appr
 - **Progressive enrichment**: UPSERT replaces NULLs with real data when available, AND moves directories to match
 - **NULL = unknown**: `channel` and `playlist` are NULL until populated. Domain is NOT NULL (every URL has one).
 - **Strict schema**: CHECK constraints on every column. Fail on INSERT/UPDATE rather than storing bad data.
+- **Every artifact has a table**: Frames, audio, transcriptions, visual analysis -- all first-class entities with FKs. Processing state lives in `pipeline_steps`, not scattered booleans.
 
 ### Schema (DDL)
 
 All PKs are UUIDs (TEXT, `CHECK(length(id) = 36)`, generated in Python via `uuid.uuid4()`). `video_id` is a natural key (YouTube ID, etc.) used for lookups but NOT the PK. NULL means "not yet known". Every column has CHECK constraints enforcing data integrity.
+
+**Design change**: Processing state booleans (`transcript_complete`, `has_keyframes`, etc.) are removed from `videos` and `scenes` tables. Processing state is now tracked in the `pipeline_steps` table. A `video_processing_status` VIEW provides convenient access to derived state.
 
 ```sql
 -- Schema versioning
@@ -358,7 +363,7 @@ CREATE TABLE schema_version (
 );
 
 -- ============================================================
--- VIDEOS
+-- VIDEOS (metadata only -- processing state in pipeline_steps)
 -- ============================================================
 CREATE TABLE videos (
     id                  TEXT PRIMARY KEY CHECK(length(id) = 36),  -- UUID
@@ -381,13 +386,6 @@ CREATE TABLE videos (
     view_count          INTEGER CHECK(view_count IS NULL OR view_count >= 0),
     like_count          INTEGER CHECK(like_count IS NULL OR like_count >= 0),
     source_type         TEXT NOT NULL CHECK(source_type IN ('url', 'local')) DEFAULT 'url',
-    -- Processing state
-    transcript_complete INTEGER NOT NULL CHECK(transcript_complete IN (0, 1)) DEFAULT 0,
-    transcript_source   TEXT CHECK(transcript_source IS NULL OR transcript_source IN (
-        'youtube_subtitles', 'whisper', 'deepgram', 'openai', 'manual'
-    )),
-    scenes_processed    INTEGER NOT NULL CHECK(scenes_processed IN (0, 1)) DEFAULT 0,
-    scene_count         INTEGER CHECK(scene_count IS NULL OR scene_count >= 0),
     -- Timestamps
     created_at          TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
@@ -410,7 +408,54 @@ CREATE INDEX idx_tags_video ON video_tags(video_id);
 CREATE INDEX idx_tags_tag ON video_tags(tag);
 
 -- ============================================================
--- SCENES
+-- AUDIO TRACKS (extracted audio files)
+-- ============================================================
+CREATE TABLE audio_tracks (
+    id              TEXT PRIMARY KEY CHECK(length(id) = 36),
+    video_id        TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    format          TEXT NOT NULL CHECK(format IN ('mp3', 'wav', 'aac', 'm4a', 'opus', 'flac', 'ogg')),
+    sample_rate     INTEGER CHECK(sample_rate IS NULL OR sample_rate > 0),
+    channels        INTEGER CHECK(channels IS NULL OR (channels > 0 AND channels <= 16)),
+    bitrate_kbps    INTEGER CHECK(bitrate_kbps IS NULL OR bitrate_kbps > 0),
+    duration        REAL CHECK(duration IS NULL OR duration >= 0),
+    file_size_bytes INTEGER CHECK(file_size_bytes IS NULL OR file_size_bytes > 0),
+    file_path       TEXT NOT NULL CHECK(length(file_path) > 0),  -- relative to cache dir
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_audio_video ON audio_tracks(video_id);
+
+-- ============================================================
+-- TRANSCRIPTIONS (first-class entity for FTS/RAG)
+--
+-- A video can have MULTIPLE transcriptions (different providers,
+-- languages, models). One is marked is_primary for default use.
+-- full_text is indexed via FTS5 for cross-video transcript search.
+-- ============================================================
+CREATE TABLE transcriptions (
+    id              TEXT PRIMARY KEY CHECK(length(id) = 36),
+    video_id        TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    audio_track_id  TEXT REFERENCES audio_tracks(id) ON DELETE SET NULL,
+    provider        TEXT NOT NULL CHECK(provider IN (
+        'youtube_subtitles', 'whisper', 'deepgram', 'openai', 'manual'
+    )),
+    model           TEXT CHECK(model IS NULL OR length(model) > 0),
+    language        TEXT CHECK(language IS NULL OR length(language) > 0),
+    format          TEXT NOT NULL CHECK(format IN ('srt', 'txt', 'vtt')),
+    full_text       TEXT,  -- complete transcript text for FTS/RAG
+    word_count      INTEGER CHECK(word_count IS NULL OR word_count >= 0),
+    duration        REAL CHECK(duration IS NULL OR duration >= 0),
+    confidence      REAL CHECK(confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    file_path       TEXT NOT NULL CHECK(length(file_path) > 0),
+    file_size_bytes INTEGER CHECK(file_size_bytes IS NULL OR file_size_bytes > 0),
+    is_primary      INTEGER NOT NULL CHECK(is_primary IN (0, 1)) DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_transcriptions_video ON transcriptions(video_id);
+CREATE INDEX idx_transcriptions_provider ON transcriptions(provider);
+CREATE INDEX idx_transcriptions_primary ON transcriptions(video_id, is_primary);
+
+-- ============================================================
+-- SCENES (segmentation structure -- no processing state flags)
 -- ============================================================
 CREATE TABLE scenes (
     id              TEXT PRIMARY KEY CHECK(length(id) = 36),
@@ -420,13 +465,119 @@ CREATE TABLE scenes (
     end_time        REAL NOT NULL CHECK(end_time > start_time),
     title           TEXT,
     transcript_text TEXT,
-    has_keyframes   INTEGER NOT NULL CHECK(has_keyframes IN (0, 1)) DEFAULT 0,
-    has_visual      INTEGER NOT NULL CHECK(has_visual IN (0, 1)) DEFAULT 0,
-    has_technical   INTEGER NOT NULL CHECK(has_technical IN (0, 1)) DEFAULT 0,
+    method          TEXT CHECK(method IS NULL OR method IN (
+        'transcript', 'visual', 'hybrid', 'chapters'
+    )),
     relevance_boost REAL NOT NULL CHECK(relevance_boost >= 0) DEFAULT 1.0,
     UNIQUE(video_id, scene_id)
 );
 CREATE INDEX idx_scenes_video ON scenes(video_id);
+
+-- ============================================================
+-- FRAMES (all extracted images -- thumbnails, keyframes, drill, hq)
+--
+-- Covers all extraction types: drill (quick), hq (high-quality),
+-- keyframes (per-scene representative frames), and thumbnails.
+-- scene_id is NULL when frames are extracted without scene context.
+-- is_thumbnail flags any frame as the video's thumbnail image.
+-- ============================================================
+CREATE TABLE frames (
+    id              TEXT PRIMARY KEY CHECK(length(id) = 36),
+    video_id        TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    scene_id        INTEGER CHECK(scene_id IS NULL OR scene_id >= 0),
+    timestamp       REAL NOT NULL CHECK(timestamp >= 0),
+    extraction_type TEXT NOT NULL CHECK(extraction_type IN ('drill', 'hq', 'keyframe', 'thumbnail')),
+    quality_tier    TEXT CHECK(quality_tier IS NULL OR quality_tier IN (
+        'lowest', 'low', 'medium', 'high', 'highest'
+    )),
+    is_thumbnail    INTEGER NOT NULL CHECK(is_thumbnail IN (0, 1)) DEFAULT 0,
+    width           INTEGER CHECK(width IS NULL OR width > 0),
+    height          INTEGER CHECK(height IS NULL OR height > 0),
+    file_size_bytes INTEGER CHECK(file_size_bytes IS NULL OR file_size_bytes > 0),
+    file_path       TEXT NOT NULL CHECK(length(file_path) > 0),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_frames_video ON frames(video_id);
+CREATE INDEX idx_frames_scene ON frames(video_id, scene_id);
+CREATE INDEX idx_frames_type ON frames(extraction_type);
+CREATE INDEX idx_frames_timestamp ON frames(video_id, timestamp);
+CREATE INDEX idx_frames_thumbnail ON frames(video_id, is_thumbnail);
+
+-- ============================================================
+-- VISUAL DESCRIPTIONS (per-scene AI visual analysis)
+-- ============================================================
+CREATE TABLE visual_descriptions (
+    id              TEXT PRIMARY KEY CHECK(length(id) = 36),
+    video_id        TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    scene_id        INTEGER NOT NULL CHECK(scene_id >= 0),
+    provider        TEXT CHECK(provider IS NULL OR length(provider) > 0),
+    description     TEXT NOT NULL CHECK(length(description) > 0),
+    file_path       TEXT CHECK(file_path IS NULL OR length(file_path) > 0),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(video_id, scene_id)
+);
+CREATE INDEX idx_visual_video ON visual_descriptions(video_id);
+
+-- ============================================================
+-- TECHNICAL CONTENT (per-scene OCR, code detection)
+-- ============================================================
+CREATE TABLE technical_content (
+    id              TEXT PRIMARY KEY CHECK(length(id) = 36),
+    video_id        TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    scene_id        INTEGER NOT NULL CHECK(scene_id >= 0),
+    provider        TEXT CHECK(provider IS NULL OR length(provider) > 0),
+    has_code        INTEGER NOT NULL CHECK(has_code IN (0, 1)) DEFAULT 0,
+    has_text        INTEGER NOT NULL CHECK(has_text IN (0, 1)) DEFAULT 0,
+    ocr_text        TEXT,  -- extracted text for FTS
+    code_language   TEXT CHECK(code_language IS NULL OR length(code_language) > 0),
+    file_path       TEXT CHECK(file_path IS NULL OR length(file_path) > 0),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(video_id, scene_id)
+);
+CREATE INDEX idx_technical_video ON technical_content(video_id);
+
+-- ============================================================
+-- AUDIO DESCRIPTIONS (accessibility)
+-- ============================================================
+CREATE TABLE audio_descriptions (
+    id              TEXT PRIMARY KEY CHECK(length(id) = 36),
+    video_id        TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    format          TEXT NOT NULL CHECK(format IN ('vtt', 'txt')),
+    source          TEXT NOT NULL CHECK(source IN ('generated', 'source_track', 'compiled')),
+    provider        TEXT CHECK(provider IS NULL OR length(provider) > 0),
+    file_path       TEXT NOT NULL CHECK(length(file_path) > 0),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_ad_video ON audio_descriptions(video_id);
+
+-- ============================================================
+-- NARRATIVE STRUCTURES (video type + section analysis)
+-- ============================================================
+CREATE TABLE narrative_structures (
+    id              TEXT PRIMARY KEY CHECK(length(id) = 36),
+    video_id        TEXT NOT NULL UNIQUE REFERENCES videos(id) ON DELETE CASCADE,
+    video_type      TEXT CHECK(video_type IS NULL OR video_type IN (
+        'coding_tutorial', 'lecture', 'demo', 'presentation', 'interview',
+        'review', 'vlog', 'documentary', 'music_video', 'other'
+    )),
+    section_count   INTEGER CHECK(section_count IS NULL OR section_count >= 0),
+    file_path       TEXT CHECK(file_path IS NULL OR length(file_path) > 0),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_narrative_video ON narrative_structures(video_id);
+
+-- ============================================================
+-- CODE EVOLUTIONS (code tracking across scenes)
+-- ============================================================
+CREATE TABLE code_evolutions (
+    id              TEXT PRIMARY KEY CHECK(length(id) = 36),
+    video_id        TEXT NOT NULL UNIQUE REFERENCES videos(id) ON DELETE CASCADE,
+    files_tracked   INTEGER CHECK(files_tracked IS NULL OR files_tracked >= 0),
+    total_changes   INTEGER CHECK(total_changes IS NULL OR total_changes >= 0),
+    file_path       TEXT CHECK(file_path IS NULL OR length(file_path) > 0),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_code_evo_video ON code_evolutions(video_id);
 
 -- ============================================================
 -- ENTITIES (unified: objects + concepts + people)
@@ -530,6 +681,41 @@ CREATE INDEX idx_pv_playlist ON playlist_videos(playlist_id);
 CREATE INDEX idx_pv_video ON playlist_videos(video_id);
 
 -- ============================================================
+-- PIPELINE STEPS (processing state for ALL operations)
+--
+-- This is the single source of truth for "what has been processed?"
+-- Replaces scattered boolean flags on videos and scenes tables.
+-- Each step tracks: what was done, by whom, when, with what config.
+-- ============================================================
+CREATE TABLE pipeline_steps (
+    id              TEXT PRIMARY KEY CHECK(length(id) = 36),
+    video_id        TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    step_type       TEXT NOT NULL CHECK(step_type IN (
+        'download', 'audio_extract', 'transcribe', 'scene_detect',
+        'keyframe_extract', 'visual_analyze', 'entity_extract',
+        'deep_analyze', 'focus_analyze', 'narrative_detect',
+        'change_detect', 'code_track', 'people_track',
+        'ad_generate', 'knowledge_index', 'embed'
+    )),
+    status          TEXT NOT NULL CHECK(status IN (
+        'pending', 'running', 'completed', 'failed', 'skipped'
+    )),
+    provider        TEXT CHECK(provider IS NULL OR length(provider) > 0),
+    model           TEXT CHECK(model IS NULL OR length(model) > 0),
+    scene_id        INTEGER CHECK(scene_id IS NULL OR scene_id >= 0),
+    config          TEXT,  -- JSON blob for step-specific params
+    error_message   TEXT,  -- populated on failure
+    started_at      TEXT,
+    completed_at    TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_pipeline_video ON pipeline_steps(video_id);
+CREATE INDEX idx_pipeline_type ON pipeline_steps(step_type);
+CREATE INDEX idx_pipeline_status ON pipeline_steps(status);
+CREATE INDEX idx_pipeline_video_type ON pipeline_steps(video_id, step_type);
+CREATE INDEX idx_pipeline_video_scene ON pipeline_steps(video_id, scene_id);
+
+-- ============================================================
 -- VECTOR EMBEDDINGS (sqlite-vec)
 -- ============================================================
 -- The vec0 virtual table is created at runtime after loading
@@ -538,11 +724,12 @@ CREATE INDEX idx_pv_video ON playlist_videos(video_id);
 CREATE TABLE vec_metadata (
     id         TEXT PRIMARY KEY CHECK(length(id) = 36),
     video_id   TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
-    scene_id   INTEGER NOT NULL CHECK(scene_id >= 0),
-    start_time REAL NOT NULL CHECK(start_time >= 0),
-    end_time   REAL NOT NULL CHECK(end_time > start_time),
+    scene_id   INTEGER CHECK(scene_id IS NULL OR scene_id >= 0),
+    start_time REAL CHECK(start_time IS NULL OR start_time >= 0),
+    end_time   REAL CHECK(end_time IS NULL OR end_time > start_time),
     source     TEXT NOT NULL CHECK(source IN (
-        'transcript', 'visual', 'entity', 'qa', 'observation'
+        'transcription', 'scene_transcript', 'visual', 'technical',
+        'entity', 'qa', 'observation', 'audio_description'
     )),
     UNIQUE(video_id, scene_id, source)
 );
@@ -553,7 +740,29 @@ CREATE INDEX idx_vec_source ON vec_metadata(source);
 -- FTS5 VIRTUAL TABLES + SYNC TRIGGERS
 -- ============================================================
 
--- Scene transcripts FTS
+-- Transcriptions FTS (full transcript text for cross-video RAG)
+CREATE VIRTUAL TABLE transcriptions_fts USING fts5(
+    full_text,
+    content=transcriptions, content_rowid=rowid,
+    tokenize='porter unicode61'
+);
+
+CREATE TRIGGER transcriptions_ai AFTER INSERT ON transcriptions BEGIN
+    INSERT INTO transcriptions_fts(rowid, full_text)
+    VALUES (new.rowid, new.full_text);
+END;
+CREATE TRIGGER transcriptions_ad AFTER DELETE ON transcriptions BEGIN
+    INSERT INTO transcriptions_fts(transcriptions_fts, rowid, full_text)
+    VALUES ('delete', old.rowid, old.full_text);
+END;
+CREATE TRIGGER transcriptions_au AFTER UPDATE ON transcriptions BEGIN
+    INSERT INTO transcriptions_fts(transcriptions_fts, rowid, full_text)
+    VALUES ('delete', old.rowid, old.full_text);
+    INSERT INTO transcriptions_fts(rowid, full_text)
+    VALUES (new.rowid, new.full_text);
+END;
+
+-- Scene transcripts FTS (per-scene segments)
 CREATE VIRTUAL TABLE scenes_fts USING fts5(
     transcript_text,
     content=scenes, content_rowid=rowid,
@@ -573,6 +782,50 @@ CREATE TRIGGER scenes_au AFTER UPDATE ON scenes BEGIN
     VALUES ('delete', old.rowid, old.transcript_text);
     INSERT INTO scenes_fts(rowid, transcript_text)
     VALUES (new.rowid, new.transcript_text);
+END;
+
+-- Visual descriptions FTS (AI-generated scene descriptions)
+CREATE VIRTUAL TABLE visual_fts USING fts5(
+    description,
+    content=visual_descriptions, content_rowid=rowid,
+    tokenize='porter unicode61'
+);
+
+CREATE TRIGGER visual_ai AFTER INSERT ON visual_descriptions BEGIN
+    INSERT INTO visual_fts(rowid, description)
+    VALUES (new.rowid, new.description);
+END;
+CREATE TRIGGER visual_ad AFTER DELETE ON visual_descriptions BEGIN
+    INSERT INTO visual_fts(visual_fts, rowid, description)
+    VALUES ('delete', old.rowid, old.description);
+END;
+CREATE TRIGGER visual_au AFTER UPDATE ON visual_descriptions BEGIN
+    INSERT INTO visual_fts(visual_fts, rowid, description)
+    VALUES ('delete', old.rowid, old.description);
+    INSERT INTO visual_fts(rowid, description)
+    VALUES (new.rowid, new.description);
+END;
+
+-- Technical content FTS (OCR text)
+CREATE VIRTUAL TABLE technical_fts USING fts5(
+    ocr_text,
+    content=technical_content, content_rowid=rowid,
+    tokenize='porter unicode61'
+);
+
+CREATE TRIGGER technical_ai AFTER INSERT ON technical_content BEGIN
+    INSERT INTO technical_fts(rowid, ocr_text)
+    VALUES (new.rowid, new.ocr_text);
+END;
+CREATE TRIGGER technical_ad AFTER DELETE ON technical_content BEGIN
+    INSERT INTO technical_fts(technical_fts, rowid, ocr_text)
+    VALUES ('delete', old.rowid, old.ocr_text);
+END;
+CREATE TRIGGER technical_au AFTER UPDATE ON technical_content BEGIN
+    INSERT INTO technical_fts(technical_fts, rowid, ocr_text)
+    VALUES ('delete', old.rowid, old.ocr_text);
+    INSERT INTO technical_fts(rowid, ocr_text)
+    VALUES (new.rowid, new.ocr_text);
 END;
 
 -- Q&A FTS
@@ -619,8 +872,67 @@ CREATE TRIGGER videos_fts_au AFTER UPDATE ON videos BEGIN
     VALUES (new.rowid, new.title, new.description, new.channel_name);
 END;
 
+-- ============================================================
+-- CONVENIENCE VIEW: video processing status
+--
+-- Derives processing state from child tables and pipeline_steps
+-- instead of relying on denormalized boolean flags.
+-- ============================================================
+CREATE VIEW video_processing_status AS
+SELECT
+    v.id,
+    v.video_id,
+    v.title,
+    v.domain,
+    v.duration,
+    (SELECT COUNT(*) FROM audio_tracks a WHERE a.video_id = v.id) as audio_track_count,
+    (SELECT COUNT(*) FROM transcriptions t WHERE t.video_id = v.id) as transcription_count,
+    EXISTS(SELECT 1 FROM transcriptions t WHERE t.video_id = v.id AND t.is_primary = 1) as has_primary_transcript,
+    (SELECT t.provider FROM transcriptions t WHERE t.video_id = v.id AND t.is_primary = 1) as transcript_provider,
+    (SELECT COUNT(*) FROM scenes s WHERE s.video_id = v.id) as scene_count,
+    (SELECT COUNT(*) FROM frames f WHERE f.video_id = v.id) as frame_count,
+    (SELECT COUNT(*) FROM frames f WHERE f.video_id = v.id AND f.extraction_type = 'keyframe') as keyframe_count,
+    EXISTS(SELECT 1 FROM frames f WHERE f.video_id = v.id AND f.is_thumbnail = 1) as has_thumbnail,
+    (SELECT COUNT(*) FROM visual_descriptions vd WHERE vd.video_id = v.id) as visual_description_count,
+    (SELECT COUNT(*) FROM technical_content tc WHERE tc.video_id = v.id) as technical_content_count,
+    EXISTS(SELECT 1 FROM narrative_structures ns WHERE ns.video_id = v.id) as has_narrative,
+    EXISTS(SELECT 1 FROM code_evolutions ce WHERE ce.video_id = v.id) as has_code_evolution,
+    EXISTS(SELECT 1 FROM audio_descriptions ad WHERE ad.video_id = v.id) as has_audio_description,
+    (SELECT COUNT(*) FROM entity_video_summary evs WHERE evs.video_id = v.id) as entity_count,
+    (SELECT COUNT(*) FROM qa_history q WHERE q.video_id = v.id) as qa_count,
+    (SELECT COUNT(*) FROM pipeline_steps p WHERE p.video_id = v.id AND p.status = 'completed') as completed_steps,
+    (SELECT COUNT(*) FROM pipeline_steps p WHERE p.video_id = v.id AND p.status = 'failed') as failed_steps,
+    (SELECT COUNT(*) FROM pipeline_steps p WHERE p.video_id = v.id AND p.status = 'running') as running_steps
+FROM videos v;
+
 INSERT INTO schema_version (version, description)
-VALUES (1, 'Initial: strict UUID PKs, videos, scenes, entities, qa, observations, playlists, vec_metadata, FTS5');
+VALUES (1, 'Initial: videos, audio_tracks, transcriptions, scenes, frames (incl. thumbnails), visual_descriptions, technical_content, audio_descriptions, narrative_structures, code_evolutions, entities, qa, observations, playlists, pipeline_steps, vec_metadata, FTS5, video_processing_status view');
+```
+
+### Entity-Relationship Summary
+
+```
+videos (1) ──┬── (*) audio_tracks
+             ├── (*) transcriptions  [FTS: full_text]
+             ├── (*) scenes ──┬── (*) frames (via scene_id)
+             │                ├── (1) visual_descriptions  [FTS: description]
+             │                ├── (1) technical_content  [FTS: ocr_text]
+             │                └── (*) entity_appearances
+             ├── (*) frames (video-level, scene_id NULL, incl. thumbnails via is_thumbnail)
+             ├── (*) audio_descriptions
+             ├── (1) narrative_structures
+             ├── (1) code_evolutions
+             ├── (*) entity_video_summary
+             ├── (*) qa_history ── (*) qa_scenes
+             ├── (*) observations
+             ├── (*) pipeline_steps
+             ├── (*) vec_metadata
+             └── (*) video_tags
+
+playlists (1) ── (*) playlist_videos ── (*) videos
+
+entities (1) ──┬── (*) entity_appearances
+               └── (*) entity_video_summary
 ```
 
 ### Progressive Enrichment: UPSERT + Directory Move
@@ -681,6 +993,83 @@ This means a video's lifecycle looks like:
    mv: youtube/UCxxx/no_playlist/dQw4w9WgXcQ/ -> youtube/UCxxx/PLxxx/dQw4w9WgXcQ/
 ```
 
+### Pipeline Step Tracking
+
+Every processing operation records its state in `pipeline_steps`. This replaces the old pattern of boolean flags scattered across tables.
+
+```python
+# In db/sync.py:
+def record_pipeline_step(
+    video_id: str,
+    step_type: str,
+    status: str,
+    provider: str | None = None,
+    model: str | None = None,
+    scene_id: int | None = None,
+    config: dict | None = None,
+    error_message: str | None = None,
+) -> None:
+    """Record a pipeline processing step.
+
+    Called at the start (status='running') and end (status='completed'/'failed')
+    of each processing operation.
+    """
+    ...
+```
+
+**Example pipeline lifecycle for a video:**
+```
+1. process_video() called
+   -> pipeline_steps: (download, running)
+   -> yt-dlp fetches metadata + audio
+   -> pipeline_steps: (download, completed)
+
+2. Audio extraction
+   -> pipeline_steps: (audio_extract, running)
+   -> ffmpeg extracts audio.mp3
+   -> audio_tracks: INSERT (mp3, 44100 Hz, 128kbps)
+   -> pipeline_steps: (audio_extract, completed)
+
+3. Transcription
+   -> pipeline_steps: (transcribe, running, provider=whisper, model=small)
+   -> Whisper transcribes audio
+   -> transcriptions: INSERT (whisper, small, en, srt, full_text=..., is_primary=1)
+   -> pipeline_steps: (transcribe, completed, provider=whisper, model=small)
+
+4. Scene detection
+   -> pipeline_steps: (scene_detect, running)
+   -> scenes: INSERT x N
+   -> pipeline_steps: (scene_detect, completed)
+
+5. Keyframe extraction (per-scene)
+   -> pipeline_steps: (keyframe_extract, running, scene_id=0)
+   -> frames: INSERT x M (extraction_type=keyframe)
+   -> pipeline_steps: (keyframe_extract, completed, scene_id=0)
+   ... repeat for each scene ...
+```
+
+**Querying processing state:**
+```sql
+-- What has been done for this video?
+SELECT step_type, status, provider, model, completed_at
+FROM pipeline_steps WHERE video_id = ? ORDER BY created_at;
+
+-- Which scenes still need visual analysis?
+SELECT s.scene_id FROM scenes s
+WHERE s.video_id = ?
+AND NOT EXISTS (
+    SELECT 1 FROM pipeline_steps p
+    WHERE p.video_id = s.video_id
+    AND p.scene_id = s.scene_id
+    AND p.step_type = 'visual_analyze'
+    AND p.status = 'completed'
+);
+
+-- What failed and needs retry?
+SELECT step_type, scene_id, error_message, config
+FROM pipeline_steps WHERE video_id = ? AND status = 'failed';
+```
+
 ### Why sqlite-vec: Product/UX Impact
 
 Every pipeline step auto-embeds its text into sqlite-vec. Here's what that unlocks:
@@ -694,6 +1083,9 @@ Every pipeline step auto-embeds its text into sqlite-vec. Here's what that unloc
 | **Infrastructure** | ChromaDB sqlite file per video + Python server code | One `.db` file. Zero extra processes. Portable, inspectable, backupable. |
 | **Index freshness** | Must explicitly run `build_scene_index()` to populate ChromaDB | Every `save_scenes_data()`, `record_qa()`, `save_entities()` auto-embeds. Always current. |
 | **RAG for AI agents** | Agent must know which video to search, then use video-specific ChromaDB | Agent queries entire library: "What have I learned about distributed systems?" Returns ranked results across all videos. |
+| **"Search across all transcripts"** | Load each audio.txt from disk, substring search. O(n) file I/O. | `transcriptions_fts` + `transcriptions` JOIN `videos` -- single SQL query across all videos. |
+| **"What OCR text appeared?"** | Parse every technical.json, grep. | `technical_fts` query. Sub-millisecond. |
+| **"What was visually described?"** | Scan visual.json files. | `visual_fts` query with scene context. |
 
 **The key insight**: By embedding at write-time (not query-time), the entire video library becomes a semantic knowledge base that gets richer with every interaction. The second time you ask about a topic, the system knows not just the keyword match but the *meaning* overlap across everything it's ever processed.
 
@@ -713,8 +1105,13 @@ Every pipeline step auto-embeds its text into sqlite-vec. Here's what that unloc
 - Boolean columns: `CHECK(col IN (0, 1))` -- no truthy integers
 - Score columns: `CHECK(score IS NULL OR (score >= 0 AND score <= 1))` -- bounded range
 - `source_type`: `CHECK(source_type IN ('url', 'local'))` -- closed enum
-- `transcript_source`: `CHECK(... IN ('youtube_subtitles', 'whisper', 'deepgram', 'openai', 'manual'))` -- closed enum
+- `provider`: `CHECK(provider IN ('youtube_subtitles', 'whisper', 'deepgram', 'openai', 'manual'))` -- closed enum for transcriptions
+- `extraction_type`: `CHECK(extraction_type IN ('drill', 'hq', 'keyframe', 'thumbnail'))` -- closed enum for frames
+- `is_thumbnail`: `CHECK(is_thumbnail IN (0, 1))` -- boolean flag on frames
+- `step_type`: `CHECK(step_type IN (...))` -- closed enum for pipeline steps (16 known step types)
+- `status`: `CHECK(status IN ('pending', 'running', 'completed', 'failed', 'skipped'))` -- pipeline state machine
 - `playlist_type`: `CHECK(... IN ('course', 'series', 'conference', 'collection'))` -- closed enum
+- `video_type`: `CHECK(... IN ('coding_tutorial', 'lecture', 'demo', ...))` -- 10 known video types
 
 ### Module Structure
 
@@ -731,12 +1128,21 @@ src/claudetube/db/
     vec.py                 # sqlite-vec integration (standard, not optional)
     repos/
         __init__.py
-        videos.py          # VideoRepository (CRUD + FTS + path lookup + enrichment)
-        scenes.py          # SceneRepository (CRUD + FTS)
-        entities.py        # EntityRepository (CRUD + cross-video queries)
-        qa.py              # QARepository (CRUD + FTS)
-        observations.py    # ObservationRepository
-        playlists.py       # PlaylistRepository (CRUD + membership)
+        videos.py              # VideoRepository (CRUD + FTS + path lookup + enrichment)
+        audio_tracks.py        # AudioTrackRepository (CRUD)
+        transcriptions.py      # TranscriptionRepository (CRUD + FTS + RAG queries)
+        scenes.py              # SceneRepository (CRUD + FTS)
+        frames.py              # FrameRepository (CRUD + queries by type/scene/timestamp/thumbnail)
+        visual_descriptions.py # VisualDescriptionRepository (CRUD + FTS)
+        technical_content.py   # TechnicalContentRepository (CRUD + FTS)
+        audio_descriptions.py  # AudioDescriptionRepository (CRUD)
+        narrative.py           # NarrativeRepository (CRUD)
+        code_evolution.py      # CodeEvolutionRepository (CRUD)
+        entities.py            # EntityRepository (CRUD + cross-video queries)
+        qa.py                  # QARepository (CRUD + FTS)
+        observations.py        # ObservationRepository
+        playlists.py           # PlaylistRepository (CRUD + membership)
+        pipeline.py            # PipelineRepository (step tracking + status queries)
 ```
 
 ### Key Design: Dual-Write (Fire-and-Forget)
@@ -788,34 +1194,43 @@ Fallback chain when SQLite isn't available: check `{cache_dir}/{video_id}/state.
 - `migrations.py`: Migration runner with versioned SQL files
 - `migrations/001_initial.sql`: Full schema DDL with CHECK constraints (as specified above)
 - `vec.py`: sqlite-vec integration (load extension, create vec0 table, embed + search)
-- All 7 repository classes (videos, scenes, entities, qa, observations, playlists + vec)
+- All 15 repository classes (videos, audio_tracks, transcriptions, scenes, frames, visual_descriptions, technical_content, audio_descriptions, narrative, code_evolution, entities, qa, observations, playlists, pipeline)
 - Add `sqlite-vec` to core dependencies in `pyproject.toml`
 - Unit tests for each repo against in-memory SQLite, including vec operations and **CHECK constraint enforcement tests** (verify bad data is rejected)
 
-### Phase 3: Dual-Write + Auto-Embed Pipeline
+### Phase 3: Dual-Write + Auto-Embed + Pipeline Tracking
 - Create `src/claudetube/db/sync.py` with progressive enrichment (UPSERT + `shutil.move`)
 - Add fire-and-forget sync calls to every write path:
   - `cache/storage.py` -> `save_state()` -> sync video record
-  - `cache/scenes.py` -> `save_scenes_data()` -> sync scenes + **embed transcripts**
-  - `cache/entities.py` -> `save_objects()`, `save_concepts()` -> sync entities + **embed entity names**
+  - `operations/processor.py` -> audio extraction -> sync audio_track + pipeline_step
+  - `operations/transcriber.py` -> transcription -> sync transcription (with full_text for FTS) + pipeline_step
+  - `cache/scenes.py` -> `save_scenes_data()` -> sync scenes + **embed transcripts** + pipeline_step
+  - Frame extraction -> sync frames + pipeline_step
+  - `analysis/visual.py` -> visual analysis -> sync visual_descriptions + **embed descriptions** + pipeline_step
+  - `analysis/technical.py` -> OCR/code detection -> sync technical_content + **embed OCR text** + pipeline_step
+  - `cache/entities.py` -> `save_objects()`, `save_concepts()` -> sync entities + **embed entity names** + pipeline_step
   - `cache/memory.py` -> `_save_qa()` -> sync Q&A + **embed question+answer**
   - `cache/memory.py` -> `_save_observations()` -> sync observations + **embed observation content**
   - `cache/enrichment.py` -> `save_relevance_boosts()` -> sync boosts
   - `cache/knowledge_graph.py` -> `_save()` -> sync to entity_video_summary
+  - Narrative detection, code evolution, people tracking, AD generation -> sync respective tables + pipeline_step
 - **Every pipeline step that produces text automatically embeds it into sqlite-vec**
+- **Every pipeline operation records start/end in `pipeline_steps`**
 - Embedding is async/fire-and-forget -- if embedder is unavailable, data is still stored in SQLite, just not vectorized
-- Test: process a video end-to-end, verify JSON + SQLite + vec embeddings all populated
+- Test: process a video end-to-end, verify JSON + SQLite + vec embeddings + pipeline_steps all populated
 
 ### Phase 4: Read-Side Queries + Auto-Import
 - Create `src/claudetube/db/importer.py`
 - Auto-import in `get_database()` on first DB creation (scan existing JSON, populate SQLite + vec)
+- Import logic for each artifact type: scan `audio.mp3`, `audio.srt`, `audio.txt`, `thumbnail.jpg`, `scenes/`, `drill/`, `hq/`, etc.
 - Replace file-scanning operations with SQL/FTS/vec queries:
-  - `CacheManager.list_cached_videos()` -> SQL
+  - `CacheManager.list_cached_videos()` -> SQL on `video_processing_status` VIEW
   - `knowledge_graph.find_related_videos()` -> SQL on entity_video_summary
   - `enrichment.search_cached_qa()` -> FTS5 or vec semantic search
-  - `search._search_transcript_text()` -> FTS5 fast path
+  - `search._search_transcript_text()` -> `transcriptions_fts` (cross-video!) + `scenes_fts` (per-scene)
   - `search._search_embedding()` -> sqlite-vec (replaces ChromaDB)
-- **Semantic search is now unified**: one query searches both FTS5 (keyword) and sqlite-vec (semantic), merged by score
+  - Processing state checks -> query `pipeline_steps` instead of checking file existence
+- **Semantic search is now unified**: one query searches across `transcriptions_fts`, `scenes_fts`, `visual_fts`, `technical_fts`, `qa_fts`, and sqlite-vec, merged by score
 - All with graceful fallback to file-based if DB unavailable
 
 ### Phase 5: Hierarchical Path Activation
@@ -830,7 +1245,7 @@ Fallback chain when SQLite isn't available: check `{cache_dir}/{video_id}/state.
 
 ## Files Summary
 
-### New Files (17)
+### New Files (23)
 | File | Phase |
 |------|-------|
 | `src/claudetube/models/video_path.py` | 1 |
@@ -843,11 +1258,20 @@ Fallback chain when SQLite isn't available: check `{cache_dir}/{video_id}/state.
 | `src/claudetube/db/vec.py` | 2 |
 | `src/claudetube/db/repos/__init__.py` | 2 |
 | `src/claudetube/db/repos/videos.py` | 2 |
+| `src/claudetube/db/repos/audio_tracks.py` | 2 |
+| `src/claudetube/db/repos/transcriptions.py` | 2 |
 | `src/claudetube/db/repos/scenes.py` | 2 |
+| `src/claudetube/db/repos/frames.py` | 2 |
+| `src/claudetube/db/repos/visual_descriptions.py` | 2 |
+| `src/claudetube/db/repos/technical_content.py` | 2 |
+| `src/claudetube/db/repos/audio_descriptions.py` | 2 |
+| `src/claudetube/db/repos/narrative.py` | 2 |
+| `src/claudetube/db/repos/code_evolution.py` | 2 |
 | `src/claudetube/db/repos/entities.py` | 2 |
 | `src/claudetube/db/repos/qa.py` | 2 |
 | `src/claudetube/db/repos/observations.py` | 2 |
 | `src/claudetube/db/repos/playlists.py` | 2 |
+| `src/claudetube/db/repos/pipeline.py` | 2 |
 | `src/claudetube/db/sync.py` | 3 |
 | `src/claudetube/db/importer.py` | 4 |
 
@@ -864,9 +1288,13 @@ Fallback chain when SQLite isn't available: check `{cache_dir}/{video_id}/state.
 | `src/claudetube/cache/enrichment.py` | 3,4 | Dual-write + FTS/vec read path |
 | `src/claudetube/cache/knowledge_graph.py` | 3,4 | Dual-write + SQL read path (replaces graph.json) |
 | `src/claudetube/cache/manager.py` | 4,5 | SQL `list_cached_videos()` + hierarchical `get_cache_dir()` |
-| `src/claudetube/operations/processor.py` | 5 | Build `VideoPath`, progressive enrichment on yt-dlp response |
-| `src/claudetube/analysis/search.py` | 4 | FTS5 + sqlite-vec unified search (replaces ChromaDB) |
+| `src/claudetube/operations/processor.py` | 3,5 | Pipeline step tracking + Build `VideoPath` + progressive enrichment |
+| `src/claudetube/operations/transcriber.py` | 3 | Sync transcriptions to DB (first-class entity) + pipeline step |
+| `src/claudetube/analysis/search.py` | 4 | Unified FTS5 + sqlite-vec search across all FTS tables |
+| `src/claudetube/analysis/visual.py` | 3 | Sync visual_descriptions + pipeline step |
+| `src/claudetube/analysis/deep.py` | 3 | Sync technical_content + pipeline step |
 | `src/claudetube/analysis/vector_index.py` | 4 | Rewrite to use sqlite-vec instead of ChromaDB |
+| `src/claudetube/analysis/frames.py` | 3 | Sync frames to DB + pipeline step |
 | `pyproject.toml` | 2 | Add `sqlite-vec` to core deps, remove `chromadb` from core |
 
 ---
@@ -874,9 +1302,9 @@ Fallback chain when SQLite isn't available: check `{cache_dir}/{video_id}/state.
 ## Verification
 
 1. **Phase 1**: `pytest tests/test_video_path.py` -- path construction, sanitization, strict validation failures (empty domain rejected, empty channel rejected, NULL channel accepted, bad UUID rejected)
-2. **Phase 2**: `pytest tests/test_db_*.py` -- repos CRUD, FTS, migrations, vec operations, CHECK constraint enforcement (verify INSERT with bad data raises IntegrityError)
-3. **Phase 3**: Process a video end-to-end, verify JSON + SQLite + vec embeddings all populated. Verify UPSERT replaces NULLs when yt-dlp data arrives.
-4. **Phase 4**: Delete `claudetube.db`, restart, verify auto-import. Run `find_moments` -> verify FTS + vec semantic search returns results.
+2. **Phase 2**: `pytest tests/test_db_*.py` -- all 15 repos CRUD, FTS (transcriptions, scenes, visual, technical, Q&A, videos), migrations, vec operations, CHECK constraint enforcement (verify INSERT with bad data raises IntegrityError), `video_processing_status` VIEW returns correct derived state
+3. **Phase 3**: Process a video end-to-end, verify: JSON files created, SQLite records for video + audio_track + transcription + scenes populated, vec embeddings for transcript + scene texts created, `pipeline_steps` shows complete audit trail (download->audio_extract->transcribe->scene_detect with timestamps and providers). Verify UPSERT replaces NULLs when yt-dlp data arrives. Verify `transcriptions_fts` returns results for cross-video transcript search.
+4. **Phase 4**: Delete `claudetube.db`, restart, verify auto-import populates all tables (videos, audio_tracks, transcriptions, scenes, frames from disk). Run `find_moments` -> verify unified FTS + vec semantic search returns results across `transcriptions_fts`, `scenes_fts`, `visual_fts`, `technical_fts`.
 5. **Phase 5**: Process a new video, verify hierarchical path `youtube/UCxxx/PLxxx/vid123/`. Re-process with richer metadata, verify directory moved. Access by bare `video_id`, verify SQLite resolution works.
 
 ## Edge Cases
@@ -893,3 +1321,7 @@ Fallback chain when SQLite isn't available: check `{cache_dir}/{video_id}/state.
 - **No yt-dlp metadata** (e.g., direct MP4 URL): domain from URL, channel and playlist stay NULL. Enriched later if metadata becomes available.
 - **Embedder unavailable**: Data is still stored in SQLite (structured + FTS). Vec embeddings are best-effort. Semantic search degrades to FTS-only.
 - **Empty string vs NULL**: Schema enforces `CHECK(col IS NULL OR length(col) > 0)` on nullable text fields. Empty strings are never stored -- only NULL or real values.
+- **Multiple transcriptions per video**: Different providers/languages/models coexist. `is_primary` flag designates the preferred one. Old boolean `transcript_complete` is now `EXISTS(SELECT 1 FROM transcriptions WHERE video_id = ? AND is_primary = 1)`.
+- **Pipeline step idempotency**: Re-running a completed step UPSERTs the pipeline_steps row (matched on video_id + step_type + scene_id). Failed steps can be retried by updating status back to 'pending'.
+- **Orphan file detection**: Auto-import scans disk artifacts and inserts rows for any files not yet in SQLite. Conversely, a future `claudetube gc` command can detect DB rows whose `file_path` no longer exists on disk.
+- **Frame deduplication**: Same timestamp + quality can be extracted multiple times. UNIQUE constraint on (video_id, timestamp, extraction_type, quality_tier) could be added if dedup is needed, but currently allows multiple extractions (e.g., different sessions).
