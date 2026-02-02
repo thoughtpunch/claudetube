@@ -85,7 +85,7 @@ class TestTranscriberProtocol:
     def test_is_runtime_checkable(self):
         """Transcriber protocol can be used with isinstance()."""
         # Protocol should be decorated with @runtime_checkable
-        assert hasattr(Transcriber, "__protocol_attrs__")
+        assert getattr(Transcriber, "_is_runtime_protocol", False)
 
     def test_isinstance_with_compliant_class(self):
         """A class implementing transcribe() satisfies the protocol."""
@@ -128,7 +128,7 @@ class TestVisionAnalyzerProtocol:
 
     def test_is_runtime_checkable(self):
         """VisionAnalyzer protocol can be used with isinstance()."""
-        assert hasattr(VisionAnalyzer, "__protocol_attrs__")
+        assert getattr(VisionAnalyzer, "_is_runtime_protocol", False)
 
     def test_isinstance_with_compliant_class(self):
         """A class implementing analyze_images() satisfies the protocol."""
@@ -160,7 +160,7 @@ class TestVideoAnalyzerProtocol:
 
     def test_is_runtime_checkable(self):
         """VideoAnalyzer protocol can be used with isinstance()."""
-        assert hasattr(VideoAnalyzer, "__protocol_attrs__")
+        assert getattr(VideoAnalyzer, "_is_runtime_protocol", False)
 
     def test_isinstance_with_compliant_class(self):
         """A class implementing analyze_video() satisfies the protocol."""
@@ -194,7 +194,7 @@ class TestReasonerProtocol:
 
     def test_is_runtime_checkable(self):
         """Reasoner protocol can be used with isinstance()."""
-        assert hasattr(Reasoner, "__protocol_attrs__")
+        assert getattr(Reasoner, "_is_runtime_protocol", False)
 
     def test_isinstance_with_compliant_class(self):
         """A class implementing reason() satisfies the protocol."""
@@ -225,7 +225,7 @@ class TestEmbedderProtocol:
 
     def test_is_runtime_checkable(self):
         """Embedder protocol can be used with isinstance()."""
-        assert hasattr(Embedder, "__protocol_attrs__")
+        assert getattr(Embedder, "_is_runtime_protocol", False)
 
     def test_isinstance_with_compliant_class(self):
         """A class implementing embed() satisfies the protocol."""

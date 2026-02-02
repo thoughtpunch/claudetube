@@ -36,51 +36,32 @@ def _make_mock_provider(
     name: str,
     capabilities: frozenset[Capability],
     available: bool = True,
-) -> MagicMock:
+):
     """Create a mock provider with given capabilities.
 
-    The mock implements Provider, and optionally Transcriber, VisionAnalyzer,
-    VideoAnalyzer, Reasoner, and Embedder protocols based on capabilities.
+    Uses a real class (not MagicMock) so that isinstance checks with
+    @runtime_checkable protocols work correctly across Python 3.10-3.12.
+    MagicMock auto-creates attributes on access, which causes isinstance
+    to always return True for any protocol on Python 3.10/3.11.
     """
-    from claudetube.providers.base import (
-        Embedder,
-        Reasoner,
-        Transcriber,
-        VideoAnalyzer,
-        VisionAnalyzer,
-    )
+    # Use a bare class and set protocol methods as instance attributes
+    # so they can be deleted/replaced by individual tests
+    instance = type("MockProvider", (), {})()
+    instance.info = ProviderInfo(name=name, capabilities=capabilities)
+    instance.is_available = MagicMock(return_value=available)
 
-    # Determine which protocols to spec from
-    specs = []
     if Capability.TRANSCRIBE in capabilities:
-        specs.append(Transcriber)
+        instance.transcribe = AsyncMock(return_value="transcription result")
     if Capability.VISION in capabilities:
-        specs.append(VisionAnalyzer)
+        instance.analyze_images = AsyncMock(return_value="vision result")
     if Capability.VIDEO in capabilities:
-        specs.append(VideoAnalyzer)
+        instance.analyze_video = AsyncMock(return_value="video result")
     if Capability.REASON in capabilities:
-        specs.append(Reasoner)
+        instance.reason = AsyncMock(return_value="reasoning result")
     if Capability.EMBED in capabilities:
-        specs.append(Embedder)
+        instance.embed = AsyncMock(return_value=[0.1, 0.2, 0.3])
 
-    mock = MagicMock()
-    mock.info = ProviderInfo(name=name, capabilities=capabilities)
-    mock.is_available.return_value = available
-
-    # Make isinstance checks work for protocol checking
-    # We use __class__ patching to make isinstance work
-    if Capability.TRANSCRIBE in capabilities:
-        mock.transcribe = AsyncMock(return_value="transcription result")
-    if Capability.VISION in capabilities:
-        mock.analyze_images = AsyncMock(return_value="vision result")
-    if Capability.VIDEO in capabilities:
-        mock.analyze_video = AsyncMock(return_value="video result")
-    if Capability.REASON in capabilities:
-        mock.reason = AsyncMock(return_value="reasoning result")
-    if Capability.EMBED in capabilities:
-        mock.embed = AsyncMock(return_value=[0.1, 0.2, 0.3])
-
-    return mock
+    return instance
 
 
 def _make_config(**overrides) -> ProvidersConfig:

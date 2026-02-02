@@ -900,16 +900,20 @@ class TestGetDefaultProviders:
     def _make_provider_mock(
         self, available=True, has_video=False, has_vision=True, has_reasoner=True
     ):
-        """Create a mock provider with specified capabilities."""
-        mock = MagicMock()
-        mock.is_available.return_value = available
+        """Create a mock provider with specified capabilities.
+
+        Uses a real class (not MagicMock) so that isinstance checks with
+        @runtime_checkable protocols work correctly across Python 3.10-3.12.
+        """
+        instance = type("MockProvider", (), {})()
+        instance.is_available = MagicMock(return_value=available)
         if has_video:
-            mock.analyze_video = AsyncMock()
+            instance.analyze_video = AsyncMock()
         if has_vision:
-            mock.analyze_images = AsyncMock()
+            instance.analyze_images = AsyncMock()
         if has_reasoner:
-            mock.reason = AsyncMock()
-        return mock
+            instance.reason = AsyncMock()
+        return instance
 
     def test_returns_all_from_single_provider(self):
         """Single provider with all capabilities satisfies all roles."""
