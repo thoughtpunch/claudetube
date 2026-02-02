@@ -604,7 +604,7 @@ class ProviderRouter:
         ]
 
         # Wait for first success, collect errors
-        errors: list[tuple[str, Exception]] = []
+        errors: list[tuple[str, BaseException]] = []
         try:
             while tasks:
                 done, tasks_set = await asyncio.wait(

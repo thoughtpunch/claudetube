@@ -118,7 +118,7 @@ class VideoURL(BaseModel):
                 return query[key][0]
 
         # Look for ID-like path segments
-        candidates = []
+        candidates: list[str] = []
         skip_segments = {
             "video",
             "videos",
@@ -199,7 +199,7 @@ class VideoURL(BaseModel):
         Raises:
             ValueError: If URL is invalid or cannot be parsed
         """
-        return cls(url=url, video_id="__pending__")
+        return cls(url=url, video_id="__pending__")  # type: ignore[call-arg]
 
     @classmethod
     def try_parse(cls, url: str) -> VideoURL | None:

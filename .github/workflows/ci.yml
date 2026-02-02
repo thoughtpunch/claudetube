@@ -32,5 +32,8 @@ jobs:
       - name: Lint (ruff)
         run: ruff check src/ tests/
 
+      - name: Type check (mypy)
+        run: mypy
+
       - name: Run tests
         run: pytest tests/ -v

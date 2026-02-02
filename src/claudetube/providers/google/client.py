@@ -194,7 +194,7 @@ class GoogleProvider(Provider, VisionAnalyzer, VideoAnalyzer, Reasoner):
             file_name = video_file.name
             video_file = await loop.run_in_executor(
                 None,
-                lambda f=file_name: genai.get_file(f),
+                lambda f=file_name: genai.get_file(f),  # type: ignore[misc]
             )
 
         if video_file.state.name != "ACTIVE":

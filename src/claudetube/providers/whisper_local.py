@@ -23,6 +23,8 @@ from claudetube.providers.base import Provider, Transcriber
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from claudetube.tools.whisper import WhisperTool
 from claudetube.providers.capabilities import PROVIDER_INFO, ProviderInfo
 from claudetube.providers.types import TranscriptionResult, TranscriptionSegment
 
@@ -104,7 +106,7 @@ class WhisperLocalProvider(Provider, Transcriber):
         self._model_size = model_size
         self._language = language
         self._use_batched = use_batched
-        self._tool = None
+        self._tool: WhisperTool | None = None
 
     @property
     def info(self) -> ProviderInfo:
