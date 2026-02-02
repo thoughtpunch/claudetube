@@ -426,7 +426,7 @@ async def get_transcript(
     )
 
 
-def _get_scenes_sync(video_id: str, force: bool = False) -> dict:
+def _get_scenes_sync(video_id: str, force: bool = False, enrich: bool = False) -> dict:
     """Get scene structure for a cached video (sync version).
 
     Returns cached scenes if available, otherwise runs smart segmentation.
@@ -435,6 +435,7 @@ def _get_scenes_sync(video_id: str, force: bool = False) -> dict:
     Args:
         video_id: Video ID
         force: Re-run segmentation even if cached
+        enrich: Run visual enrichment (generate visual.json) for each scene
 
     Returns:
         Dict with scene data or error
@@ -453,6 +454,14 @@ def _get_scenes_sync(video_id: str, force: bool = False) -> dict:
     if not force and has_scenes(cache_dir):
         scenes_data = load_scenes_data(cache_dir)
         if scenes_data:
+            # Trigger visual enrichment if requested
+            if enrich:
+                from claudetube.operations.visual_transcript import (
+                    generate_visual_transcript,
+                )
+
+                generate_visual_transcript(video_id=video_id, output_base=cache_dir.parent)
+
             result = scenes_data.to_dict()
             # Enrich with visual descriptions if available
             for scene in result.get("scenes", []):
@@ -517,6 +526,24 @@ def _get_scenes_sync(video_id: str, force: bool = False) -> dict:
         force=force,
     )
 
+    # Trigger visual enrichment if requested
+    if enrich:
+        from claudetube.operations.visual_transcript import generate_visual_transcript
+
+        enrich_result = generate_visual_transcript(
+            video_id=video_id, output_base=cache_dir.parent
+        )
+        # Merge visual data into scene dicts
+        result = scenes_data.to_dict()
+        visual_by_scene = {}
+        for vr in enrich_result.get("results", []):
+            visual_by_scene[vr.get("scene_id")] = vr
+        for scene in result.get("scenes", []):
+            scene_id = scene.get("scene_id", 0)
+            if scene_id in visual_by_scene:
+                scene["visual"] = visual_by_scene[scene_id]
+        return result
+
     return scenes_data.to_dict()
 
 
@@ -524,6 +551,7 @@ def _get_scenes_sync(video_id: str, force: bool = False) -> dict:
 async def get_scenes(
     video_id: str,
     force: bool = False,
+    enrich: bool = False,
 ) -> str:
     """Get scene structure of a processed video.
 
@@ -539,10 +567,13 @@ async def get_scenes(
     Args:
         video_id: Video ID of a previously processed video.
         force: Re-run segmentation even if cached (default: False).
+        enrich: Generate visual descriptions for each scene using a VisionAnalyzer
+            (default: False). This is an expensive operation that calls a vision API.
+            Visual descriptions are cached, so subsequent calls are free.
     """
     video_id = extract_video_id(video_id)
 
-    result = await asyncio.to_thread(_get_scenes_sync, video_id, force)
+    result = await asyncio.to_thread(_get_scenes_sync, video_id, force, enrich)
 
     return json.dumps(result, indent=2)
 

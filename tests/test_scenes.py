@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -509,3 +510,106 @@ class TestCacheManagerSceneMethods:
 
         statuses = manager.get_all_scene_statuses("video123")
         assert len(statuses) == 2
+
+
+class TestGetScenesSyncEnrich:
+    """Tests for _get_scenes_sync enrich parameter."""
+
+    def _setup_cached_video(self, tmp_path):
+        """Create a minimal cached video with scenes."""
+        cache_dir = tmp_path / "video123"
+        cache_dir.mkdir()
+
+        # Create state.json
+        state = {"video_id": "video123", "duration": 60, "description": "Test video"}
+        (cache_dir / "state.json").write_text(json.dumps(state))
+
+        # Create scenes
+        scenes = [
+            SceneBoundary(scene_id=0, start_time=0, end_time=30, title="Intro"),
+            SceneBoundary(scene_id=1, start_time=30, end_time=60, title="Main"),
+        ]
+        data = ScenesData(video_id="video123", method="transcript", scenes=scenes)
+        save_scenes_data(cache_dir, data)
+
+        return cache_dir
+
+    @patch("claudetube.mcp_server.get_cache_dir")
+    def test_enrich_false_does_not_call_visual_transcript(self, mock_cache_dir, tmp_path):
+        """When enrich=False (default), visual transcript generation is not triggered."""
+        self._setup_cached_video(tmp_path)
+        mock_cache_dir.return_value = tmp_path
+
+        from claudetube.mcp_server import _get_scenes_sync
+
+        with patch(
+            "claudetube.operations.visual_transcript.generate_visual_transcript"
+        ) as mock_gen:
+            result = _get_scenes_sync("video123", force=False, enrich=False)
+
+        mock_gen.assert_not_called()
+        assert "error" not in result
+        assert len(result["scenes"]) == 2
+
+    @patch("claudetube.mcp_server.get_cache_dir")
+    def test_enrich_true_calls_visual_transcript(self, mock_cache_dir, tmp_path):
+        """When enrich=True, generate_visual_transcript is called."""
+        self._setup_cached_video(tmp_path)
+        mock_cache_dir.return_value = tmp_path
+
+        from claudetube.mcp_server import _get_scenes_sync
+
+        with patch(
+            "claudetube.operations.visual_transcript.generate_visual_transcript",
+            return_value={"results": [], "errors": [], "generated": 0, "skipped": 2},
+        ) as mock_gen:
+            result = _get_scenes_sync("video123", force=False, enrich=True)
+
+        mock_gen.assert_called_once_with(video_id="video123", output_base=tmp_path)
+        assert "error" not in result
+        assert len(result["scenes"]) == 2
+
+    @patch("claudetube.mcp_server.get_cache_dir")
+    def test_enrich_true_includes_visual_data_in_result(self, mock_cache_dir, tmp_path):
+        """When enrich=True, visual data is included in scene dicts."""
+        cache_dir = self._setup_cached_video(tmp_path)
+        mock_cache_dir.return_value = tmp_path
+
+        # Write visual.json for scene 0
+        scene_dir = cache_dir / "scenes" / "scene_000"
+        scene_dir.mkdir(parents=True, exist_ok=True)
+        visual_data = {"scene_id": 0, "description": "A person talking", "people": ["host"]}
+        (scene_dir / "visual.json").write_text(json.dumps(visual_data))
+
+        from claudetube.mcp_server import _get_scenes_sync
+
+        with patch(
+            "claudetube.operations.visual_transcript.generate_visual_transcript",
+            return_value={"results": [], "errors": [], "generated": 0, "skipped": 2},
+        ):
+            result = _get_scenes_sync("video123", force=False, enrich=True)
+
+        # Scene 0 should have visual data attached
+        scene_0 = result["scenes"][0]
+        assert "visual" in scene_0
+        assert scene_0["visual"]["description"] == "A person talking"
+
+        # Scene 1 should not have visual data
+        scene_1 = result["scenes"][1]
+        assert "visual" not in scene_1
+
+    @patch("claudetube.mcp_server.get_cache_dir")
+    def test_enrich_default_is_false(self, mock_cache_dir, tmp_path):
+        """The enrich parameter defaults to False."""
+        self._setup_cached_video(tmp_path)
+        mock_cache_dir.return_value = tmp_path
+
+        from claudetube.mcp_server import _get_scenes_sync
+
+        with patch(
+            "claudetube.operations.visual_transcript.generate_visual_transcript"
+        ) as mock_gen:
+            result = _get_scenes_sync("video123")
+
+        mock_gen.assert_not_called()
+        assert "error" not in result
