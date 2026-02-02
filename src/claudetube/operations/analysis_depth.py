@@ -770,9 +770,7 @@ def analyze_video(
             if not (entity_op.video_analyzer or entity_op.vision or entity_op.reasoner):
                 entity_op = None
             elif entity_op.video_analyzer:
-                from claudetube.operations.entity_extraction import _get_video_path
-
-                video_path = _get_video_path(cache_dir)
+                video_path = cache.get_video_path(video_id)
         except Exception as e:
             logger.debug("OperationFactory unavailable, falling back to regex: %s", e)
 

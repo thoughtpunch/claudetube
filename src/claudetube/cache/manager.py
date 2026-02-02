@@ -153,6 +153,24 @@ class CacheManager:
         cache_dir = self.ensure_cache_dir(video_id)
         return cache_local_file(source, cache_dir, copy=copy)
 
+    def get_video_path(self, video_id: str) -> Path | None:
+        """Get path to the cached video file, if it exists.
+
+        Checks state.json for a cached_file entry and verifies the file
+        exists on disk. Works for both local and remote videos.
+
+        Args:
+            video_id: Video ID
+
+        Returns:
+            Path to the video file, or None if unavailable.
+        """
+        state = self.get_state(video_id)
+        if not state or not state.cached_file:
+            return None
+        path = self.get_cache_dir(video_id) / state.cached_file
+        return path if path.exists() else None
+
     def get_source_path(self, video_id: str) -> Path | None:
         """Get path to the cached source file for a local video.
 

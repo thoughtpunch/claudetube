@@ -577,7 +577,7 @@ class AudioDescriptionGenerator:
             }
 
         # Locate video source
-        video_path = self._resolve_video_path(cache_dir, video_id)
+        video_path = cache.get_video_path(video_id)
         if video_path is None:
             logger.warning(
                 "No video source available for native analysis; falling back to frames"
@@ -848,8 +848,11 @@ class AudioDescriptionGenerator:
 
     @staticmethod
     def _resolve_video_path(cache_dir: Path, video_id: str) -> Path | None:
-        """Locate the video source file in the cache directory."""
+        """Locate the video source file in the cache directory.
 
+        .. deprecated::
+            Use ``CacheManager.get_video_path()`` instead.
+        """
         state_file = cache_dir / "state.json"
         if not state_file.exists():
             return None

@@ -465,11 +465,9 @@ class EntityExtractionOperation:
 def _get_video_path(cache_dir: Path) -> Path | None:
     """Get the video file path from state.json.
 
-    Args:
-        cache_dir: Video cache directory.
-
-    Returns:
-        Path to video file, or None if unavailable.
+    .. deprecated::
+        Use ``CacheManager.get_video_path()`` instead. This wrapper exists
+        only for backward compatibility and will be removed in a future release.
     """
     state_file = cache_dir / "state.json"
     if not state_file.exists():
@@ -662,7 +660,7 @@ def extract_entities_for_video(
                 )
                 # Resolve video path for VideoAnalyzer
                 if video_analyzer is not None:
-                    video_path = _get_video_path(cache_dir)
+                    video_path = cache.get_video_path(video_id)
             except RuntimeError as e:
                 errors.append({"scene_id": scene.scene_id, "error": str(e)})
                 continue

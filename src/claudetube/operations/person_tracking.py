@@ -660,11 +660,9 @@ def _track_with_face_recognition(
 def _get_video_path(cache_dir: Path) -> Path | None:
     """Get the video file path from state.json.
 
-    Args:
-        cache_dir: Video cache directory.
-
-    Returns:
-        Path to video file, or None if unavailable.
+    .. deprecated::
+        Use ``CacheManager.get_video_path()`` instead. This wrapper exists
+        only for backward compatibility and will be removed in a future release.
     """
     state_file = cache_dir / "state.json"
     if not state_file.exists():
@@ -797,7 +795,7 @@ def track_people(
             logger.warning(f"Failed to create AI providers for person tracking: {e}")
 
         if operation is not None:
-            video_path = _get_video_path(cache_dir)
+            video_path = cache.get_video_path(video_id)
             log_timed("People tracking: using AI provider...", t0)
 
             try:
