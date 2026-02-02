@@ -462,3 +462,259 @@ class TestMergeResults:
 
         assert merged[0].rank == 1
         assert merged[1].rank == 2
+
+
+class TestExpandQuery:
+    """Tests for expand_query function."""
+
+    @pytest.mark.asyncio
+    async def test_returns_expanded_terms(self):
+        """Should return list of expanded query strings."""
+        from unittest.mock import AsyncMock
+
+        from claudetube.analysis.search import expand_query
+
+        mock_reasoner = AsyncMock()
+        mock_reasoner.reason.return_value = (
+            "debugging code\n"
+            "fixing errors\n"
+            "resolving bugs\n"
+            "troubleshooting issues\n"
+            "patching defects"
+        )
+
+        result = await expand_query("fix the bug", mock_reasoner)
+
+        assert len(result) == 5
+        assert "debugging code" in result
+        assert "fixing errors" in result
+
+    @pytest.mark.asyncio
+    async def test_excludes_original_query(self):
+        """Should not include the original query in expanded terms."""
+        from unittest.mock import AsyncMock
+
+        from claudetube.analysis.search import expand_query
+
+        mock_reasoner = AsyncMock()
+        mock_reasoner.reason.return_value = (
+            "fix the bug\n"
+            "debugging code\n"
+            "resolving errors"
+        )
+
+        result = await expand_query("fix the bug", mock_reasoner)
+
+        assert "fix the bug" not in result
+
+    @pytest.mark.asyncio
+    async def test_limits_to_five_terms(self):
+        """Should return at most 5 terms."""
+        from unittest.mock import AsyncMock
+
+        from claudetube.analysis.search import expand_query
+
+        mock_reasoner = AsyncMock()
+        mock_reasoner.reason.return_value = "\n".join(
+            [f"term {i}" for i in range(10)]
+        )
+
+        result = await expand_query("query", mock_reasoner)
+
+        assert len(result) <= 5
+
+    @pytest.mark.asyncio
+    async def test_handles_reasoner_failure(self):
+        """Should return empty list on reasoner failure."""
+        from unittest.mock import AsyncMock
+
+        from claudetube.analysis.search import expand_query
+
+        mock_reasoner = AsyncMock()
+        mock_reasoner.reason.side_effect = Exception("API error")
+
+        result = await expand_query("query", mock_reasoner)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_handles_empty_response(self):
+        """Should handle empty reasoner response."""
+        from unittest.mock import AsyncMock
+
+        from claudetube.analysis.search import expand_query
+
+        mock_reasoner = AsyncMock()
+        mock_reasoner.reason.return_value = ""
+
+        result = await expand_query("query", mock_reasoner)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_strips_whitespace(self):
+        """Should strip whitespace from expanded terms."""
+        from unittest.mock import AsyncMock
+
+        from claudetube.analysis.search import expand_query
+
+        mock_reasoner = AsyncMock()
+        mock_reasoner.reason.return_value = (
+            "  term one  \n"
+            "  term two  \n"
+            "  \n"
+            "term three"
+        )
+
+        result = await expand_query("query", mock_reasoner)
+
+        assert "term one" in result
+        assert "term two" in result
+        assert "term three" in result
+        assert "" not in result
+
+
+class TestSearchWithExpandedQueries:
+    """Tests for _search_with_expanded_queries function."""
+
+    def test_includes_original_results(self, video_cache_dir):
+        """Should include results from original query."""
+        from claudetube.analysis.search import _search_with_expanded_queries
+
+        results = _search_with_expanded_queries(
+            video_cache_dir, "fix the bug", [], top_k=5
+        )
+
+        assert len(results) >= 1
+        assert results[0].scene_id == 3
+
+    def test_expanded_queries_add_results(self, video_cache_dir):
+        """Should find additional results from expanded queries."""
+        from claudetube.analysis.search import _search_with_expanded_queries
+
+        # Original query won't match scene 1, but expanded query will
+        results = _search_with_expanded_queries(
+            video_cache_dir,
+            "fix the bug",
+            ["neural networks deep learning"],
+            top_k=10,
+        )
+
+        scene_ids = [r.scene_id for r in results]
+        assert 3 in scene_ids  # Original match
+        assert 1 in scene_ids  # Expanded match
+
+    def test_expanded_results_discounted(self, video_cache_dir):
+        """Should discount expanded query results by 0.8."""
+        from claudetube.analysis.search import _search_with_expanded_queries
+
+        # "machine learning" matches scene 0 directly
+        results_original = _search_with_expanded_queries(
+            video_cache_dir, "machine learning", [], top_k=5
+        )
+        # Same query as expanded should be discounted
+        results_expanded = _search_with_expanded_queries(
+            video_cache_dir, "nonexistent query xyz", ["machine learning"], top_k=5
+        )
+
+        # Find scene 0 in both
+        orig_scene0 = next((r for r in results_original if r.scene_id == 0), None)
+        expanded_scene0 = next((r for r in results_expanded if r.scene_id == 0), None)
+
+        assert orig_scene0 is not None
+        assert expanded_scene0 is not None
+        assert expanded_scene0.relevance < orig_scene0.relevance
+
+    def test_deduplicates_across_queries(self, video_cache_dir):
+        """Should deduplicate results across original and expanded queries."""
+        from claudetube.analysis.search import _search_with_expanded_queries
+
+        # Both queries match the same scene
+        results = _search_with_expanded_queries(
+            video_cache_dir,
+            "machine learning",
+            ["machine learning tutorial"],
+            top_k=10,
+        )
+
+        scene_ids = [r.scene_id for r in results]
+        assert len(scene_ids) == len(set(scene_ids))  # No duplicates
+
+    def test_expanded_match_type(self, video_cache_dir):
+        """Expanded results should have text+expanded match type."""
+        from claudetube.analysis.search import _search_with_expanded_queries
+
+        results = _search_with_expanded_queries(
+            video_cache_dir,
+            "nonexistent xyz",
+            ["neural networks"],
+            top_k=5,
+        )
+
+        # Results from expanded query only
+        expanded = [r for r in results if r.match_type == "text+expanded"]
+        assert len(expanded) >= 1
+
+
+class TestFindMomentsWithReasoner:
+    """Tests for find_moments with reasoner parameter."""
+
+    def test_without_reasoner_works(self, tmp_path, video_cache_dir):
+        """Should work without reasoner (backward compatible)."""
+        from claudetube.analysis.search import find_moments
+
+        results = find_moments(
+            "test_video_123",
+            "fix the bug",
+            cache_dir=tmp_path,
+        )
+
+        assert len(results) >= 1
+        assert results[0].scene_id == 3
+
+    def test_with_reasoner_uses_expansion(self, tmp_path, video_cache_dir):
+        """Should use query expansion when reasoner is provided."""
+        from unittest.mock import AsyncMock
+
+        from claudetube.analysis.search import find_moments
+
+        mock_reasoner = AsyncMock()
+        mock_reasoner.reason.return_value = (
+            "neural networks\n"
+            "deep learning models\n"
+            "AI training"
+        )
+
+        results = find_moments(
+            "test_video_123",
+            "fix the bug",
+            cache_dir=tmp_path,
+            strategy="text",
+            reasoner=mock_reasoner,
+        )
+
+        # Should still find the bug fix scene
+        scene_ids = [r.scene_id for r in results]
+        assert 3 in scene_ids
+        # May also find expanded results
+        mock_reasoner.reason.assert_called_once()
+
+    def test_reasoner_failure_falls_back(self, tmp_path, video_cache_dir):
+        """Should fall back to regular search if reasoner fails."""
+        from unittest.mock import AsyncMock
+
+        from claudetube.analysis.search import find_moments
+
+        mock_reasoner = AsyncMock()
+        mock_reasoner.reason.side_effect = Exception("LLM unavailable")
+
+        results = find_moments(
+            "test_video_123",
+            "fix the bug",
+            cache_dir=tmp_path,
+            reasoner=mock_reasoner,
+        )
+
+        # Should still return results from text search
+        assert len(results) >= 1
+        assert results[0].scene_id == 3

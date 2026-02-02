@@ -4,14 +4,17 @@ Temporal grounding search for finding moments in videos.
 Implements semantic search over video scenes with a tiered strategy:
 1. TEXT - Fast transcript search (instant)
 2. EMBEDDINGS - Vector similarity search (if text search fails)
+3. QUERY EXPANSION - Optional LLM-powered query expansion for better recall
 
 Architecture: Cheap First, Expensive Last
 - Text search: <100ms (regex/substring matching)
 - Embedding search: <500ms (query embed + ChromaDB lookup)
+- Query expansion: ~1-2s (LLM call, optional)
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
@@ -19,6 +22,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from claudetube.providers.base import Reasoner
 
 logger = logging.getLogger(__name__)
 
@@ -258,18 +263,109 @@ def _search_embedding(
     return moments
 
 
+async def expand_query(query: str, reasoner: Reasoner) -> list[str]:
+    """Generate related search terms using an LLM.
+
+    Asks the reasoner to produce alternative phrasings and related terms
+    for the given query, improving recall in text and semantic search.
+
+    Args:
+        query: Original user search query.
+        reasoner: A Reasoner provider instance.
+
+    Returns:
+        List of expanded query strings (excluding the original).
+        Returns empty list on failure.
+    """
+    try:
+        result = await reasoner.reason(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "Generate 5 alternative search queries for finding "
+                        "moments in a video transcript. Return ONLY the queries, "
+                        "one per line, no numbering or bullets. Focus on "
+                        "synonyms, related phrases, and different ways to "
+                        "express the same concept."
+                    ),
+                },
+                {"role": "user", "content": query},
+            ],
+        )
+        text = result if isinstance(result, str) else str(result)
+        terms = [
+            line.strip()
+            for line in text.strip().splitlines()
+            if line.strip() and line.strip().lower() != query.lower()
+        ]
+        logger.debug("Query expansion: %r -> %d terms", query, len(terms))
+        return terms[:5]
+    except Exception as e:
+        logger.warning("Query expansion failed (continuing without): %s", e)
+        return []
+
+
+def _search_with_expanded_queries(
+    cache_dir: Path,
+    original_query: str,
+    expanded_queries: list[str],
+    top_k: int,
+) -> list[SearchMoment]:
+    """Run text search with original + expanded queries and merge results.
+
+    Args:
+        cache_dir: Video cache directory.
+        original_query: The user's original query.
+        expanded_queries: Additional queries from LLM expansion.
+        top_k: Maximum number of results.
+
+    Returns:
+        Merged and deduplicated SearchMoment list.
+    """
+    # Run original query
+    all_results = _search_transcript_text(cache_dir, original_query, top_k)
+
+    # Run expanded queries and collect additional results
+    for eq in expanded_queries:
+        extra = _search_transcript_text(cache_dir, eq, top_k)
+        # Discount expanded query results slightly
+        for moment in extra:
+            moment.relevance *= 0.8
+            moment.match_type = "text+expanded"
+        all_results.extend(extra)
+
+    # Deduplicate by scene_id, keeping highest relevance
+    by_scene: dict[int, SearchMoment] = {}
+    for moment in all_results:
+        existing = by_scene.get(moment.scene_id)
+        if existing is None or moment.relevance > existing.relevance:
+            by_scene[moment.scene_id] = moment
+
+    sorted_moments = sorted(
+        by_scene.values(), key=lambda m: m.relevance, reverse=True
+    )[:top_k]
+
+    for i, moment in enumerate(sorted_moments):
+        moment.rank = i + 1
+
+    return sorted_moments
+
+
 def find_moments(
     video_id: str,
     query: str,
     top_k: int = 5,
     cache_dir: Path | None = None,
     strategy: str = "auto",
+    reasoner: Reasoner | None = None,
 ) -> list[SearchMoment]:
     """Find scenes matching a natural language query.
 
     Implements tiered search following "Cheap First, Expensive Last":
     1. TEXT - Fast transcript text matching
     2. SEMANTIC - Vector embedding similarity (if text search has few results)
+    3. QUERY EXPANSION - Optional LLM-powered expansion for better recall
 
     Args:
         video_id: Video identifier.
@@ -277,6 +373,10 @@ def find_moments(
         top_k: Maximum number of results to return (default 5).
         cache_dir: Optional cache directory override.
         strategy: Search strategy - "auto" (default), "text", or "semantic".
+        reasoner: Optional Reasoner provider for LLM-powered query expansion.
+            When provided, the query is expanded into related search terms
+            before searching, improving recall. Falls back gracefully if
+            the reasoner fails.
 
     Returns:
         List of SearchMoment objects sorted by relevance.
@@ -309,8 +409,26 @@ def find_moments(
 
     logger.info(f"Searching for '{query}' in video {video_id}")
 
+    # Query expansion (if reasoner is available)
+    expanded_queries: list[str] = []
+    if reasoner is not None:
+        try:
+            expanded_queries = asyncio.get_event_loop().run_until_complete(
+                expand_query(query, reasoner)
+            )
+        except RuntimeError:
+            # No event loop or already running — try creating one
+            try:
+                expanded_queries = asyncio.run(expand_query(query, reasoner))
+            except Exception as e:
+                logger.warning("Query expansion failed: %s", e)
+
     # Strategy selection
     if strategy == "text":
+        if expanded_queries:
+            return _search_with_expanded_queries(
+                cache_dir, query, expanded_queries, top_k
+            )
         return _search_transcript_text(cache_dir, query, top_k)
     elif strategy == "semantic":
         if not has_vector_index(cache_dir):
@@ -321,7 +439,12 @@ def find_moments(
         return _search_embedding(cache_dir, query, top_k)
 
     # Auto strategy: try text first, fall back to semantic
-    text_results = _search_transcript_text(cache_dir, query, top_k)
+    if expanded_queries:
+        text_results = _search_with_expanded_queries(
+            cache_dir, query, expanded_queries, top_k
+        )
+    else:
+        text_results = _search_transcript_text(cache_dir, query, top_k)
 
     # If text search found good results (high relevance), return them
     if text_results and text_results[0].relevance >= 0.5:

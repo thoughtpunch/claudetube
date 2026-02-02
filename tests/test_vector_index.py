@@ -347,3 +347,60 @@ class TestSearchResult:
         assert result.end_time == 60.0
         assert result.transcript_preview == "Sample text"
         assert result.visual_description == "Person talking"
+
+
+class TestSearchScenesByTextProvider:
+    """Tests for search_scenes_by_text using provider pattern."""
+
+    def test_uses_embedder_provider(self, monkeypatch):
+        """Should call _get_embedder and embed_sync instead of direct API calls."""
+        from unittest.mock import MagicMock, patch
+
+        mock_embedder = MagicMock()
+        mock_embedder.embed_sync.return_value = [0.1] * 512
+
+        # _get_embedder is imported from embeddings inside search_scenes_by_text
+        with (
+            patch(
+                "claudetube.analysis.embeddings._get_embedder",
+                return_value=mock_embedder,
+            ) as mock_get,
+            patch(
+                "claudetube.analysis.vector_index.search_scenes",
+                return_value=[],
+            ),
+        ):
+            from claudetube.analysis.vector_index import search_scenes_by_text
+
+            search_scenes_by_text(MagicMock(), "test query", model="voyage")
+
+            mock_get.assert_called_once_with("voyage")
+            mock_embedder.embed_sync.assert_called_once_with("test query")
+
+    def test_no_direct_voyage_import(self):
+        """search_scenes_by_text should not import voyageai directly."""
+        import ast
+        from pathlib import Path
+
+        from claudetube.analysis import vector_index
+
+        source = ast.parse(Path(vector_index.__file__).read_text())
+
+        # Check that no function named _embed_text_voyage exists
+        for node in ast.walk(source):
+            if isinstance(node, ast.FunctionDef) and node.name == "_embed_text_voyage":
+                pytest.fail("_embed_text_voyage still exists - should use provider pattern")
+
+    def test_no_direct_sentence_transformers_import(self):
+        """search_scenes_by_text should not import sentence_transformers directly."""
+        import ast
+        from pathlib import Path
+
+        from claudetube.analysis import vector_index
+
+        source = ast.parse(Path(vector_index.__file__).read_text())
+
+        # Check that no function named _embed_text_local exists
+        for node in ast.walk(source):
+            if isinstance(node, ast.FunctionDef) and node.name == "_embed_text_local":
+                pytest.fail("_embed_text_local still exists - should use provider pattern")

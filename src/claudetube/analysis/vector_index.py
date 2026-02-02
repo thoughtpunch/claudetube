@@ -299,7 +299,9 @@ def search_scenes_by_text(
 ) -> list[SearchResult]:
     """Search for scenes using text query.
 
-    Embeds the query text and searches the vector index.
+    Embeds the query text using the provider pattern and searches the vector
+    index. Uses the same Embedder providers as scene embedding (Voyage AI,
+    local sentence-transformers, etc.).
 
     Args:
         cache_dir: Video cache directory.
@@ -314,62 +316,17 @@ def search_scenes_by_text(
         ImportError: If required packages not installed.
         ValueError: If no index exists.
     """
-    from claudetube.analysis.embeddings import get_embedding_model
+    from claudetube.analysis.embeddings import _get_embedder, get_embedding_model
 
     if model is None:
         model = get_embedding_model()
 
-    # Embed the query
-    if model == "voyage":
-        query_embedding = _embed_text_voyage(query_text)
-    else:
-        query_embedding = _embed_text_local(query_text)
+    # Embed the query using the provider pattern
+    embedder = _get_embedder(model)
+    embedding_list = embedder.embed_sync(query_text)
+    query_embedding = np.array(embedding_list, dtype=np.float32)
 
     return search_scenes(cache_dir, query_embedding, top_k)
-
-
-def _embed_text_voyage(text: str) -> np.ndarray:
-    """Embed text using Voyage AI."""
-    import os
-
-    try:
-        import voyageai
-    except ImportError as e:
-        raise ImportError(
-            "voyageai required for Voyage embeddings. "
-            "Install with: pip install voyageai"
-        ) from e
-
-    if not os.environ.get("VOYAGE_API_KEY"):
-        raise RuntimeError("VOYAGE_API_KEY environment variable not set")
-
-    voyage = voyageai.Client()
-    result = voyage.embed(
-        texts=[text],
-        model="voyage-3",
-        input_type="query",
-    )
-    return np.array(result.embeddings[0], dtype=np.float32)
-
-
-def _embed_text_local(text: str) -> np.ndarray:
-    """Embed text using local model (sentence-transformers)."""
-    try:
-        from sentence_transformers import SentenceTransformer
-    except ImportError as e:
-        raise ImportError(
-            "sentence-transformers required for local embeddings. "
-            "Install with: pip install sentence-transformers"
-        ) from e
-
-    from claudetube.analysis.embeddings import LOCAL_IMAGE_DIM
-
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    text_emb = model.encode(text, convert_to_numpy=True).astype(np.float32)
-
-    # Pad with zeros for image dimension to match scene embeddings
-    img_zeros = np.zeros(LOCAL_IMAGE_DIM, dtype=np.float32)
-    return np.concatenate([text_emb, img_zeros])
 
 
 def delete_scene_index(cache_dir: Path) -> bool:

@@ -66,6 +66,7 @@ from claudetube.analysis.pause import (
 )
 from claudetube.analysis.search import (
     SearchMoment,
+    expand_query,
     find_moments,
     format_timestamp,
 )
@@ -138,6 +139,7 @@ __all__ = [
     "detect_vocabulary_shifts",
     "embed_scene",
     "embed_scenes",
+    "expand_query",
     "extract_code_blocks",
     "extract_text_from_frame",
     "extract_text_from_scene",
