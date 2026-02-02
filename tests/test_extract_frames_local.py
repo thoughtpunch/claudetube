@@ -1,6 +1,7 @@
 """Tests for local file frame extraction."""
 
 import json
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,6 +13,9 @@ from claudetube.operations.extract_frames import (
     extract_frames_local,
     extract_hq_frames_local,
 )
+
+# Get the actual module object (not the function that shadows it in __init__.py)
+_ef_module = sys.modules["claudetube.operations.extract_frames"]
 
 
 class TestQualityWidths:
@@ -125,7 +129,7 @@ class TestExtractFramesLocal:
                 output_base=tmp_path / "cache",
             )
 
-    @patch("claudetube.operations.extract_frames.FFmpegTool")
+    @patch.object(_ef_module, "FFmpegTool")
     def test_extracts_frames_with_correct_params(self, mock_ffmpeg_class, tmp_path):
         """Calls FFmpegTool with correct parameters."""
         # Create source and cache it
@@ -174,7 +178,7 @@ class TestExtractFramesLocal:
         assert call_kwargs["seek_offset"] == 0.0  # No offset for local
         assert call_kwargs["prefix"] == "frame"
 
-    @patch("claudetube.operations.extract_frames.FFmpegTool")
+    @patch.object(_ef_module, "FFmpegTool")
     def test_creates_drill_directory(self, mock_ffmpeg_class, tmp_path):
         """Creates drill_QUALITY directory."""
         source = tmp_path / "videos" / "test.mp4"
@@ -208,7 +212,7 @@ class TestExtractFramesLocal:
         drill_dir = tmp_path / "cache" / "local_video" / "drill_high"
         assert drill_dir.exists()
 
-    @patch("claudetube.operations.extract_frames.FFmpegTool")
+    @patch.object(_ef_module, "FFmpegTool")
     def test_tracks_extraction_in_state(self, mock_ffmpeg_class, tmp_path):
         """Updates state.json with extraction info."""
         source = tmp_path / "videos" / "test.mp4"
@@ -286,7 +290,7 @@ class TestExtractHqFramesLocal:
                 output_base=tmp_path,
             )
 
-    @patch("claudetube.operations.extract_frames.FFmpegTool")
+    @patch.object(_ef_module, "FFmpegTool")
     def test_extracts_hq_frames_with_correct_params(self, mock_ffmpeg_class, tmp_path):
         """Calls FFmpegTool with HQ parameters."""
         source = tmp_path / "videos" / "test.mp4"
@@ -329,7 +333,7 @@ class TestExtractHqFramesLocal:
         assert call_kwargs["seek_offset"] == 0.0
         assert call_kwargs["prefix"] == "hq"
 
-    @patch("claudetube.operations.extract_frames.FFmpegTool")
+    @patch.object(_ef_module, "FFmpegTool")
     def test_creates_hq_directory(self, mock_ffmpeg_class, tmp_path):
         """Creates hq/ directory."""
         source = tmp_path / "videos" / "test.mp4"
@@ -361,7 +365,7 @@ class TestExtractHqFramesLocal:
         hq_dir = tmp_path / "cache" / "local_video" / "hq"
         assert hq_dir.exists()
 
-    @patch("claudetube.operations.extract_frames.FFmpegTool")
+    @patch.object(_ef_module, "FFmpegTool")
     def test_default_width_is_1280(self, mock_ffmpeg_class, tmp_path):
         """Default HQ width is 1280."""
         source = tmp_path / "videos" / "test.mp4"
