@@ -34,6 +34,9 @@ from __future__ import annotations
 
 from typing import Any
 
+# Structured output schemas submodule (canonical definitions)
+from claudetube.providers import schemas  # noqa: F401
+
 # Import base classes and protocols for public API
 from claudetube.providers.base import (
     Embedder,
@@ -95,6 +98,8 @@ __all__ = [
     "SemanticConcept",
     "EntityExtractionResult",
     "VisualDescription",
+    # Schemas submodule
+    "schemas",
 ]
 
 

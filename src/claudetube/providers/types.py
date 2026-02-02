@@ -9,10 +9,9 @@ Types:
     TranscriptionResult: Complete transcription result with segments.
 
 Pydantic Models (for structured output):
-    VisualEntity: A visual entity detected in frame/video.
-    SemanticConcept: A concept discussed in the content.
-    EntityExtractionResult: Complete entity extraction result.
-    VisualDescription: Visual description of a scene.
+    Structured output schemas are defined in ``providers.schemas`` and
+    re-exported here for backwards compatibility. Prefer importing from
+    ``claudetube.providers.schemas`` for new code.
 
 Example:
     >>> from claudetube.providers.types import TranscriptionResult, TranscriptionSegment
@@ -31,7 +30,6 @@ Example:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Literal
 
 # Lazy import for pydantic to avoid hard dependency
 _pydantic_available: bool | None = None
@@ -259,351 +257,97 @@ class TranscriptionResult:
 
 
 # =============================================================================
-# Pydantic Models for Structured Output (Entity Extraction)
+# Pydantic Models for Structured Output
 # =============================================================================
+#
+# Canonical definitions live in providers.schemas. This module provides
+# lazy-loading accessor functions and wrapper classes for backwards
+# compatibility. New code should import directly from providers.schemas.
 
-# These models are used with LLM structured output features.
-# They use Pydantic for JSON Schema generation and validation.
+_PYDANTIC_IMPORT_ERROR = (
+    "pydantic is required for structured output schemas. "
+    "Install with: pip install pydantic"
+)
 
 
-def _get_base_model():
-    """Get Pydantic BaseModel, raising helpful error if not available."""
+def _get_schema_model(name: str):
+    """Import a model class from providers.schemas, with a helpful error."""
     if not _check_pydantic():
-        raise ImportError(
-            "pydantic is required for structured output schemas. "
-            "Install with: pip install pydantic"
-        )
-    from pydantic import BaseModel
+        raise ImportError(_PYDANTIC_IMPORT_ERROR)
+    from claudetube.providers import schemas
 
-    return BaseModel
-
-
-# Define Pydantic models only if pydantic is available
-# Use lazy class definitions to avoid import errors
-
-_VisualEntity = None
-_SemanticConcept = None
-_EntityExtractionResult = None
-_VisualDescription = None
-_PersonTrackingResult = None
+    model = getattr(schemas, name, None)
+    if model is None:
+        raise ImportError(f"Schema model {name!r} not found in providers.schemas")
+    return model
 
 
-def _ensure_pydantic_models():
-    """Ensure Pydantic models are defined."""
-    global _VisualEntity, _SemanticConcept, _EntityExtractionResult, _VisualDescription, _PersonTrackingResult
-
-    if _VisualEntity is not None:
-        return  # Already defined
-
-    if not _check_pydantic():
-        return  # Pydantic not available
-
-    from pydantic import BaseModel, Field
-
-    class VisualEntityModel(BaseModel):
-        """A visual entity detected in frame/video.
-
-        Used for structured output when extracting visual elements from video
-        frames. Categories help organize entities and improve LLM extraction
-        accuracy.
-
-        Attributes:
-            name: Name or description of the entity.
-            category: Type of entity (object, person, text, code, ui_element).
-            first_seen_sec: Timestamp when entity first appears.
-            last_seen_sec: Timestamp when entity last appears (optional).
-            confidence: Confidence score for the detection (0.0-1.0).
-            attributes: Additional key-value attributes for the entity.
-
-        Example:
-            >>> entity = VisualEntity(
-            ...     name="Python logo",
-            ...     category="object",
-            ...     first_seen_sec=12.5,
-            ...     confidence=0.9,
-            ...     attributes={"color": "blue and yellow"},
-            ... )
-        """
-
-        name: str = Field(description="Name or description of the entity")
-        category: Literal["object", "person", "text", "code", "ui_element"] = Field(
-            description="Type of entity"
-        )
-        first_seen_sec: float = Field(description="Timestamp when entity first appears")
-        last_seen_sec: float | None = Field(
-            default=None, description="Timestamp when entity last appears"
-        )
-        confidence: float = Field(
-            default=1.0, description="Confidence score (0.0-1.0)"
-        )
-        attributes: dict[str, str] = Field(
-            default_factory=dict, description="Additional attributes"
-        )
-
-    class SemanticConceptModel(BaseModel):
-        """A concept discussed in the content.
-
-        Used for extracting and categorizing concepts from video transcripts
-        and visual content. Importance levels help prioritize concepts.
-
-        Attributes:
-            term: The concept term or phrase.
-            definition: Brief definition or explanation.
-            importance: How central this concept is to the content.
-            first_mention_sec: Timestamp of first mention.
-            related_terms: Other terms related to this concept.
-
-        Example:
-            >>> concept = SemanticConcept(
-            ...     term="Machine Learning",
-            ...     definition="A subset of AI that learns from data",
-            ...     importance="primary",
-            ...     first_mention_sec=45.0,
-            ...     related_terms=["AI", "neural networks", "deep learning"],
-            ... )
-        """
-
-        term: str = Field(description="The concept term or phrase")
-        definition: str = Field(description="Brief definition or explanation")
-        importance: Literal["primary", "secondary", "mentioned"] = Field(
-            description="How central this concept is"
-        )
-        first_mention_sec: float = Field(description="Timestamp of first mention")
-        related_terms: list[str] = Field(
-            default_factory=list, description="Related terms"
-        )
-
-    class EntityExtractionResultModel(BaseModel):
-        """Complete entity extraction result - schema for structured output.
-
-        This is the main schema used when asking LLMs to extract all entities
-        from video content. It organizes entities by type for easier processing.
-
-        Attributes:
-            objects: Visual objects detected in frames.
-            people: People identified in the video.
-            text_on_screen: Text visible in frames.
-            concepts: Semantic concepts from content.
-            code_snippets: Code shown or discussed in video.
-
-        Example:
-            >>> result = EntityExtractionResult(
-            ...     objects=[VisualEntity(...)],
-            ...     people=[VisualEntity(...)],
-            ...     concepts=[SemanticConcept(...)],
-            ... )
-        """
-
-        objects: list[VisualEntityModel] = Field(
-            default_factory=list, description="Visual objects detected"
-        )
-        people: list[VisualEntityModel] = Field(
-            default_factory=list, description="People identified"
-        )
-        text_on_screen: list[VisualEntityModel] = Field(
-            default_factory=list, description="Text visible in frames"
-        )
-        concepts: list[SemanticConceptModel] = Field(
-            default_factory=list, description="Semantic concepts"
-        )
-        code_snippets: list[dict] = Field(
-            default_factory=list, description="Code shown or discussed"
-        )
-
-    class VisualDescriptionModel(BaseModel):
-        """Visual description of a scene - for visual_transcript.
-
-        Used when generating visual descriptions for scenes in a video.
-        Keeps the schema flat to avoid confusing LLMs with deep nesting.
-
-        Attributes:
-            description: Natural language description of the scene.
-            objects: List of objects visible in the scene.
-            people: List of people visible in the scene.
-            text_on_screen: List of text visible on screen.
-            actions: List of actions happening in the scene.
-            setting: Description of the setting/environment.
-
-        Example:
-            >>> desc = VisualDescription(
-            ...     description="A presenter at a whiteboard",
-            ...     objects=["whiteboard", "marker", "laptop"],
-            ...     people=["presenter"],
-            ...     text_on_screen=["Chapter 1: Introduction"],
-            ...     actions=["writing on whiteboard", "gesturing"],
-            ...     setting="Conference room",
-            ... )
-        """
-
-        description: str = Field(description="Natural language description of the scene")
-        objects: list[str] = Field(
-            default_factory=list, description="Objects visible in scene"
-        )
-        people: list[str] = Field(
-            default_factory=list, description="People visible in scene"
-        )
-        text_on_screen: list[str] = Field(
-            default_factory=list, description="Text visible on screen"
-        )
-        actions: list[str] = Field(
-            default_factory=list, description="Actions happening in scene"
-        )
-        setting: str | None = Field(
-            default=None, description="Description of setting/environment"
-        )
-
-    class PersonAppearanceModel(BaseModel):
-        """A single appearance of a person in a scene.
-
-        Attributes:
-            scene_id: Scene identifier where person appears.
-            timestamp: Timestamp in seconds from video start.
-            action: What the person is doing (optional).
-            confidence: Confidence score for the detection (0.0-1.0).
-        """
-
-        scene_id: int = Field(description="Scene identifier")
-        timestamp: float = Field(description="Timestamp in seconds from video start")
-        action: str | None = Field(
-            default=None, description="What the person is doing"
-        )
-        confidence: float = Field(
-            default=1.0, description="Confidence score (0.0-1.0)"
-        )
-
-    class PersonTrackModel(BaseModel):
-        """Track of a single person across the video.
-
-        Attributes:
-            person_id: Unique identifier for this person.
-            description: Visual description of the person.
-            appearances: List of scene appearances.
-        """
-
-        person_id: str = Field(description="Unique identifier for the person")
-        description: str = Field(
-            description="Visual description (e.g., 'man in blue shirt')"
-        )
-        appearances: list[PersonAppearanceModel] = Field(
-            default_factory=list, description="Scene appearances"
-        )
-
-    class PersonTrackingResultModel(BaseModel):
-        """Complete person tracking result - schema for structured output.
-
-        Used when asking LLMs to identify and track people across video scenes.
-
-        Attributes:
-            people: List of tracked people with their appearances.
-        """
-
-        people: list[PersonTrackModel] = Field(
-            default_factory=list, description="People tracked across scenes"
-        )
-
-    # Store the models
-    _VisualEntity = VisualEntityModel
-    _SemanticConcept = SemanticConceptModel
-    _EntityExtractionResult = EntityExtractionResultModel
-    _VisualDescription = VisualDescriptionModel
-    _PersonTrackingResult = PersonTrackingResultModel
-
-
-# Accessor functions that lazy-load the models
+# Accessor functions (backwards-compatible API)
 
 
 def get_visual_entity_model():
     """Get the VisualEntity Pydantic model.
 
     Returns:
-        VisualEntity Pydantic model class.
+        VisualEntity Pydantic model class from providers.schemas.
 
     Raises:
         ImportError: If pydantic is not installed.
     """
-    _ensure_pydantic_models()
-    if _VisualEntity is None:
-        raise ImportError(
-            "pydantic is required for structured output schemas. "
-            "Install with: pip install pydantic"
-        )
-    return _VisualEntity
+    return _get_schema_model("VisualEntity")
 
 
 def get_semantic_concept_model():
     """Get the SemanticConcept Pydantic model.
 
     Returns:
-        SemanticConcept Pydantic model class.
+        SemanticConcept Pydantic model class from providers.schemas.
 
     Raises:
         ImportError: If pydantic is not installed.
     """
-    _ensure_pydantic_models()
-    if _SemanticConcept is None:
-        raise ImportError(
-            "pydantic is required for structured output schemas. "
-            "Install with: pip install pydantic"
-        )
-    return _SemanticConcept
+    return _get_schema_model("SemanticConcept")
 
 
 def get_entity_extraction_result_model():
     """Get the EntityExtractionResult Pydantic model.
 
     Returns:
-        EntityExtractionResult Pydantic model class.
+        EntityExtractionResult Pydantic model class from providers.schemas.
 
     Raises:
         ImportError: If pydantic is not installed.
     """
-    _ensure_pydantic_models()
-    if _EntityExtractionResult is None:
-        raise ImportError(
-            "pydantic is required for structured output schemas. "
-            "Install with: pip install pydantic"
-        )
-    return _EntityExtractionResult
+    return _get_schema_model("EntityExtractionResult")
 
 
 def get_visual_description_model():
     """Get the VisualDescription Pydantic model.
 
     Returns:
-        VisualDescription Pydantic model class.
+        VisualDescription Pydantic model class from providers.schemas.
 
     Raises:
         ImportError: If pydantic is not installed.
     """
-    _ensure_pydantic_models()
-    if _VisualDescription is None:
-        raise ImportError(
-            "pydantic is required for structured output schemas. "
-            "Install with: pip install pydantic"
-        )
-    return _VisualDescription
+    return _get_schema_model("VisualDescription")
 
 
 def get_person_tracking_result_model():
     """Get the PersonTrackingResult Pydantic model.
 
     Returns:
-        PersonTrackingResult Pydantic model class.
+        PersonTrackingResult Pydantic model class from providers.schemas.
 
     Raises:
         ImportError: If pydantic is not installed.
     """
-    _ensure_pydantic_models()
-    if _PersonTrackingResult is None:
-        raise ImportError(
-            "pydantic is required for structured output schemas. "
-            "Install with: pip install pydantic"
-        )
-    return _PersonTrackingResult
+    return _get_schema_model("PersonTrackingResult")
 
 
-# For backwards compatibility and type hints, also provide class-style access
-# These will fail at import time if pydantic is not installed and the class is accessed
+# Lazy-loading wrapper classes for backwards-compatible class-style access.
+# These delegate to the accessor functions above so that pydantic is only
+# imported when actually used.
 
 
 class _LazyModelMeta(type):
@@ -629,8 +373,8 @@ class _LazyModelMeta(type):
 class VisualEntity(metaclass=_LazyModelMeta, model_getter=get_visual_entity_model):
     """A visual entity detected in frame/video.
 
-    This is a lazy-loading wrapper around the Pydantic model.
-    The actual model is loaded when first accessed.
+    This is a lazy-loading wrapper. The actual model is defined in
+    ``providers.schemas.VisualEntity``.
     """
 
     pass
@@ -639,8 +383,8 @@ class VisualEntity(metaclass=_LazyModelMeta, model_getter=get_visual_entity_mode
 class SemanticConcept(metaclass=_LazyModelMeta, model_getter=get_semantic_concept_model):
     """A concept discussed in the content.
 
-    This is a lazy-loading wrapper around the Pydantic model.
-    The actual model is loaded when first accessed.
+    This is a lazy-loading wrapper. The actual model is defined in
+    ``providers.schemas.SemanticConcept``.
     """
 
     pass
@@ -651,8 +395,8 @@ class EntityExtractionResult(
 ):
     """Complete entity extraction result - schema for structured output.
 
-    This is a lazy-loading wrapper around the Pydantic model.
-    The actual model is loaded when first accessed.
+    This is a lazy-loading wrapper. The actual model is defined in
+    ``providers.schemas.EntityExtractionResult``.
     """
 
     pass
@@ -663,8 +407,8 @@ class VisualDescription(
 ):
     """Visual description of a scene - for visual_transcript.
 
-    This is a lazy-loading wrapper around the Pydantic model.
-    The actual model is loaded when first accessed.
+    This is a lazy-loading wrapper. The actual model is defined in
+    ``providers.schemas.VisualDescription``.
     """
 
     pass
@@ -675,8 +419,8 @@ class PersonTrackingResult(
 ):
     """Complete person tracking result - schema for structured output.
 
-    This is a lazy-loading wrapper around the Pydantic model.
-    The actual model is loaded when first accessed.
+    This is a lazy-loading wrapper. The actual model is defined in
+    ``providers.schemas.PersonTrackingResult``.
     """
 
     pass
