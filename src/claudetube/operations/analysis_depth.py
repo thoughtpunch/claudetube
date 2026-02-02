@@ -522,6 +522,79 @@ def analyze_all_frames(
     return results
 
 
+def _extract_entities_with_operation(
+    entity_op,
+    video_id: str,
+    scene: SceneBoundary,
+    cache_dir: Path,
+    video_path: Path | None,
+    force: bool,
+) -> Entities | None:
+    """Extract entities using the OperationFactory operation, with regex fallback.
+
+    Tries the AI-powered EntityExtractionOperation first. If no operation is
+    available (no providers configured), falls back to the regex-based
+    ``extract_entities()`` function.
+
+    The AI result (``EntityExtractionSceneResult``) is converted to the
+    ``Entities`` dataclass to maintain backward compatibility in
+    ``scene_dict["entities"]``.
+
+    Args:
+        entity_op: An ``EntityExtractionOperation`` instance, or None.
+        video_id: Video identifier.
+        scene: Scene to extract entities from.
+        cache_dir: Video cache directory.
+        video_path: Path to video file (for VideoAnalyzer).
+        force: Re-extract even if cached.
+
+    Returns:
+        Entities or None if extraction failed.
+    """
+    if entity_op is None:
+        return extract_entities(video_id, scene, cache_dir, force=force)
+
+    # Check cache first (same file the operation writes to)
+    if not force:
+        cached = _load_cached_entities(cache_dir, scene.scene_id)
+        if cached is not None:
+            return cached
+
+    import asyncio
+
+    from claudetube.cache.scenes import get_entities_json_path, list_scene_keyframes
+
+    keyframes = list_scene_keyframes(cache_dir, scene.scene_id)
+
+    try:
+        result = asyncio.run(
+            entity_op.execute(
+                scene.scene_id, keyframes, scene, video_path=video_path
+            )
+        )
+    except Exception as e:
+        logger.warning(
+            "AI entity extraction failed for scene %d, falling back to regex: %s",
+            scene.scene_id,
+            e,
+        )
+        return extract_entities(video_id, scene, cache_dir, force=force)
+
+    # Save the full EntityExtractionSceneResult to entities.json
+    entities_path = get_entities_json_path(cache_dir, scene.scene_id)
+    entities_path.parent.mkdir(parents=True, exist_ok=True)
+    entities_path.write_text(json.dumps(result.to_dict(), indent=2))
+
+    # Convert to Entities dataclass for backward compatibility
+    return Entities(
+        scene_id=scene.scene_id,
+        people=[p.get("name", "") for p in result.people],
+        topics=[c.get("term", "") for c in result.concepts],
+        technologies=[],  # Not directly available from AI extraction
+        keywords=[o.get("name", "") for o in result.objects],
+    )
+
+
 def analyze_video(
     video_id: str,
     depth: AnalysisDepth = AnalysisDepth.STANDARD,
@@ -681,6 +754,25 @@ def analyze_video(
     # DEEP depth: add technical content + entities
     if depth.value in ("deep", "exhaustive"):
         log_timed("Extracting technical content...", t0)
+
+        # Try to get an EntityExtractionOperation from the factory
+        entity_op = None
+        video_path = None
+        try:
+            from claudetube.operations.factory import get_factory
+
+            factory = get_factory()
+            entity_op = factory.get_entity_extraction_operation()
+            # Check if the operation has at least one provider
+            if not (entity_op.video_analyzer or entity_op.vision or entity_op.reasoner):
+                entity_op = None
+            elif entity_op.video_analyzer:
+                from claudetube.operations.entity_extraction import _get_video_path
+
+                video_path = _get_video_path(cache_dir)
+        except Exception as e:
+            logger.debug("OperationFactory unavailable, falling back to regex: %s", e)
+
         for i, scene_dict in enumerate(scenes):
             scene_id = scene_dict["scene_id"]
             scene = scenes_data.scenes[i]
@@ -699,9 +791,11 @@ def analyze_video(
             except Exception as e:
                 errors.append({"scene_id": scene_id, "stage": "technical", "error": str(e)})
 
-            # Entities
+            # Entities via OperationFactory (preferred) or regex fallback
             try:
-                ent = extract_entities(video_id, scene, cache_dir, force=force)
+                ent = _extract_entities_with_operation(
+                    entity_op, video_id, scene, cache_dir, video_path, force
+                )
                 if ent:
                     scene_dict["entities"] = ent.to_dict()
             except Exception as e:
