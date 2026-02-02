@@ -65,3 +65,11 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 - 2026-02-01 17:03 | claudetube-w1c [P0] | Implement GoogleProvider (Gemini)
 - 2026-02-01 17:56 | claudetube-wnb.3 [P2] | Add Provider Integration for AD Generation
 - 2026-02-01 18:05 | claudetube-cm3 [P0] | Refactor TranscribeOperation
+- 2026-02-01 18:11 | claudetube-u2a [P0] | Refactor VisualTranscriptOperation
+- 2026-02-01 18:21 | claudetube-29f [P0] | Refactor EntityExtractionOperation
+- 2026-02-01 18:30 | claudetube-z4b [P1] | Refactor PersonTrackingOperation
+- 2026-02-01 18:41 | claudetube-os2 [P0] | Create OperationFactory
+- 2026-02-01 18:46 | claudetube-wnb.4 [P2] | Add AD MCP Tools
+- 2026-02-01 19:47 | claudetube-wnb.4 [P2] | Add AD MCP Tools
+- 2026-02-01 20:03 | claudetube-bdj [P3] | Add /yt:watch command for active viewing
+- 2026-02-01 20:19 | claudetube-i4c [P3] | Wire attention priority modeling into ActiveVideoWatcher
