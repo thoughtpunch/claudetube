@@ -265,6 +265,12 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
         supports_structured_output=False,
         cost_per_1m_input_tokens=0,  # Free (local)
     ),
+    "litellm": ProviderInfo(
+        name="litellm",
+        capabilities=frozenset({Capability.REASON}),
+        supports_structured_output=True,  # Depends on underlying model
+        supports_streaming=True,
+    ),
 }
 
 

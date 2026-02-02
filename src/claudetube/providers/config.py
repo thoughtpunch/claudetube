@@ -42,7 +42,7 @@ ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
 # Known provider names that have dedicated config fields (API-key providers)
 _KNOWN_PROVIDERS = frozenset(
-    {"openai", "anthropic", "google", "deepgram", "assemblyai", "voyage"}
+    {"openai", "anthropic", "google", "deepgram", "assemblyai", "voyage", "litellm"}
 )
 
 # All valid provider names (including local/built-in)
@@ -58,6 +58,7 @@ _ALL_PROVIDERS = frozenset(
         "claude-code",
         "ollama",
         "local-embedder",
+        "litellm",
     }
 )
 
@@ -92,6 +93,7 @@ _LEGACY_ENV_VARS: dict[str, str] = {
     "deepgram": "DEEPGRAM_API_KEY",
     "assemblyai": "ASSEMBLYAI_API_KEY",
     "voyage": "VOYAGE_API_KEY",
+    "litellm": "LITELLM_API_KEY",
 }
 
 

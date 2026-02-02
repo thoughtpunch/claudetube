@@ -44,6 +44,7 @@ PROVIDER_MODULES: dict[str, str] = {
     "local-embedder": "claudetube.providers.local_embedder",
     "ollama": "claudetube.providers.ollama",
     "claude-code": "claudetube.providers.claude_code",
+    "litellm": "claudetube.providers.litellm",
 }
 
 
@@ -70,6 +71,9 @@ PROVIDER_ALIASES: dict[str, str] = {
     "gemini-2.0-flash": "google",
     "gemini-pro": "google",
     "gemini-flash": "google",
+    # LiteLLM aliases
+    "lite-llm": "litellm",
+    "lite_llm": "litellm",
     # Embedding aliases
     "voyage-ai": "voyage",
     "voyage-3": "voyage",
@@ -183,6 +187,7 @@ def get_provider(name: str, **kwargs) -> Provider:
             "local-embedder": "pip install sentence-transformers",
             "whisper-local": "pip install faster-whisper",
             "ollama": "pip install ollama",
+            "litellm": "pip install litellm",
         }
         hint = dep_hints.get(canonical, "check the provider documentation")
         raise ImportError(
