@@ -25,16 +25,26 @@ Usage:
     results = videos.search_fts("rick astley")
 """
 
+from claudetube.db.repos.audio_descriptions import AudioDescriptionRepository
 from claudetube.db.repos.audio_tracks import AudioTrackRepository
+from claudetube.db.repos.code_evolution import CodeEvolutionRepository
 from claudetube.db.repos.frames import FrameRepository
+from claudetube.db.repos.narrative import NarrativeRepository
 from claudetube.db.repos.scenes import SceneRepository
+from claudetube.db.repos.technical_content import TechnicalContentRepository
 from claudetube.db.repos.transcriptions import TranscriptionRepository
 from claudetube.db.repos.videos import VideoRepository
+from claudetube.db.repos.visual_descriptions import VisualDescriptionRepository
 
 __all__ = [
-    "VideoRepository",
+    "AudioDescriptionRepository",
     "AudioTrackRepository",
-    "TranscriptionRepository",
-    "SceneRepository",
+    "CodeEvolutionRepository",
     "FrameRepository",
+    "NarrativeRepository",
+    "SceneRepository",
+    "TechnicalContentRepository",
+    "TranscriptionRepository",
+    "VideoRepository",
+    "VisualDescriptionRepository",
 ]

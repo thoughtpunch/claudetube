@@ -8,11 +8,16 @@ import pytest
 from claudetube.db.connection import Database
 from claudetube.db.migrate import run_migrations
 from claudetube.db.repos import (
+    AudioDescriptionRepository,
     AudioTrackRepository,
+    CodeEvolutionRepository,
     FrameRepository,
+    NarrativeRepository,
     SceneRepository,
+    TechnicalContentRepository,
     TranscriptionRepository,
     VideoRepository,
+    VisualDescriptionRepository,
 )
 
 
@@ -53,6 +58,36 @@ def scene_repo(db):
 def frame_repo(db):
     """Create a FrameRepository instance."""
     return FrameRepository(db)
+
+
+@pytest.fixture
+def visual_description_repo(db):
+    """Create a VisualDescriptionRepository instance."""
+    return VisualDescriptionRepository(db)
+
+
+@pytest.fixture
+def technical_content_repo(db):
+    """Create a TechnicalContentRepository instance."""
+    return TechnicalContentRepository(db)
+
+
+@pytest.fixture
+def audio_description_repo(db):
+    """Create an AudioDescriptionRepository instance."""
+    return AudioDescriptionRepository(db)
+
+
+@pytest.fixture
+def narrative_repo(db):
+    """Create a NarrativeRepository instance."""
+    return NarrativeRepository(db)
+
+
+@pytest.fixture
+def code_evolution_repo(db):
+    """Create a CodeEvolutionRepository instance."""
+    return CodeEvolutionRepository(db)
 
 
 # ============================================================
@@ -2233,3 +2268,1239 @@ class TestFrameRepositoryDelete:
 
         frame = frame_repo.get_by_uuid(frame_uuid)
         assert frame is None
+
+
+# ============================================================
+# VisualDescriptionRepository Tests
+# ============================================================
+
+
+class TestVisualDescriptionRepositoryInsert:
+    """Tests for VisualDescriptionRepository.insert()."""
+
+    def test_insert_visual_description(self, video_repo, visual_description_repo):
+        """Test inserting a visual description."""
+        video_uuid = video_repo.insert(
+            video_id="visualvid",
+            domain="youtube",
+            cache_path="/cache/vv",
+        )
+
+        vd_uuid = visual_description_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            description="A person typing on a laptop in a dimly lit room.",
+            provider="anthropic",
+            file_path="scenes/scene_000/visual.json",
+        )
+
+        assert vd_uuid is not None
+        assert len(vd_uuid) == 36
+
+    def test_insert_minimal(self, video_repo, visual_description_repo):
+        """Test inserting with only required fields."""
+        video_uuid = video_repo.insert(
+            video_id="minvisual",
+            domain="youtube",
+            cache_path="/cache/mv",
+        )
+
+        vd_uuid = visual_description_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            description="Test description",
+        )
+
+        vd = visual_description_repo.get_by_scene(video_uuid, 0)
+        assert vd is not None
+        assert vd["provider"] is None
+        assert vd["file_path"] is None
+
+    def test_insert_negative_scene_id_raises(self, video_repo, visual_description_repo):
+        """Test that negative scene_id raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="negsceneid",
+            domain="youtube",
+            cache_path="/cache/ns",
+        )
+
+        with pytest.raises(ValueError, match="scene_id must be >= 0"):
+            visual_description_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=-1,
+                description="Test",
+            )
+
+    def test_insert_empty_description_raises(self, video_repo, visual_description_repo):
+        """Test that empty description raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="emptydesc",
+            domain="youtube",
+            cache_path="/cache/ed",
+        )
+
+        with pytest.raises(ValueError, match="description cannot be empty"):
+            visual_description_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=0,
+                description="",
+            )
+
+    def test_insert_whitespace_description_raises(self, video_repo, visual_description_repo):
+        """Test that whitespace-only description raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="wsdesc",
+            domain="youtube",
+            cache_path="/cache/ws",
+        )
+
+        with pytest.raises(ValueError, match="description cannot be empty"):
+            visual_description_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=0,
+                description="   \t\n   ",
+            )
+
+    def test_insert_duplicate_scene_raises(self, video_repo, visual_description_repo):
+        """Test that duplicate (video_uuid, scene_id) raises IntegrityError."""
+        video_uuid = video_repo.insert(
+            video_id="dupvd",
+            domain="youtube",
+            cache_path="/cache/dv",
+        )
+
+        visual_description_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            description="First description",
+        )
+
+        with pytest.raises(sqlite3.IntegrityError):
+            visual_description_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=0,
+                description="Second description",
+            )
+
+
+class TestVisualDescriptionRepositoryGet:
+    """Tests for VisualDescriptionRepository get methods."""
+
+    def test_get_by_video(self, video_repo, visual_description_repo):
+        """Test getting all visual descriptions for a video."""
+        video_uuid = video_repo.insert(
+            video_id="getvd",
+            domain="youtube",
+            cache_path="/cache/gv",
+        )
+
+        # Insert out of order
+        visual_description_repo.insert(video_uuid=video_uuid, scene_id=2, description="Scene 2")
+        visual_description_repo.insert(video_uuid=video_uuid, scene_id=0, description="Scene 0")
+        visual_description_repo.insert(video_uuid=video_uuid, scene_id=1, description="Scene 1")
+
+        descriptions = visual_description_repo.get_by_video(video_uuid)
+        assert len(descriptions) == 3
+        # Should be ordered by scene_id
+        assert descriptions[0]["scene_id"] == 0
+        assert descriptions[1]["scene_id"] == 1
+        assert descriptions[2]["scene_id"] == 2
+
+    def test_get_by_video_empty(self, video_repo, visual_description_repo):
+        """Test get_by_video returns empty list when no descriptions."""
+        video_uuid = video_repo.insert(
+            video_id="novd",
+            domain="youtube",
+            cache_path="/cache/nv",
+        )
+
+        descriptions = visual_description_repo.get_by_video(video_uuid)
+        assert descriptions == []
+
+    def test_get_by_scene(self, video_repo, visual_description_repo):
+        """Test getting a specific scene's visual description."""
+        video_uuid = video_repo.insert(
+            video_id="scenevd",
+            domain="youtube",
+            cache_path="/cache/sv",
+        )
+
+        visual_description_repo.insert(video_uuid=video_uuid, scene_id=0, description="Scene 0")
+        visual_description_repo.insert(video_uuid=video_uuid, scene_id=1, description="Scene 1")
+
+        vd = visual_description_repo.get_by_scene(video_uuid, 1)
+        assert vd is not None
+        assert vd["description"] == "Scene 1"
+
+    def test_get_by_scene_not_found(self, video_repo, visual_description_repo):
+        """Test get_by_scene returns None for non-existent scene."""
+        video_uuid = video_repo.insert(
+            video_id="noscene",
+            domain="youtube",
+            cache_path="/cache/ns",
+        )
+
+        vd = visual_description_repo.get_by_scene(video_uuid, 99)
+        assert vd is None
+
+
+class TestVisualDescriptionRepositoryFTS:
+    """Tests for VisualDescriptionRepository full-text search."""
+
+    def test_search_fts(self, video_repo, visual_description_repo):
+        """Test FTS search on visual descriptions."""
+        video_uuid = video_repo.insert(
+            video_id="ftsvd",
+            domain="youtube",
+            cache_path="/cache/fv",
+            title="FTS Test Video",
+        )
+
+        visual_description_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            description="A developer writing Python code on a laptop.",
+        )
+
+        results = visual_description_repo.search_fts("Python")
+        assert len(results) == 1
+        assert results[0]["video_natural_id"] == "ftsvd"
+        assert results[0]["video_title"] == "FTS Test Video"
+
+    def test_search_fts_multiple_scenes(self, video_repo, visual_description_repo):
+        """Test FTS search across multiple scenes."""
+        video_uuid = video_repo.insert(
+            video_id="multifts",
+            domain="youtube",
+            cache_path="/cache/mf",
+        )
+
+        visual_description_repo.insert(video_uuid=video_uuid, scene_id=0, description="A cat sleeping on a couch.")
+        visual_description_repo.insert(video_uuid=video_uuid, scene_id=1, description="A dog playing in the yard.")
+        visual_description_repo.insert(video_uuid=video_uuid, scene_id=2, description="Another cat climbing a tree.")
+
+        results = visual_description_repo.search_fts("cat")
+        assert len(results) == 2
+        scene_ids = {r["scene_id"] for r in results}
+        assert scene_ids == {0, 2}
+
+    def test_search_fts_no_results(self, video_repo, visual_description_repo):
+        """Test FTS search returns empty list when no matches."""
+        video_uuid = video_repo.insert(
+            video_id="nofts",
+            domain="youtube",
+            cache_path="/cache/nf",
+        )
+
+        visual_description_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            description="A person cooking dinner.",
+        )
+
+        results = visual_description_repo.search_fts("programming")
+        assert results == []
+
+
+class TestVisualDescriptionRepositoryDelete:
+    """Tests for VisualDescriptionRepository delete methods."""
+
+    def test_delete(self, video_repo, visual_description_repo):
+        """Test deleting a visual description by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="delvd",
+            domain="youtube",
+            cache_path="/cache/dv",
+        )
+
+        vd_uuid = visual_description_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            description="Test",
+        )
+
+        result = visual_description_repo.delete(vd_uuid)
+        assert result is True
+
+        vd = visual_description_repo.get_by_scene(video_uuid, 0)
+        assert vd is None
+
+    def test_delete_nonexistent(self, visual_description_repo):
+        """Test deleting non-existent record returns False."""
+        fake_uuid = str(uuid.uuid4())
+        result = visual_description_repo.delete(fake_uuid)
+        assert result is False
+
+    def test_delete_by_video(self, video_repo, visual_description_repo):
+        """Test deleting all visual descriptions for a video."""
+        video_uuid = video_repo.insert(
+            video_id="delallvd",
+            domain="youtube",
+            cache_path="/cache/da",
+        )
+
+        visual_description_repo.insert(video_uuid=video_uuid, scene_id=0, description="Scene 0")
+        visual_description_repo.insert(video_uuid=video_uuid, scene_id=1, description="Scene 1")
+
+        count = visual_description_repo.delete_by_video(video_uuid)
+        assert count == 2
+
+        descriptions = visual_description_repo.get_by_video(video_uuid)
+        assert descriptions == []
+
+    def test_cascade_delete_on_video_delete(self, video_repo, visual_description_repo):
+        """Test that deleting a video cascades to visual descriptions."""
+        video_uuid = video_repo.insert(
+            video_id="cascadevd",
+            domain="youtube",
+            cache_path="/cache/cv",
+        )
+
+        vd_uuid = visual_description_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            description="Test",
+        )
+
+        video_repo.delete("cascadevd")
+
+        # Cannot get by UUID since we don't have get_by_uuid, use get_by_scene
+        # Actually, let's check count
+        count = visual_description_repo.count_by_video(video_uuid)
+        assert count == 0
+
+
+# ============================================================
+# TechnicalContentRepository Tests
+# ============================================================
+
+
+class TestTechnicalContentRepositoryInsert:
+    """Tests for TechnicalContentRepository.insert()."""
+
+    def test_insert_technical_content(self, video_repo, technical_content_repo):
+        """Test inserting technical content."""
+        video_uuid = video_repo.insert(
+            video_id="techvid",
+            domain="youtube",
+            cache_path="/cache/tv",
+        )
+
+        tc_uuid = technical_content_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            has_code=True,
+            has_text=True,
+            provider="anthropic",
+            ocr_text="def hello_world():\n    print('Hello, World!')",
+            code_language="python",
+            file_path="scenes/scene_000/technical.json",
+        )
+
+        assert tc_uuid is not None
+        assert len(tc_uuid) == 36
+
+    def test_insert_minimal(self, video_repo, technical_content_repo):
+        """Test inserting with only required fields."""
+        video_uuid = video_repo.insert(
+            video_id="mintech",
+            domain="youtube",
+            cache_path="/cache/mt",
+        )
+
+        tc_uuid = technical_content_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            has_code=False,
+            has_text=False,
+        )
+
+        tc = technical_content_repo.get_by_scene(video_uuid, 0)
+        assert tc is not None
+        assert tc["has_code"] == 0
+        assert tc["has_text"] == 0
+        assert tc["ocr_text"] is None
+        assert tc["code_language"] is None
+
+    def test_insert_negative_scene_id_raises(self, video_repo, technical_content_repo):
+        """Test that negative scene_id raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="negscenetech",
+            domain="youtube",
+            cache_path="/cache/nst",
+        )
+
+        with pytest.raises(ValueError, match="scene_id must be >= 0"):
+            technical_content_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=-1,
+                has_code=False,
+                has_text=False,
+            )
+
+    def test_insert_duplicate_scene_raises(self, video_repo, technical_content_repo):
+        """Test that duplicate (video_uuid, scene_id) raises IntegrityError."""
+        video_uuid = video_repo.insert(
+            video_id="duptc",
+            domain="youtube",
+            cache_path="/cache/dt",
+        )
+
+        technical_content_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            has_code=False,
+            has_text=False,
+        )
+
+        with pytest.raises(sqlite3.IntegrityError):
+            technical_content_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=0,
+                has_code=True,
+                has_text=True,
+            )
+
+
+class TestTechnicalContentRepositoryGet:
+    """Tests for TechnicalContentRepository get methods."""
+
+    def test_get_by_video(self, video_repo, technical_content_repo):
+        """Test getting all technical content for a video."""
+        video_uuid = video_repo.insert(
+            video_id="gettc",
+            domain="youtube",
+            cache_path="/cache/gt",
+        )
+
+        # Insert out of order
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=2, has_code=True, has_text=False)
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=0, has_code=False, has_text=True)
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True)
+
+        records = technical_content_repo.get_by_video(video_uuid)
+        assert len(records) == 3
+        # Should be ordered by scene_id
+        assert records[0]["scene_id"] == 0
+        assert records[1]["scene_id"] == 1
+        assert records[2]["scene_id"] == 2
+
+    def test_get_by_scene(self, video_repo, technical_content_repo):
+        """Test getting a specific scene's technical content."""
+        video_uuid = video_repo.insert(
+            video_id="scenetc",
+            domain="youtube",
+            cache_path="/cache/st",
+        )
+
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=0, has_code=False, has_text=False)
+        technical_content_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=1,
+            has_code=True,
+            has_text=True,
+            code_language="javascript",
+        )
+
+        tc = technical_content_repo.get_by_scene(video_uuid, 1)
+        assert tc is not None
+        assert tc["has_code"] == 1
+        assert tc["code_language"] == "javascript"
+
+    def test_get_scenes_with_code(self, video_repo, technical_content_repo):
+        """Test getting all scenes with code."""
+        video_uuid = video_repo.insert(
+            video_id="codevid",
+            domain="youtube",
+            cache_path="/cache/cv",
+        )
+
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=0, has_code=False, has_text=True)
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True)
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=2, has_code=True, has_text=False)
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=3, has_code=False, has_text=False)
+
+        code_scenes = technical_content_repo.get_scenes_with_code(video_uuid)
+        assert len(code_scenes) == 2
+        scene_ids = {r["scene_id"] for r in code_scenes}
+        assert scene_ids == {1, 2}
+
+    def test_get_scenes_with_text(self, video_repo, technical_content_repo):
+        """Test getting all scenes with text."""
+        video_uuid = video_repo.insert(
+            video_id="textvid",
+            domain="youtube",
+            cache_path="/cache/tv2",
+        )
+
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=0, has_code=False, has_text=True)
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True)
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=2, has_code=True, has_text=False)
+
+        text_scenes = technical_content_repo.get_scenes_with_text(video_uuid)
+        assert len(text_scenes) == 2
+        scene_ids = {r["scene_id"] for r in text_scenes}
+        assert scene_ids == {0, 1}
+
+
+class TestTechnicalContentRepositoryFTS:
+    """Tests for TechnicalContentRepository full-text search."""
+
+    def test_search_fts(self, video_repo, technical_content_repo):
+        """Test FTS search on OCR text."""
+        video_uuid = video_repo.insert(
+            video_id="ftstc",
+            domain="youtube",
+            cache_path="/cache/ft",
+            title="FTS Tech Video",
+        )
+
+        technical_content_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            has_code=True,
+            has_text=True,
+            ocr_text="function authenticate(user, password) { return true; }",
+        )
+
+        results = technical_content_repo.search_fts("authenticate")
+        assert len(results) == 1
+        assert results[0]["video_natural_id"] == "ftstc"
+        assert results[0]["video_title"] == "FTS Tech Video"
+
+    def test_search_fts_no_results(self, video_repo, technical_content_repo):
+        """Test FTS search returns empty list when no matches."""
+        video_uuid = video_repo.insert(
+            video_id="noftsc",
+            domain="youtube",
+            cache_path="/cache/nft",
+        )
+
+        technical_content_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            has_code=True,
+            has_text=True,
+            ocr_text="const x = 5;",
+        )
+
+        results = technical_content_repo.search_fts("authentication")
+        assert results == []
+
+
+class TestTechnicalContentRepositoryDelete:
+    """Tests for TechnicalContentRepository delete methods."""
+
+    def test_delete(self, video_repo, technical_content_repo):
+        """Test deleting technical content by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="deltc",
+            domain="youtube",
+            cache_path="/cache/dtc",
+        )
+
+        tc_uuid = technical_content_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            has_code=False,
+            has_text=False,
+        )
+
+        result = technical_content_repo.delete(tc_uuid)
+        assert result is True
+
+        tc = technical_content_repo.get_by_scene(video_uuid, 0)
+        assert tc is None
+
+    def test_delete_by_video(self, video_repo, technical_content_repo):
+        """Test deleting all technical content for a video."""
+        video_uuid = video_repo.insert(
+            video_id="delalltc",
+            domain="youtube",
+            cache_path="/cache/datc",
+        )
+
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=0, has_code=False, has_text=False)
+        technical_content_repo.insert(video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True)
+
+        count = technical_content_repo.delete_by_video(video_uuid)
+        assert count == 2
+
+        records = technical_content_repo.get_by_video(video_uuid)
+        assert records == []
+
+
+# ============================================================
+# AudioDescriptionRepository Tests
+# ============================================================
+
+
+class TestAudioDescriptionRepositoryInsert:
+    """Tests for AudioDescriptionRepository.insert()."""
+
+    def test_insert_audio_description(self, video_repo, audio_description_repo):
+        """Test inserting an audio description."""
+        video_uuid = video_repo.insert(
+            video_id="advid",
+            domain="youtube",
+            cache_path="/cache/av",
+        )
+
+        ad_uuid = audio_description_repo.insert(
+            video_uuid=video_uuid,
+            format_="vtt",
+            source="generated",
+            file_path="audio.ad.vtt",
+            provider="anthropic",
+        )
+
+        assert ad_uuid is not None
+        assert len(ad_uuid) == 36
+
+    def test_insert_all_valid_sources(self, video_repo, audio_description_repo):
+        """Test all valid sources can be inserted."""
+        video_uuid = video_repo.insert(
+            video_id="allsources",
+            domain="youtube",
+            cache_path="/cache/as",
+        )
+
+        for source in AudioDescriptionRepository.VALID_SOURCES:
+            ad_uuid = audio_description_repo.insert(
+                video_uuid=video_uuid,
+                format_="txt",
+                source=source,
+                file_path=f"audio_{source}.txt",
+            )
+            assert ad_uuid is not None
+
+    def test_insert_all_valid_formats(self, video_repo, audio_description_repo):
+        """Test all valid formats can be inserted."""
+        video_uuid = video_repo.insert(
+            video_id="allformats",
+            domain="youtube",
+            cache_path="/cache/af",
+        )
+
+        for format_ in AudioDescriptionRepository.VALID_FORMATS:
+            ad_uuid = audio_description_repo.insert(
+                video_uuid=video_uuid,
+                format_=format_,
+                source="generated",
+                file_path=f"audio.ad.{format_}",
+            )
+            assert ad_uuid is not None
+
+    def test_insert_invalid_source_raises(self, video_repo, audio_description_repo):
+        """Test that invalid source raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="badsrc",
+            domain="youtube",
+            cache_path="/cache/bs",
+        )
+
+        with pytest.raises(ValueError, match="Invalid source"):
+            audio_description_repo.insert(
+                video_uuid=video_uuid,
+                format_="vtt",
+                source="invalid_source",
+                file_path="audio.vtt",
+            )
+
+    def test_insert_invalid_format_raises(self, video_repo, audio_description_repo):
+        """Test that invalid format raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="badfmt",
+            domain="youtube",
+            cache_path="/cache/bf",
+        )
+
+        with pytest.raises(ValueError, match="Invalid format"):
+            audio_description_repo.insert(
+                video_uuid=video_uuid,
+                format_="srt",  # Invalid
+                source="generated",
+                file_path="audio.srt",
+            )
+
+
+class TestAudioDescriptionRepositoryGet:
+    """Tests for AudioDescriptionRepository get methods."""
+
+    def test_get_by_video(self, video_repo, audio_description_repo):
+        """Test getting all audio descriptions for a video."""
+        video_uuid = video_repo.insert(
+            video_id="getad",
+            domain="youtube",
+            cache_path="/cache/ga",
+        )
+
+        audio_description_repo.insert(video_uuid=video_uuid, format_="vtt", source="generated", file_path="a.vtt")
+        audio_description_repo.insert(video_uuid=video_uuid, format_="txt", source="compiled", file_path="a.txt")
+
+        records = audio_description_repo.get_by_video(video_uuid)
+        assert len(records) == 2
+
+    def test_get_by_uuid(self, video_repo, audio_description_repo):
+        """Test getting an audio description by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="getuuidad",
+            domain="youtube",
+            cache_path="/cache/gua",
+        )
+
+        ad_uuid = audio_description_repo.insert(
+            video_uuid=video_uuid,
+            format_="vtt",
+            source="source_track",
+            file_path="source.vtt",
+        )
+
+        ad = audio_description_repo.get_by_uuid(ad_uuid)
+        assert ad is not None
+        assert ad["source"] == "source_track"
+
+    def test_get_by_format(self, video_repo, audio_description_repo):
+        """Test getting an audio description by format."""
+        video_uuid = video_repo.insert(
+            video_id="getfmtad",
+            domain="youtube",
+            cache_path="/cache/gfa",
+        )
+
+        audio_description_repo.insert(video_uuid=video_uuid, format_="vtt", source="generated", file_path="a.vtt")
+        audio_description_repo.insert(video_uuid=video_uuid, format_="txt", source="generated", file_path="a.txt")
+
+        ad = audio_description_repo.get_by_format(video_uuid, "txt")
+        assert ad is not None
+        assert ad["file_path"] == "a.txt"
+
+    def test_has_ad_true(self, video_repo, audio_description_repo):
+        """Test has_ad returns True when audio description exists."""
+        video_uuid = video_repo.insert(
+            video_id="hasad",
+            domain="youtube",
+            cache_path="/cache/ha",
+        )
+
+        audio_description_repo.insert(
+            video_uuid=video_uuid,
+            format_="vtt",
+            source="generated",
+            file_path="a.vtt",
+        )
+
+        assert audio_description_repo.has_ad(video_uuid) is True
+
+    def test_has_ad_false(self, video_repo, audio_description_repo):
+        """Test has_ad returns False when no audio description exists."""
+        video_uuid = video_repo.insert(
+            video_id="noad",
+            domain="youtube",
+            cache_path="/cache/na",
+        )
+
+        assert audio_description_repo.has_ad(video_uuid) is False
+
+
+class TestAudioDescriptionRepositoryDelete:
+    """Tests for AudioDescriptionRepository delete methods."""
+
+    def test_delete(self, video_repo, audio_description_repo):
+        """Test deleting an audio description by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="delad",
+            domain="youtube",
+            cache_path="/cache/da",
+        )
+
+        ad_uuid = audio_description_repo.insert(
+            video_uuid=video_uuid,
+            format_="vtt",
+            source="generated",
+            file_path="a.vtt",
+        )
+
+        result = audio_description_repo.delete(ad_uuid)
+        assert result is True
+
+        ad = audio_description_repo.get_by_uuid(ad_uuid)
+        assert ad is None
+
+    def test_delete_by_video(self, video_repo, audio_description_repo):
+        """Test deleting all audio descriptions for a video."""
+        video_uuid = video_repo.insert(
+            video_id="delallad",
+            domain="youtube",
+            cache_path="/cache/daa",
+        )
+
+        audio_description_repo.insert(video_uuid=video_uuid, format_="vtt", source="generated", file_path="a.vtt")
+        audio_description_repo.insert(video_uuid=video_uuid, format_="txt", source="compiled", file_path="a.txt")
+
+        count = audio_description_repo.delete_by_video(video_uuid)
+        assert count == 2
+
+        records = audio_description_repo.get_by_video(video_uuid)
+        assert records == []
+
+
+# ============================================================
+# NarrativeRepository Tests
+# ============================================================
+
+
+class TestNarrativeRepositoryInsert:
+    """Tests for NarrativeRepository.insert()."""
+
+    def test_insert_narrative(self, video_repo, narrative_repo):
+        """Test inserting a narrative structure."""
+        video_uuid = video_repo.insert(
+            video_id="narrativevid",
+            domain="youtube",
+            cache_path="/cache/nv",
+        )
+
+        ns_uuid = narrative_repo.insert(
+            video_uuid=video_uuid,
+            video_type="coding_tutorial",
+            section_count=5,
+            file_path="structure/narrative.json",
+        )
+
+        assert ns_uuid is not None
+        assert len(ns_uuid) == 36
+
+    def test_insert_minimal(self, video_repo, narrative_repo):
+        """Test inserting with only required fields."""
+        video_uuid = video_repo.insert(
+            video_id="minnr",
+            domain="youtube",
+            cache_path="/cache/mn",
+        )
+
+        ns_uuid = narrative_repo.insert(video_uuid=video_uuid)
+
+        ns = narrative_repo.get_by_video(video_uuid)
+        assert ns is not None
+        assert ns["video_type"] is None
+        assert ns["section_count"] is None
+        assert ns["file_path"] is None
+
+    def test_insert_all_valid_video_types(self, video_repo, narrative_repo):
+        """Test all valid video types can be inserted."""
+        for i, video_type in enumerate(NarrativeRepository.VALID_VIDEO_TYPES):
+            video_uuid = video_repo.insert(
+                video_id=f"type{i}",
+                domain="youtube",
+                cache_path=f"/cache/t{i}",
+            )
+
+            ns_uuid = narrative_repo.insert(
+                video_uuid=video_uuid,
+                video_type=video_type,
+            )
+            assert ns_uuid is not None
+
+    def test_insert_invalid_video_type_raises(self, video_repo, narrative_repo):
+        """Test that invalid video_type raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="badtype",
+            domain="youtube",
+            cache_path="/cache/bt",
+        )
+
+        with pytest.raises(ValueError, match="Invalid video_type"):
+            narrative_repo.insert(
+                video_uuid=video_uuid,
+                video_type="invalid_type",
+            )
+
+    def test_insert_negative_section_count_raises(self, video_repo, narrative_repo):
+        """Test that negative section_count raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="negsect",
+            domain="youtube",
+            cache_path="/cache/ns",
+        )
+
+        with pytest.raises(ValueError, match="section_count must be >= 0"):
+            narrative_repo.insert(
+                video_uuid=video_uuid,
+                section_count=-1,
+            )
+
+    def test_insert_duplicate_video_raises(self, video_repo, narrative_repo):
+        """Test that inserting twice for same video raises IntegrityError."""
+        video_uuid = video_repo.insert(
+            video_id="dupnr",
+            domain="youtube",
+            cache_path="/cache/dn",
+        )
+
+        narrative_repo.insert(video_uuid=video_uuid, video_type="lecture")
+
+        with pytest.raises(sqlite3.IntegrityError):
+            narrative_repo.insert(video_uuid=video_uuid, video_type="demo")
+
+
+class TestNarrativeRepositoryGet:
+    """Tests for NarrativeRepository get methods."""
+
+    def test_get_by_video(self, video_repo, narrative_repo):
+        """Test getting narrative structure by video UUID."""
+        video_uuid = video_repo.insert(
+            video_id="getnr",
+            domain="youtube",
+            cache_path="/cache/gn",
+        )
+
+        narrative_repo.insert(
+            video_uuid=video_uuid,
+            video_type="presentation",
+            section_count=3,
+        )
+
+        ns = narrative_repo.get_by_video(video_uuid)
+        assert ns is not None
+        assert ns["video_type"] == "presentation"
+        assert ns["section_count"] == 3
+
+    def test_get_by_video_not_found(self, video_repo, narrative_repo):
+        """Test get_by_video returns None when not found."""
+        video_uuid = video_repo.insert(
+            video_id="nonr",
+            domain="youtube",
+            cache_path="/cache/nn",
+        )
+
+        ns = narrative_repo.get_by_video(video_uuid)
+        assert ns is None
+
+    def test_get_by_uuid(self, video_repo, narrative_repo):
+        """Test getting narrative structure by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="getuuidnr",
+            domain="youtube",
+            cache_path="/cache/gun",
+        )
+
+        ns_uuid = narrative_repo.insert(video_uuid=video_uuid, video_type="interview")
+
+        ns = narrative_repo.get_by_uuid(ns_uuid)
+        assert ns is not None
+        assert ns["video_type"] == "interview"
+
+    def test_exists(self, video_repo, narrative_repo):
+        """Test exists() method."""
+        video_uuid = video_repo.insert(
+            video_id="existnr",
+            domain="youtube",
+            cache_path="/cache/en",
+        )
+
+        assert narrative_repo.exists(video_uuid) is False
+
+        narrative_repo.insert(video_uuid=video_uuid)
+
+        assert narrative_repo.exists(video_uuid) is True
+
+    def test_list_by_type(self, video_repo, narrative_repo):
+        """Test listing narratives by video type."""
+        for i in range(3):
+            video_uuid = video_repo.insert(
+                video_id=f"tut{i}",
+                domain="youtube",
+                cache_path=f"/cache/tut{i}",
+                title=f"Tutorial {i}",
+            )
+            narrative_repo.insert(video_uuid=video_uuid, video_type="coding_tutorial")
+
+        video_uuid = video_repo.insert(
+            video_id="lecture0",
+            domain="youtube",
+            cache_path="/cache/lec0",
+        )
+        narrative_repo.insert(video_uuid=video_uuid, video_type="lecture")
+
+        tutorials = narrative_repo.list_by_type("coding_tutorial")
+        assert len(tutorials) == 3
+
+
+class TestNarrativeRepositoryUpdate:
+    """Tests for NarrativeRepository.update()."""
+
+    def test_update(self, video_repo, narrative_repo):
+        """Test updating a narrative structure."""
+        video_uuid = video_repo.insert(
+            video_id="updnr",
+            domain="youtube",
+            cache_path="/cache/un",
+        )
+
+        narrative_repo.insert(video_uuid=video_uuid, video_type="other")
+
+        result = narrative_repo.update(
+            video_uuid,
+            video_type="demo",
+            section_count=4,
+        )
+        assert result is True
+
+        ns = narrative_repo.get_by_video(video_uuid)
+        assert ns["video_type"] == "demo"
+        assert ns["section_count"] == 4
+
+    def test_update_not_found(self, narrative_repo):
+        """Test update returns False for non-existent record."""
+        fake_uuid = str(uuid.uuid4())
+        result = narrative_repo.update(fake_uuid, video_type="demo")
+        assert result is False
+
+
+class TestNarrativeRepositoryDelete:
+    """Tests for NarrativeRepository.delete()."""
+
+    def test_delete(self, video_repo, narrative_repo):
+        """Test deleting a narrative structure."""
+        video_uuid = video_repo.insert(
+            video_id="delnr",
+            domain="youtube",
+            cache_path="/cache/dnr",
+        )
+
+        narrative_repo.insert(video_uuid=video_uuid, video_type="vlog")
+
+        result = narrative_repo.delete(video_uuid)
+        assert result is True
+
+        ns = narrative_repo.get_by_video(video_uuid)
+        assert ns is None
+
+    def test_delete_not_found(self, narrative_repo):
+        """Test delete returns False for non-existent record."""
+        fake_uuid = str(uuid.uuid4())
+        result = narrative_repo.delete(fake_uuid)
+        assert result is False
+
+
+# ============================================================
+# CodeEvolutionRepository Tests
+# ============================================================
+
+
+class TestCodeEvolutionRepositoryInsert:
+    """Tests for CodeEvolutionRepository.insert()."""
+
+    def test_insert_code_evolution(self, video_repo, code_evolution_repo):
+        """Test inserting a code evolution record."""
+        video_uuid = video_repo.insert(
+            video_id="codevid",
+            domain="youtube",
+            cache_path="/cache/cv",
+        )
+
+        ce_uuid = code_evolution_repo.insert(
+            video_uuid=video_uuid,
+            files_tracked=5,
+            total_changes=42,
+            file_path="entities/code_evolution.json",
+        )
+
+        assert ce_uuid is not None
+        assert len(ce_uuid) == 36
+
+    def test_insert_minimal(self, video_repo, code_evolution_repo):
+        """Test inserting with only required fields."""
+        video_uuid = video_repo.insert(
+            video_id="mince",
+            domain="youtube",
+            cache_path="/cache/mce",
+        )
+
+        ce_uuid = code_evolution_repo.insert(video_uuid=video_uuid)
+
+        ce = code_evolution_repo.get_by_video(video_uuid)
+        assert ce is not None
+        assert ce["files_tracked"] is None
+        assert ce["total_changes"] is None
+        assert ce["file_path"] is None
+
+    def test_insert_negative_files_tracked_raises(self, video_repo, code_evolution_repo):
+        """Test that negative files_tracked raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="negfiles",
+            domain="youtube",
+            cache_path="/cache/nf",
+        )
+
+        with pytest.raises(ValueError, match="files_tracked must be >= 0"):
+            code_evolution_repo.insert(
+                video_uuid=video_uuid,
+                files_tracked=-1,
+            )
+
+    def test_insert_negative_total_changes_raises(self, video_repo, code_evolution_repo):
+        """Test that negative total_changes raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="negchanges",
+            domain="youtube",
+            cache_path="/cache/nc",
+        )
+
+        with pytest.raises(ValueError, match="total_changes must be >= 0"):
+            code_evolution_repo.insert(
+                video_uuid=video_uuid,
+                total_changes=-1,
+            )
+
+    def test_insert_duplicate_video_raises(self, video_repo, code_evolution_repo):
+        """Test that inserting twice for same video raises IntegrityError."""
+        video_uuid = video_repo.insert(
+            video_id="dupce",
+            domain="youtube",
+            cache_path="/cache/dce",
+        )
+
+        code_evolution_repo.insert(video_uuid=video_uuid, files_tracked=1)
+
+        with pytest.raises(sqlite3.IntegrityError):
+            code_evolution_repo.insert(video_uuid=video_uuid, files_tracked=2)
+
+
+class TestCodeEvolutionRepositoryGet:
+    """Tests for CodeEvolutionRepository get methods."""
+
+    def test_get_by_video(self, video_repo, code_evolution_repo):
+        """Test getting code evolution by video UUID."""
+        video_uuid = video_repo.insert(
+            video_id="getce",
+            domain="youtube",
+            cache_path="/cache/gce",
+        )
+
+        code_evolution_repo.insert(
+            video_uuid=video_uuid,
+            files_tracked=3,
+            total_changes=15,
+        )
+
+        ce = code_evolution_repo.get_by_video(video_uuid)
+        assert ce is not None
+        assert ce["files_tracked"] == 3
+        assert ce["total_changes"] == 15
+
+    def test_get_by_video_not_found(self, video_repo, code_evolution_repo):
+        """Test get_by_video returns None when not found."""
+        video_uuid = video_repo.insert(
+            video_id="noce",
+            domain="youtube",
+            cache_path="/cache/nce",
+        )
+
+        ce = code_evolution_repo.get_by_video(video_uuid)
+        assert ce is None
+
+    def test_get_by_uuid(self, video_repo, code_evolution_repo):
+        """Test getting code evolution by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="getuuidce",
+            domain="youtube",
+            cache_path="/cache/guce",
+        )
+
+        ce_uuid = code_evolution_repo.insert(video_uuid=video_uuid, files_tracked=10)
+
+        ce = code_evolution_repo.get_by_uuid(ce_uuid)
+        assert ce is not None
+        assert ce["files_tracked"] == 10
+
+    def test_exists(self, video_repo, code_evolution_repo):
+        """Test exists() method."""
+        video_uuid = video_repo.insert(
+            video_id="existce",
+            domain="youtube",
+            cache_path="/cache/ece",
+        )
+
+        assert code_evolution_repo.exists(video_uuid) is False
+
+        code_evolution_repo.insert(video_uuid=video_uuid)
+
+        assert code_evolution_repo.exists(video_uuid) is True
+
+    def test_list_all(self, video_repo, code_evolution_repo):
+        """Test listing all code evolution records."""
+        for i in range(3):
+            video_uuid = video_repo.insert(
+                video_id=f"list{i}",
+                domain="youtube",
+                cache_path=f"/cache/list{i}",
+                title=f"Video {i}",
+            )
+            code_evolution_repo.insert(
+                video_uuid=video_uuid,
+                files_tracked=i + 1,
+            )
+
+        all_ce = code_evolution_repo.list_all()
+        assert len(all_ce) == 3
+        assert all("video_natural_id" in ce for ce in all_ce)
+        assert all("video_title" in ce for ce in all_ce)
+
+
+class TestCodeEvolutionRepositoryUpdate:
+    """Tests for CodeEvolutionRepository.update()."""
+
+    def test_update(self, video_repo, code_evolution_repo):
+        """Test updating a code evolution record."""
+        video_uuid = video_repo.insert(
+            video_id="updce",
+            domain="youtube",
+            cache_path="/cache/uce",
+        )
+
+        code_evolution_repo.insert(video_uuid=video_uuid, files_tracked=1)
+
+        result = code_evolution_repo.update(
+            video_uuid,
+            files_tracked=5,
+            total_changes=20,
+        )
+        assert result is True
+
+        ce = code_evolution_repo.get_by_video(video_uuid)
+        assert ce["files_tracked"] == 5
+        assert ce["total_changes"] == 20
+
+    def test_update_not_found(self, code_evolution_repo):
+        """Test update returns False for non-existent record."""
+        fake_uuid = str(uuid.uuid4())
+        result = code_evolution_repo.update(fake_uuid, files_tracked=5)
+        assert result is False
+
+
+class TestCodeEvolutionRepositoryDelete:
+    """Tests for CodeEvolutionRepository.delete()."""
+
+    def test_delete(self, video_repo, code_evolution_repo):
+        """Test deleting a code evolution record."""
+        video_uuid = video_repo.insert(
+            video_id="delce",
+            domain="youtube",
+            cache_path="/cache/dce2",
+        )
+
+        code_evolution_repo.insert(video_uuid=video_uuid, files_tracked=2)
+
+        result = code_evolution_repo.delete(video_uuid)
+        assert result is True
+
+        ce = code_evolution_repo.get_by_video(video_uuid)
+        assert ce is None
+
+    def test_delete_not_found(self, code_evolution_repo):
+        """Test delete returns False for non-existent record."""
+        fake_uuid = str(uuid.uuid4())
+        result = code_evolution_repo.delete(fake_uuid)
+        assert result is False
