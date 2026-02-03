@@ -222,3 +222,4 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 - 2026-02-03 08:44 | claudetube-dqz [P2] | Add download progress tracking with callbacks
 - 2026-02-03 09:05 | claudetube-unf [P2] | Define yt-dlp output template matching cache structure
 - 2026-02-03 09:12 | claudetube-vzb [P2] | Implement batch playlist download using yt-dlp templates
+- 2026-02-03 09:17 | claudetube-sws [P3] | Configure parallel output paths for subtitles and thumbnails
