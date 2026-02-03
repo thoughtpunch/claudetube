@@ -38,16 +38,22 @@ src/claudetube/
 ## Workflow (Per Task)
 
 1. **Claim**: `bd update <task-id> --status in_progress`
-2. **Implement** the task
-3. **Test**: Run `pytest tests/` to verify changes
-4. **Lint**: Run `ruff check src/` to catch issues
-5. **Commit** with ticket ID: `git commit -m "feat: <task-id> - Description"`
-6. **Back-link SHA**: `bd comments add <task-id> "Commit: $(git rev-parse HEAD)"`
-7. **Add completion comment** (see format below)
-8. **Close**: `bd close <task-id> --reason "Done"`
-9. **Sync**: `bd sync`
-10. **Commit progress file**: `git add scripts/ralph/progress.txt && git commit -m "ralph: update progress.txt" && git push`
-11. **STOP** — Just stop. Do NOT output any signal. The loop handles the next task.
+2. **Plan & Document**: Add approach comment (see format below)
+3. **Implement** the task (add progress comments for longer tasks)
+4. **Test**: Run `pytest tests/` to verify changes
+5. **Lint**: Run `ruff check src/` to catch issues
+6. **Commit** with ticket ID: `git commit -m "feat: <task-id> - Description"`
+7. **Back-link SHA**: `bd comments add <task-id> "Commit: $(git rev-parse HEAD)"`
+8. **Add completion comment** (see format below)
+9. **Close**: `bd close <task-id> --reason "Done"`
+10. **Sync**: `bd sync`
+11. **Commit progress file**: `git add scripts/ralph/progress.txt && git commit -m "ralph: update progress.txt" && git push`
+12. **STOP** — Just stop. Do NOT output any signal. The loop handles the next task.
+
+**Progress updates for longer tasks:**
+```bash
+bd comments add <task-id> "Progress: Completed X. Now working on Y..."
+```
 
 ---
 
@@ -56,21 +62,45 @@ src/claudetube/
 **CRITICAL**: Before outputting stop signals, complete this checklist:
 
 ```
-[ ] 1. git status              # Check what changed
-[ ] 2. git add <files>         # Stage code changes
-[ ] 3. git commit -m "..."     # Commit code with ticket ID
-[ ] 4. bd comments add ...     # Add completion comment
-[ ] 5. bd close <id>           # Close the task
-[ ] 6. bd sync                 # Sync beads to git
-[ ] 7. git add scripts/ralph/progress.txt && git commit -m "ralph: update progress.txt"
-[ ] 8. git push                # Push to remote (if permitted)
+[ ] 1. bd comments add ...     # Add approach comment (if not done)
+[ ] 2. git status              # Check what changed
+[ ] 3. git add <files>         # Stage code changes
+[ ] 4. git commit -m "..."     # Commit code with ticket ID
+[ ] 5. bd comments add ...     # Add completion comment
+[ ] 6. bd close <id>           # Close the task
+[ ] 7. bd sync                 # Sync beads to git
+[ ] 8. git add scripts/ralph/progress.txt && git commit -m "ralph: update progress.txt"
+[ ] 9. git push                # Push to remote (if permitted)
 ```
 
 **Work is not done until synced and progress.txt is committed.**
 
 ---
 
-## Completion Comment Format
+## Approach Comment Format (BEFORE implementation)
+
+After claiming a task, add a comment explaining your plan:
+
+```
+bd comments add <task-id> "## Approach
+
+**Understanding:** [1-2 sentences on what the task requires]
+
+**Plan:**
+1. [First step]
+2. [Second step]
+3. [etc.]
+
+**Files to modify:** [list expected files]
+
+**Risks/Questions:** [any concerns or unknowns]"
+```
+
+This documents your thinking and helps humans follow along.
+
+---
+
+## Completion Comment Format (AFTER implementation)
 
 ```
 ## What was done
