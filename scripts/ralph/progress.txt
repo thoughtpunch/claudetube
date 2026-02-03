@@ -218,3 +218,4 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 - 2026-02-03 07:57 | claudetube-nrf [P1] | Use yt-dlp Python API instead of subprocess
 - 2026-02-03 08:08 | claudetube-3ri [P1] | Add structured output parsing for yt-dlp subprocess
 - 2026-02-03 08:28 | claudetube-d6q [P1] | Create typed exception hierarchy for download errors
+- 2026-02-03 08:39 | claudetube-r7o [P1] | Surface full yt-dlp error codes and diagnostic info
