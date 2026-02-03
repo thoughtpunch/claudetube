@@ -154,6 +154,173 @@ def _cmd_extract_entities(args):
     print(json.dumps(result, indent=2))
 
 
+def _cmd_migrate(args):
+    """Handle the migrate subcommand to convert flat paths to hierarchical."""
+    import shutil
+    from urllib.parse import urlparse
+
+    from claudetube.config.loader import get_cache_dir
+    from claudetube.models.video_path import (
+        VideoPath,
+        _sanitize_path_component,
+        sanitize_domain,
+    )
+
+    cache_base = args.output or get_cache_dir(ensure_exists=True)
+    dry_run = args.dry_run
+
+    if dry_run:
+        logging.info("DRY RUN: No files will be moved")
+
+    # Collect flat directories (cache_base/video_id/state.json pattern)
+    flat_dirs = []
+    for state_file in sorted(cache_base.glob("*/state.json")):
+        parent = state_file.parent
+        # Check it's a flat path (1 level deep, not hierarchical)
+        rel_path = parent.relative_to(cache_base)
+        if len(rel_path.parts) == 1:
+            flat_dirs.append(parent)
+
+    if not flat_dirs:
+        print("No flat video directories found to migrate.")
+        return
+
+    print(f"Found {len(flat_dirs)} flat directories to migrate")
+
+    # Initialize database for UPSERT
+    db = None
+    repo = None
+    if not dry_run:
+        try:
+            from claudetube.db import get_database
+            from claudetube.db.repos.videos import VideoRepository
+
+            db = get_database()
+            repo = VideoRepository(db)
+        except Exception as e:
+            logging.warning(f"Could not initialize database: {e}")
+
+    migrated = 0
+    skipped = 0
+    errors = []
+
+    for flat_dir in flat_dirs:
+        video_id = flat_dir.name
+        state_file = flat_dir / "state.json"
+
+        try:
+            state = json.loads(state_file.read_text())
+
+            # Extract domain from URL
+            url = state.get("url", "")
+            domain = "unknown"
+            if url:
+                try:
+                    parsed_url = urlparse(url)
+                    if parsed_url.netloc:
+                        domain = sanitize_domain(parsed_url.netloc)
+                except Exception:
+                    logging.warning(f"Could not extract domain from URL for {video_id}, using 'unknown'")
+
+            # Extract channel from state (sanitize for filesystem)
+            channel = None
+            for key in ("channel_id", "uploader_id", "channel"):
+                if state.get(key):
+                    channel = _sanitize_path_component(state[key])
+                    break
+
+            # Extract playlist from state
+            playlist = None
+            for key in ("playlist_id", "playlist_title"):
+                if state.get(key):
+                    playlist = _sanitize_path_component(state[key])
+                    break
+
+            # Construct VideoPath
+            video_path = VideoPath(
+                domain=domain,
+                channel=channel,
+                playlist=playlist,
+                video_id=video_id,
+            )
+
+            new_rel_path = video_path.relative_path()
+            new_abs_path = cache_base / new_rel_path
+
+            # Check if already at hierarchical path
+            if flat_dir == new_abs_path:
+                logging.info(f"SKIP: {video_id} already at correct path")
+                skipped += 1
+                continue
+
+            # Check if target already exists
+            if new_abs_path.exists():
+                logging.warning(f"SKIP: {video_id} target path already exists: {new_abs_path}")
+                skipped += 1
+                continue
+
+            if dry_run:
+                print(f"{flat_dir.relative_to(cache_base)} -> {new_rel_path}")
+            else:
+                # Create parent directories
+                new_abs_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Move directory
+                shutil.move(str(flat_dir), str(new_abs_path))
+                logging.info(f"MOVED: {video_id} -> {new_rel_path}")
+
+                # Update SQLite if available
+                if repo:
+                    try:
+                        # UPSERT: insert if not exists, or update cache_path
+                        existing = repo.get_by_video_id(video_id)
+                        if existing:
+                            repo.update_cache_path(video_id, str(new_rel_path))
+                        else:
+                            repo.upsert(
+                                video_id=video_id,
+                                domain=domain,
+                                cache_path=str(new_rel_path),
+                                channel=channel,
+                                playlist=playlist,
+                                url=state.get("url"),
+                                title=state.get("title"),
+                                duration=state.get("duration"),
+                                duration_string=state.get("duration_string"),
+                                uploader=state.get("uploader"),
+                                channel_name=state.get("channel"),
+                                upload_date=state.get("upload_date"),
+                                description=state.get("description"),
+                                language=state.get("language"),
+                                view_count=state.get("view_count"),
+                                like_count=state.get("like_count"),
+                            )
+                    except Exception as e:
+                        logging.warning(f"SQLite update failed for {video_id}: {e}")
+
+            migrated += 1
+
+        except Exception as e:
+            errors.append((video_id, str(e)))
+            logging.error(f"ERROR: {video_id}: {e}")
+            continue
+
+    # Summary
+    print()
+    if dry_run:
+        print(f"DRY RUN: Would migrate {migrated} videos, skip {skipped}")
+    else:
+        print(f"Migrated {migrated}/{len(flat_dirs)} videos")
+
+    if skipped:
+        print(f"Skipped {skipped} (already migrated or target exists)")
+
+    if errors:
+        print(f"Errors ({len(errors)}):")
+        for video_id, error in errors:
+            print(f"  - {video_id}: {error}")
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -173,6 +340,8 @@ Examples:
     %(prog)s validate-config --skip-availability
     %(prog)s extract-entities VIDEO_ID
     %(prog)s extract-entities VIDEO_ID --scene-id 0 --force
+    %(prog)s migrate
+    %(prog)s migrate --dry-run
         """,
     )
 
@@ -218,6 +387,18 @@ Examples:
     )
     ee_parser.add_argument("-o", "--output", type=Path, help="Output directory")
 
+    # migrate subcommand
+    migrate_parser = subparsers.add_parser(
+        "migrate",
+        help="Migrate flat video caches to hierarchical directory structure",
+    )
+    migrate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be moved without actually moving",
+    )
+    migrate_parser.add_argument("-o", "--output", type=Path, help="Cache directory")
+
     # Default process-video arguments (when no subcommand)
     parser.add_argument("url", nargs="?", help="YouTube video URL")
     parser.add_argument("--frames", action="store_true", help="Extract frames")
@@ -233,6 +414,8 @@ Examples:
         _cmd_validate_config(args)
     elif args.command == "extract-entities":
         _cmd_extract_entities(args)
+    elif args.command == "migrate":
+        _cmd_migrate(args)
     elif args.url:
         _cmd_process(args)
     else:

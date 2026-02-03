@@ -277,6 +277,25 @@ class VideoRepository:
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    def update_cache_path(self, video_id: str, cache_path: str) -> bool:
+        """Update the cache_path for a video by its natural key.
+
+        Used during migration from flat to hierarchical cache paths.
+
+        Args:
+            video_id: The natural key (e.g., YouTube video ID).
+            cache_path: New cache path (relative to cache_base).
+
+        Returns:
+            True if a video was updated, False if not found.
+        """
+        cursor = self.db.execute(
+            "UPDATE videos SET cache_path = ?, updated_at = datetime('now') WHERE video_id = ?",
+            (cache_path, video_id),
+        )
+        self.db.commit()
+        return cursor.rowcount > 0
+
     def delete(self, video_id: str) -> bool:
         """Delete a video by its natural key.
 
