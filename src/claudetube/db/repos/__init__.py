@@ -28,8 +28,11 @@ Usage:
 from claudetube.db.repos.audio_descriptions import AudioDescriptionRepository
 from claudetube.db.repos.audio_tracks import AudioTrackRepository
 from claudetube.db.repos.code_evolution import CodeEvolutionRepository
+from claudetube.db.repos.entities import EntityRepository
 from claudetube.db.repos.frames import FrameRepository
 from claudetube.db.repos.narrative import NarrativeRepository
+from claudetube.db.repos.observations import ObservationRepository
+from claudetube.db.repos.qa import QARepository
 from claudetube.db.repos.scenes import SceneRepository
 from claudetube.db.repos.technical_content import TechnicalContentRepository
 from claudetube.db.repos.transcriptions import TranscriptionRepository
@@ -40,8 +43,11 @@ __all__ = [
     "AudioDescriptionRepository",
     "AudioTrackRepository",
     "CodeEvolutionRepository",
+    "EntityRepository",
     "FrameRepository",
     "NarrativeRepository",
+    "ObservationRepository",
+    "QARepository",
     "SceneRepository",
     "TechnicalContentRepository",
     "TranscriptionRepository",

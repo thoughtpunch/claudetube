@@ -11,8 +11,11 @@ from claudetube.db.repos import (
     AudioDescriptionRepository,
     AudioTrackRepository,
     CodeEvolutionRepository,
+    EntityRepository,
     FrameRepository,
     NarrativeRepository,
+    ObservationRepository,
+    QARepository,
     SceneRepository,
     TechnicalContentRepository,
     TranscriptionRepository,
@@ -3504,3 +3507,839 @@ class TestCodeEvolutionRepositoryDelete:
         fake_uuid = str(uuid.uuid4())
         result = code_evolution_repo.delete(fake_uuid)
         assert result is False
+
+
+# ============================================================
+# EntityRepository Tests
+# ============================================================
+
+
+@pytest.fixture
+def entity_repo(db):
+    """Create an EntityRepository instance."""
+    return EntityRepository(db)
+
+
+class TestEntityRepositoryInsert:
+    """Tests for EntityRepository.insert_entity()."""
+
+    def test_insert_entity(self, entity_repo):
+        """Test inserting a new entity."""
+        uuid_ = entity_repo.insert_entity("Python", "technology")
+        assert uuid_ is not None
+        assert len(uuid_) == 36
+
+    def test_insert_entity_upsert_returns_existing(self, entity_repo):
+        """Test insert_entity returns existing UUID for duplicate."""
+        uuid1 = entity_repo.insert_entity("Python", "technology")
+        uuid2 = entity_repo.insert_entity("Python", "technology")
+        assert uuid1 == uuid2
+
+    def test_insert_entity_different_types_allowed(self, entity_repo):
+        """Test same name with different types creates separate entities."""
+        uuid1 = entity_repo.insert_entity("Apple", "technology")
+        uuid2 = entity_repo.insert_entity("Apple", "organization")
+        assert uuid1 != uuid2
+
+    def test_insert_entity_all_valid_types(self, entity_repo):
+        """Test all valid entity types can be inserted."""
+        types = ["object", "concept", "person", "technology", "organization"]
+        for i, etype in enumerate(types):
+            uuid_ = entity_repo.insert_entity(f"Entity{i}", etype)
+            assert uuid_ is not None
+
+    def test_insert_entity_invalid_type_raises(self, entity_repo):
+        """Test invalid entity_type raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid entity_type"):
+            entity_repo.insert_entity("Something", "invalid_type")
+
+    def test_insert_entity_empty_name_raises(self, entity_repo):
+        """Test empty name raises ValueError."""
+        with pytest.raises(ValueError, match="cannot be empty"):
+            entity_repo.insert_entity("", "technology")
+
+    def test_insert_entity_whitespace_name_raises(self, entity_repo):
+        """Test whitespace-only name raises ValueError."""
+        with pytest.raises(ValueError, match="cannot be empty"):
+            entity_repo.insert_entity("   ", "technology")
+
+    def test_insert_entity_strips_whitespace(self, entity_repo):
+        """Test name is stripped of leading/trailing whitespace."""
+        uuid1 = entity_repo.insert_entity("  Python  ", "technology")
+        uuid2 = entity_repo.insert_entity("Python", "technology")
+        assert uuid1 == uuid2
+
+
+class TestEntityRepositoryAppearance:
+    """Tests for EntityRepository.insert_appearance()."""
+
+    def test_insert_appearance(self, video_repo, entity_repo):
+        """Test inserting an entity appearance."""
+        video_uuid = video_repo.insert(
+            video_id="testvid",
+            domain="youtube",
+            cache_path="/cache/tv",
+        )
+        entity_uuid = entity_repo.insert_entity("Python", "technology")
+
+        appearance_uuid = entity_repo.insert_appearance(
+            entity_uuid=entity_uuid,
+            video_uuid=video_uuid,
+            scene_id=0,
+            timestamp=30.5,
+            score=0.9,
+        )
+        assert appearance_uuid is not None
+        assert len(appearance_uuid) == 36
+
+    def test_insert_appearance_upsert_returns_existing(self, video_repo, entity_repo):
+        """Test duplicate appearance returns existing UUID."""
+        video_uuid = video_repo.insert(
+            video_id="testvid2",
+            domain="youtube",
+            cache_path="/cache/tv2",
+        )
+        entity_uuid = entity_repo.insert_entity("Django", "technology")
+
+        uuid1 = entity_repo.insert_appearance(entity_uuid, video_uuid, 0, 10.0)
+        uuid2 = entity_repo.insert_appearance(entity_uuid, video_uuid, 0, 20.0)
+        assert uuid1 == uuid2
+
+    def test_insert_appearance_negative_scene_raises(self, entity_repo):
+        """Test negative scene_id raises ValueError."""
+        with pytest.raises(ValueError, match="scene_id must be >= 0"):
+            entity_repo.insert_appearance("fake", "fake", -1, 0.0)
+
+    def test_insert_appearance_negative_timestamp_raises(self, entity_repo):
+        """Test negative timestamp raises ValueError."""
+        with pytest.raises(ValueError, match="timestamp must be >= 0"):
+            entity_repo.insert_appearance("fake", "fake", 0, -1.0)
+
+    def test_insert_appearance_invalid_score_raises(self, entity_repo):
+        """Test score out of range raises ValueError."""
+        with pytest.raises(ValueError, match="score must be between 0 and 1"):
+            entity_repo.insert_appearance("fake", "fake", 0, 0.0, score=1.5)
+
+
+class TestEntityRepositoryVideoSummary:
+    """Tests for EntityRepository.insert_video_summary()."""
+
+    def test_insert_video_summary(self, video_repo, entity_repo):
+        """Test inserting a video summary."""
+        video_uuid = video_repo.insert(
+            video_id="sumvid",
+            domain="youtube",
+            cache_path="/cache/sv",
+        )
+        entity_uuid = entity_repo.insert_entity("Machine Learning", "concept")
+
+        summary_uuid = entity_repo.insert_video_summary(
+            entity_uuid=entity_uuid,
+            video_uuid=video_uuid,
+            frequency=5,
+            avg_score=0.85,
+        )
+        assert summary_uuid is not None
+        assert len(summary_uuid) == 36
+
+    def test_insert_video_summary_upsert(self, video_repo, entity_repo):
+        """Test upserting video summary updates existing."""
+        video_uuid = video_repo.insert(
+            video_id="upsertvid",
+            domain="youtube",
+            cache_path="/cache/uv",
+        )
+        entity_uuid = entity_repo.insert_entity("AI", "concept")
+
+        uuid1 = entity_repo.insert_video_summary(entity_uuid, video_uuid, 3)
+        uuid2 = entity_repo.insert_video_summary(entity_uuid, video_uuid, 10, avg_score=0.9)
+        assert uuid1 == uuid2
+
+        # Verify the update
+        entities = entity_repo.get_video_entities(video_uuid)
+        assert len(entities) == 1
+        assert entities[0]["frequency"] == 10
+
+    def test_insert_video_summary_invalid_frequency_raises(self, entity_repo):
+        """Test frequency < 1 raises ValueError."""
+        with pytest.raises(ValueError, match="frequency must be >= 1"):
+            entity_repo.insert_video_summary("fake", "fake", 0)
+
+    def test_insert_video_summary_invalid_score_raises(self, entity_repo):
+        """Test avg_score out of range raises ValueError."""
+        with pytest.raises(ValueError, match="avg_score must be between 0 and 1"):
+            entity_repo.insert_video_summary("fake", "fake", 1, avg_score=-0.1)
+
+
+class TestEntityRepositoryQueries:
+    """Tests for EntityRepository query methods."""
+
+    def test_get_by_uuid(self, entity_repo):
+        """Test getting entity by UUID."""
+        uuid_ = entity_repo.insert_entity("React", "technology")
+        entity = entity_repo.get_by_uuid(uuid_)
+        assert entity is not None
+        assert entity["name"] == "React"
+        assert entity["entity_type"] == "technology"
+
+    def test_get_by_uuid_not_found(self, entity_repo):
+        """Test get_by_uuid returns None for non-existent."""
+        fake_uuid = str(uuid.uuid4())
+        entity = entity_repo.get_by_uuid(fake_uuid)
+        assert entity is None
+
+    def test_get_by_name_and_type(self, entity_repo):
+        """Test getting entity by name and type."""
+        entity_repo.insert_entity("JavaScript", "technology")
+        entity = entity_repo.get_by_name_and_type("JavaScript", "technology")
+        assert entity is not None
+        assert entity["name"] == "JavaScript"
+
+    def test_find_by_name(self, entity_repo):
+        """Test finding entities by name substring."""
+        entity_repo.insert_entity("Python", "technology")
+        entity_repo.insert_entity("Python Tutorial", "concept")
+        entity_repo.insert_entity("JavaScript", "technology")
+
+        results = entity_repo.find_by_name("python")
+        assert len(results) == 2
+
+    def test_get_video_entities(self, video_repo, entity_repo):
+        """Test getting all entities for a video."""
+        video_uuid = video_repo.insert(
+            video_id="getvid",
+            domain="youtube",
+            cache_path="/cache/gv",
+        )
+        e1 = entity_repo.insert_entity("Python", "technology")
+        e2 = entity_repo.insert_entity("Django", "technology")
+
+        entity_repo.insert_video_summary(e1, video_uuid, 5)
+        entity_repo.insert_video_summary(e2, video_uuid, 3)
+
+        entities = entity_repo.get_video_entities(video_uuid)
+        assert len(entities) == 2
+        # Ordered by frequency desc
+        assert entities[0]["name"] == "Python"
+        assert entities[0]["frequency"] == 5
+
+    def test_get_entity_videos(self, video_repo, entity_repo):
+        """Test getting all videos containing an entity."""
+        v1 = video_repo.insert(
+            video_id="vid1", domain="youtube", cache_path="/cache/v1", title="Video 1"
+        )
+        v2 = video_repo.insert(
+            video_id="vid2", domain="youtube", cache_path="/cache/v2", title="Video 2"
+        )
+
+        entity_uuid = entity_repo.insert_entity("Python", "technology")
+        entity_repo.insert_video_summary(entity_uuid, v1, 10)
+        entity_repo.insert_video_summary(entity_uuid, v2, 5)
+
+        videos = entity_repo.get_entity_videos("Python")
+        assert len(videos) == 2
+        # Ordered by frequency desc
+        assert videos[0]["video_id"] == "vid1"
+
+
+class TestEntityRepositoryFindRelated:
+    """Tests for EntityRepository.find_related_videos()."""
+
+    def test_find_related_videos(self, video_repo, entity_repo):
+        """Test finding videos related to a query."""
+        v1 = video_repo.insert(
+            video_id="relv1", domain="youtube", cache_path="/c/r1", title="Python Basics"
+        )
+        v2 = video_repo.insert(
+            video_id="relv2", domain="youtube", cache_path="/c/r2", title="JavaScript Guide"
+        )
+
+        e1 = entity_repo.insert_entity("Python", "technology")
+        e2 = entity_repo.insert_entity("JavaScript", "technology")
+
+        entity_repo.insert_video_summary(e1, v1, 5)
+        entity_repo.insert_video_summary(e2, v2, 3)
+
+        results = entity_repo.find_related_videos("python")
+        assert len(results) == 1
+        assert results[0]["video_id"] == "relv1"
+        assert results[0]["matched_term"] == "Python"
+
+    def test_find_related_videos_empty_query(self, entity_repo):
+        """Test empty query returns no results."""
+        results = entity_repo.find_related_videos("")
+        assert len(results) == 0
+
+
+class TestEntityRepositoryConnections:
+    """Tests for EntityRepository.get_connections()."""
+
+    def test_get_connections(self, video_repo, entity_repo):
+        """Test finding connected videos via shared entities."""
+        v1 = video_repo.insert(
+            video_id="connv1", domain="youtube", cache_path="/c/cv1"
+        )
+        v2 = video_repo.insert(
+            video_id="connv2", domain="youtube", cache_path="/c/cv2"
+        )
+        v3 = video_repo.insert(
+            video_id="connv3", domain="youtube", cache_path="/c/cv3"
+        )
+
+        e1 = entity_repo.insert_entity("Python", "technology")
+        e2 = entity_repo.insert_entity("JavaScript", "technology")
+
+        # v1 and v2 share Python
+        entity_repo.insert_video_summary(e1, v1, 5)
+        entity_repo.insert_video_summary(e1, v2, 3)
+        # v3 has only JavaScript
+        entity_repo.insert_video_summary(e2, v3, 2)
+
+        connections = entity_repo.get_connections(v1)
+        assert v2 in connections
+        assert v3 not in connections
+        assert v1 not in connections  # Should not include self
+
+    def test_get_connections_no_connections(self, video_repo, entity_repo):
+        """Test video with no connections returns empty list."""
+        video_uuid = video_repo.insert(
+            video_id="lonely", domain="youtube", cache_path="/c/lonely"
+        )
+        entity_uuid = entity_repo.insert_entity("Unique", "concept")
+        entity_repo.insert_video_summary(entity_uuid, video_uuid, 1)
+
+        connections = entity_repo.get_connections(video_uuid)
+        assert connections == []
+
+
+class TestEntityRepositoryDelete:
+    """Tests for EntityRepository delete methods."""
+
+    def test_delete_entity(self, entity_repo):
+        """Test deleting an entity."""
+        uuid_ = entity_repo.insert_entity("ToDelete", "concept")
+        result = entity_repo.delete_entity(uuid_)
+        assert result is True
+
+        entity = entity_repo.get_by_uuid(uuid_)
+        assert entity is None
+
+    def test_delete_entity_not_found(self, entity_repo):
+        """Test delete returns False for non-existent entity."""
+        fake_uuid = str(uuid.uuid4())
+        result = entity_repo.delete_entity(fake_uuid)
+        assert result is False
+
+    def test_delete_video_entities(self, video_repo, entity_repo):
+        """Test deleting all entity data for a video."""
+        video_uuid = video_repo.insert(
+            video_id="delvid", domain="youtube", cache_path="/c/dv"
+        )
+        e1 = entity_repo.insert_entity("E1", "concept")
+        e2 = entity_repo.insert_entity("E2", "concept")
+
+        entity_repo.insert_appearance(e1, video_uuid, 0, 10.0)
+        entity_repo.insert_appearance(e2, video_uuid, 1, 20.0)
+        entity_repo.insert_video_summary(e1, video_uuid, 1)
+        entity_repo.insert_video_summary(e2, video_uuid, 1)
+
+        count = entity_repo.delete_video_entities(video_uuid)
+        assert count == 4  # 2 appearances + 2 summaries
+
+        # Verify deletion
+        entities = entity_repo.get_video_entities(video_uuid)
+        assert len(entities) == 0
+
+
+class TestEntityRepositoryStats:
+    """Tests for EntityRepository.get_stats()."""
+
+    def test_get_stats(self, video_repo, entity_repo):
+        """Test getting entity statistics."""
+        video_uuid = video_repo.insert(
+            video_id="statvid", domain="youtube", cache_path="/c/stat"
+        )
+        e1 = entity_repo.insert_entity("Stat1", "concept")
+
+        entity_repo.insert_appearance(e1, video_uuid, 0, 0.0)
+        entity_repo.insert_video_summary(e1, video_uuid, 1)
+
+        stats = entity_repo.get_stats()
+        assert stats["entity_count"] >= 1
+        assert stats["appearance_count"] >= 1
+        assert stats["summary_count"] >= 1
+        assert stats["video_count"] >= 1
+
+
+# ============================================================
+# QARepository Tests
+# ============================================================
+
+
+@pytest.fixture
+def qa_repo(db):
+    """Create a QARepository instance."""
+    return QARepository(db)
+
+
+class TestQARepositoryInsert:
+    """Tests for QARepository.insert()."""
+
+    def test_insert_qa(self, video_repo, qa_repo):
+        """Test inserting a Q&A pair."""
+        video_uuid = video_repo.insert(
+            video_id="qavid",
+            domain="youtube",
+            cache_path="/cache/qa",
+        )
+
+        qa_uuid = qa_repo.insert(
+            video_uuid=video_uuid,
+            question="What is Python?",
+            answer="A programming language.",
+        )
+        assert qa_uuid is not None
+        assert len(qa_uuid) == 36
+
+    def test_insert_qa_with_scenes(self, video_repo, qa_repo):
+        """Test inserting Q&A with scene associations."""
+        video_uuid = video_repo.insert(
+            video_id="qascene",
+            domain="youtube",
+            cache_path="/cache/qas",
+        )
+
+        qa_uuid = qa_repo.insert(
+            video_uuid=video_uuid,
+            question="When does the demo start?",
+            answer="At 5:30",
+            scene_ids=[2, 3, 4],
+        )
+
+        qa = qa_repo.get_by_uuid(qa_uuid)
+        assert qa["scene_ids"] == [2, 3, 4]
+
+    def test_insert_qa_empty_question_raises(self, qa_repo):
+        """Test empty question raises ValueError."""
+        with pytest.raises(ValueError, match="Question cannot be empty"):
+            qa_repo.insert("fake", "", "answer")
+
+    def test_insert_qa_empty_answer_raises(self, qa_repo):
+        """Test empty answer raises ValueError."""
+        with pytest.raises(ValueError, match="Answer cannot be empty"):
+            qa_repo.insert("fake", "question", "")
+
+    def test_insert_qa_negative_scene_raises(self, video_repo, qa_repo):
+        """Test negative scene_id raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="qaneg",
+            domain="youtube",
+            cache_path="/cache/qan",
+        )
+        with pytest.raises(ValueError, match="scene_id must be >= 0"):
+            qa_repo.insert(video_uuid, "Q?", "A", scene_ids=[-1])
+
+
+class TestQARepositoryGet:
+    """Tests for QARepository query methods."""
+
+    def test_get_by_uuid(self, video_repo, qa_repo):
+        """Test getting Q&A by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="getqa",
+            domain="youtube",
+            cache_path="/cache/gqa",
+        )
+
+        qa_uuid = qa_repo.insert(video_uuid, "Q?", "A!")
+
+        qa = qa_repo.get_by_uuid(qa_uuid)
+        assert qa is not None
+        assert qa["question"] == "Q?"
+        assert qa["answer"] == "A!"
+
+    def test_get_by_uuid_not_found(self, qa_repo):
+        """Test get_by_uuid returns None for non-existent."""
+        fake_uuid = str(uuid.uuid4())
+        qa = qa_repo.get_by_uuid(fake_uuid)
+        assert qa is None
+
+    def test_get_by_video(self, video_repo, qa_repo):
+        """Test getting all Q&A for a video."""
+        video_uuid = video_repo.insert(
+            video_id="multqa",
+            domain="youtube",
+            cache_path="/cache/mqa",
+        )
+
+        qa_repo.insert(video_uuid, "Q1?", "A1")
+        qa_repo.insert(video_uuid, "Q2?", "A2")
+        qa_repo.insert(video_uuid, "Q3?", "A3")
+
+        qas = qa_repo.get_by_video(video_uuid)
+        assert len(qas) == 3
+
+
+class TestQARepositoryFTS:
+    """Tests for QARepository.search_fts()."""
+
+    def test_search_fts_question(self, video_repo, qa_repo):
+        """Test FTS search finds question matches."""
+        video_uuid = video_repo.insert(
+            video_id="ftsqa1",
+            domain="youtube",
+            cache_path="/cache/fq1",
+            title="Test Video",
+        )
+
+        qa_repo.insert(video_uuid, "How do I install Python?", "Use pip")
+        qa_repo.insert(video_uuid, "What is JavaScript?", "A language")
+
+        results = qa_repo.search_fts("Python")
+        assert len(results) == 1
+        assert "Python" in results[0]["question"]
+
+    def test_search_fts_answer(self, video_repo, qa_repo):
+        """Test FTS search finds answer matches."""
+        video_uuid = video_repo.insert(
+            video_id="ftsqa2",
+            domain="youtube",
+            cache_path="/cache/fq2",
+            title="Test Video 2",
+        )
+
+        qa_repo.insert(video_uuid, "How to install?", "Use pip install Django")
+
+        results = qa_repo.search_fts("Django")
+        assert len(results) == 1
+        assert "Django" in results[0]["answer"]
+
+
+class TestQARepositoryScenes:
+    """Tests for QARepository scene association methods."""
+
+    def test_get_for_scene(self, video_repo, qa_repo):
+        """Test getting Q&A for a specific scene."""
+        video_uuid = video_repo.insert(
+            video_id="sceneqa",
+            domain="youtube",
+            cache_path="/cache/sqa",
+        )
+
+        qa_repo.insert(video_uuid, "Q1?", "A1", scene_ids=[0, 1])
+        qa_repo.insert(video_uuid, "Q2?", "A2", scene_ids=[1, 2])
+        qa_repo.insert(video_uuid, "Q3?", "A3", scene_ids=[3])
+
+        scene1_qas = qa_repo.get_for_scene(video_uuid, 1)
+        assert len(scene1_qas) == 2
+
+        scene3_qas = qa_repo.get_for_scene(video_uuid, 3)
+        assert len(scene3_qas) == 1
+
+    def test_add_scene_association(self, video_repo, qa_repo):
+        """Test adding scene association to existing Q&A."""
+        video_uuid = video_repo.insert(
+            video_id="addsceneqa",
+            domain="youtube",
+            cache_path="/cache/asqa",
+        )
+
+        qa_uuid = qa_repo.insert(video_uuid, "Q?", "A")
+        result = qa_repo.add_scene_association(qa_uuid, 5)
+        assert result is True
+
+        qa = qa_repo.get_by_uuid(qa_uuid)
+        assert 5 in qa["scene_ids"]
+
+    def test_add_scene_association_duplicate(self, video_repo, qa_repo):
+        """Test adding duplicate scene association returns False."""
+        video_uuid = video_repo.insert(
+            video_id="dupsceneqa",
+            domain="youtube",
+            cache_path="/cache/dsqa",
+        )
+
+        qa_uuid = qa_repo.insert(video_uuid, "Q?", "A", scene_ids=[1])
+        result = qa_repo.add_scene_association(qa_uuid, 1)
+        assert result is False
+
+    def test_remove_scene_association(self, video_repo, qa_repo):
+        """Test removing scene association."""
+        video_uuid = video_repo.insert(
+            video_id="rmsceneqa",
+            domain="youtube",
+            cache_path="/cache/rsqa",
+        )
+
+        qa_uuid = qa_repo.insert(video_uuid, "Q?", "A", scene_ids=[1, 2, 3])
+        result = qa_repo.remove_scene_association(qa_uuid, 2)
+        assert result is True
+
+        qa = qa_repo.get_by_uuid(qa_uuid)
+        assert 2 not in qa["scene_ids"]
+
+
+class TestQARepositoryDelete:
+    """Tests for QARepository delete methods."""
+
+    def test_delete(self, video_repo, qa_repo):
+        """Test deleting a Q&A pair."""
+        video_uuid = video_repo.insert(
+            video_id="delqa",
+            domain="youtube",
+            cache_path="/cache/dqa",
+        )
+
+        qa_uuid = qa_repo.insert(video_uuid, "Q?", "A")
+        result = qa_repo.delete(qa_uuid)
+        assert result is True
+
+        qa = qa_repo.get_by_uuid(qa_uuid)
+        assert qa is None
+
+    def test_delete_not_found(self, qa_repo):
+        """Test delete returns False for non-existent."""
+        fake_uuid = str(uuid.uuid4())
+        result = qa_repo.delete(fake_uuid)
+        assert result is False
+
+    def test_delete_by_video(self, video_repo, qa_repo):
+        """Test deleting all Q&A for a video."""
+        video_uuid = video_repo.insert(
+            video_id="delallqa",
+            domain="youtube",
+            cache_path="/cache/daqa",
+        )
+
+        qa_repo.insert(video_uuid, "Q1?", "A1")
+        qa_repo.insert(video_uuid, "Q2?", "A2")
+
+        count = qa_repo.delete_by_video(video_uuid)
+        assert count == 2
+
+    def test_count_by_video(self, video_repo, qa_repo):
+        """Test counting Q&A pairs for a video."""
+        video_uuid = video_repo.insert(
+            video_id="cntqa",
+            domain="youtube",
+            cache_path="/cache/cqa",
+        )
+
+        qa_repo.insert(video_uuid, "Q1?", "A1")
+        qa_repo.insert(video_uuid, "Q2?", "A2")
+
+        count = qa_repo.count_by_video(video_uuid)
+        assert count == 2
+
+
+# ============================================================
+# ObservationRepository Tests
+# ============================================================
+
+
+@pytest.fixture
+def observation_repo(db):
+    """Create an ObservationRepository instance."""
+    return ObservationRepository(db)
+
+
+class TestObservationRepositoryInsert:
+    """Tests for ObservationRepository.insert()."""
+
+    def test_insert_observation(self, video_repo, observation_repo):
+        """Test inserting an observation."""
+        video_uuid = video_repo.insert(
+            video_id="obsvid",
+            domain="youtube",
+            cache_path="/cache/obs",
+        )
+
+        obs_uuid = observation_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            obs_type="visual",
+            content="Screen shows code editor",
+        )
+        assert obs_uuid is not None
+        assert len(obs_uuid) == 36
+
+    def test_insert_observation_negative_scene_raises(self, observation_repo):
+        """Test negative scene_id raises ValueError."""
+        with pytest.raises(ValueError, match="scene_id must be >= 0"):
+            observation_repo.insert("fake", -1, "note", "content")
+
+    def test_insert_observation_empty_type_raises(self, observation_repo):
+        """Test empty type raises ValueError."""
+        with pytest.raises(ValueError, match="type cannot be empty"):
+            observation_repo.insert("fake", 0, "", "content")
+
+    def test_insert_observation_empty_content_raises(self, observation_repo):
+        """Test empty content raises ValueError."""
+        with pytest.raises(ValueError, match="content cannot be empty"):
+            observation_repo.insert("fake", 0, "note", "")
+
+
+class TestObservationRepositoryGet:
+    """Tests for ObservationRepository query methods."""
+
+    def test_get_by_uuid(self, video_repo, observation_repo):
+        """Test getting observation by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="getobs",
+            domain="youtube",
+            cache_path="/cache/gobs",
+        )
+
+        obs_uuid = observation_repo.insert(video_uuid, 0, "note", "Test observation")
+
+        obs = observation_repo.get_by_uuid(obs_uuid)
+        assert obs is not None
+        assert obs["type"] == "note"
+        assert obs["content"] == "Test observation"
+
+    def test_get_by_uuid_not_found(self, observation_repo):
+        """Test get_by_uuid returns None for non-existent."""
+        fake_uuid = str(uuid.uuid4())
+        obs = observation_repo.get_by_uuid(fake_uuid)
+        assert obs is None
+
+    def test_get_by_video(self, video_repo, observation_repo):
+        """Test getting all observations for a video."""
+        video_uuid = video_repo.insert(
+            video_id="multobs",
+            domain="youtube",
+            cache_path="/cache/mobs",
+        )
+
+        observation_repo.insert(video_uuid, 0, "visual", "Obs 1")
+        observation_repo.insert(video_uuid, 1, "technical", "Obs 2")
+        observation_repo.insert(video_uuid, 2, "note", "Obs 3")
+
+        observations = observation_repo.get_by_video(video_uuid)
+        assert len(observations) == 3
+
+    def test_get_by_scene(self, video_repo, observation_repo):
+        """Test getting observations for a specific scene."""
+        video_uuid = video_repo.insert(
+            video_id="sceneobs",
+            domain="youtube",
+            cache_path="/cache/sobs",
+        )
+
+        observation_repo.insert(video_uuid, 0, "visual", "Scene 0 - 1")
+        observation_repo.insert(video_uuid, 0, "technical", "Scene 0 - 2")
+        observation_repo.insert(video_uuid, 1, "note", "Scene 1")
+
+        scene0_obs = observation_repo.get_by_scene(video_uuid, 0)
+        assert len(scene0_obs) == 2
+
+        scene1_obs = observation_repo.get_by_scene(video_uuid, 1)
+        assert len(scene1_obs) == 1
+
+    def test_get_by_type(self, video_repo, observation_repo):
+        """Test getting observations by type."""
+        video_uuid = video_repo.insert(
+            video_id="typeobs",
+            domain="youtube",
+            cache_path="/cache/tobs",
+        )
+
+        observation_repo.insert(video_uuid, 0, "visual", "V1")
+        observation_repo.insert(video_uuid, 1, "visual", "V2")
+        observation_repo.insert(video_uuid, 2, "technical", "T1")
+
+        visual_obs = observation_repo.get_by_type(video_uuid, "visual")
+        assert len(visual_obs) == 2
+
+
+class TestObservationRepositoryDelete:
+    """Tests for ObservationRepository delete methods."""
+
+    def test_delete(self, video_repo, observation_repo):
+        """Test deleting an observation."""
+        video_uuid = video_repo.insert(
+            video_id="delobs",
+            domain="youtube",
+            cache_path="/cache/dobs",
+        )
+
+        obs_uuid = observation_repo.insert(video_uuid, 0, "note", "To delete")
+        result = observation_repo.delete(obs_uuid)
+        assert result is True
+
+        obs = observation_repo.get_by_uuid(obs_uuid)
+        assert obs is None
+
+    def test_delete_not_found(self, observation_repo):
+        """Test delete returns False for non-existent."""
+        fake_uuid = str(uuid.uuid4())
+        result = observation_repo.delete(fake_uuid)
+        assert result is False
+
+    def test_delete_by_video(self, video_repo, observation_repo):
+        """Test deleting all observations for a video."""
+        video_uuid = video_repo.insert(
+            video_id="delallobs",
+            domain="youtube",
+            cache_path="/cache/daobs",
+        )
+
+        observation_repo.insert(video_uuid, 0, "note", "Obs 1")
+        observation_repo.insert(video_uuid, 1, "note", "Obs 2")
+
+        count = observation_repo.delete_by_video(video_uuid)
+        assert count == 2
+
+    def test_delete_by_scene(self, video_repo, observation_repo):
+        """Test deleting all observations for a scene."""
+        video_uuid = video_repo.insert(
+            video_id="delscnobs",
+            domain="youtube",
+            cache_path="/cache/dsobs",
+        )
+
+        observation_repo.insert(video_uuid, 0, "note", "S0-1")
+        observation_repo.insert(video_uuid, 0, "visual", "S0-2")
+        observation_repo.insert(video_uuid, 1, "note", "S1")
+
+        count = observation_repo.delete_by_scene(video_uuid, 0)
+        assert count == 2
+
+        remaining = observation_repo.get_by_video(video_uuid)
+        assert len(remaining) == 1
+
+
+class TestObservationRepositoryCount:
+    """Tests for ObservationRepository count methods."""
+
+    def test_count_by_video(self, video_repo, observation_repo):
+        """Test counting observations for a video."""
+        video_uuid = video_repo.insert(
+            video_id="cntobs",
+            domain="youtube",
+            cache_path="/cache/cobs",
+        )
+
+        observation_repo.insert(video_uuid, 0, "note", "Obs 1")
+        observation_repo.insert(video_uuid, 1, "note", "Obs 2")
+
+        count = observation_repo.count_by_video(video_uuid)
+        assert count == 2
+
+    def test_count_by_scene(self, video_repo, observation_repo):
+        """Test counting observations for a scene."""
+        video_uuid = video_repo.insert(
+            video_id="cntscnobs",
+            domain="youtube",
+            cache_path="/cache/csobs",
+        )
+
+        observation_repo.insert(video_uuid, 0, "note", "S0-1")
+        observation_repo.insert(video_uuid, 0, "visual", "S0-2")
+        observation_repo.insert(video_uuid, 1, "note", "S1")
+
+        count0 = observation_repo.count_by_scene(video_uuid, 0)
+        assert count0 == 2
+
+        count1 = observation_repo.count_by_scene(video_uuid, 1)
+        assert count1 == 1
