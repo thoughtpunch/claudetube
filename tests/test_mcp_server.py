@@ -117,9 +117,17 @@ class TestProcessVideoTool:
 class TestGetFramesTool:
     """Tests for the get_frames MCP tool."""
 
+    @pytest.fixture
+    def video_cache(self, cache_dir):
+        """Create a minimal cached video for test123."""
+        video_dir = cache_dir / "test123"
+        video_dir.mkdir()
+        (video_dir / "state.json").write_text(json.dumps({"video_id": "test123"}))
+        return video_dir
+
     @pytest.mark.asyncio
     @patch("claudetube.mcp_server.get_frames_at")
-    async def test_returns_frame_paths(self, mock_gf, cache_dir):
+    async def test_returns_frame_paths(self, mock_gf, video_cache):
         """Returns JSON list of frame paths."""
         from claudetube.mcp_server import get_frames
 
@@ -135,7 +143,7 @@ class TestGetFramesTool:
 
     @pytest.mark.asyncio
     @patch("claudetube.mcp_server.get_frames_at")
-    async def test_returns_empty_on_no_frames(self, mock_gf, cache_dir):
+    async def test_returns_empty_on_no_frames(self, mock_gf, video_cache):
         """Returns empty list when no frames extracted."""
         from claudetube.mcp_server import get_frames
 
@@ -146,13 +154,32 @@ class TestGetFramesTool:
         assert result["frame_count"] == 0
         assert result["frame_paths"] == []
 
+    @pytest.mark.asyncio
+    async def test_returns_error_when_not_cached(self, cache_dir):
+        """Returns error JSON when video not in cache."""
+        from claudetube.mcp_server import get_frames
+
+        result = json.loads(await get_frames("not_cached", start_time=0.0))
+
+        assert "error" in result
+        assert "not_cached" in result["error"]
+        assert "process_video" in result["error"]
+
 
 class TestGetHqFramesTool:
     """Tests for the get_hq_frames MCP tool."""
 
+    @pytest.fixture
+    def video_cache(self, cache_dir):
+        """Create a minimal cached video for test123."""
+        video_dir = cache_dir / "test123"
+        video_dir.mkdir()
+        (video_dir / "state.json").write_text(json.dumps({"video_id": "test123"}))
+        return video_dir
+
     @pytest.mark.asyncio
     @patch("claudetube.mcp_server.get_hq_frames_at")
-    async def test_returns_hq_frame_paths(self, mock_ghf, cache_dir):
+    async def test_returns_hq_frame_paths(self, mock_ghf, video_cache):
         """Returns JSON list of HQ frame paths."""
         from claudetube.mcp_server import get_hq_frames
 
@@ -165,7 +192,7 @@ class TestGetHqFramesTool:
 
     @pytest.mark.asyncio
     @patch("claudetube.mcp_server.get_hq_frames_at")
-    async def test_returns_empty_on_failure(self, mock_ghf, cache_dir):
+    async def test_returns_empty_on_failure(self, mock_ghf, video_cache):
         """Returns empty list when HQ extraction fails."""
         from claudetube.mcp_server import get_hq_frames
 
@@ -174,6 +201,17 @@ class TestGetHqFramesTool:
         result = json.loads(await get_hq_frames("test123", start_time=0.0))
 
         assert result["frame_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_returns_error_when_not_cached(self, cache_dir):
+        """Returns error JSON when video not in cache."""
+        from claudetube.mcp_server import get_hq_frames
+
+        result = json.loads(await get_hq_frames("not_cached", start_time=0.0))
+
+        assert "error" in result
+        assert "not_cached" in result["error"]
+        assert "process_video" in result["error"]
 
 
 class TestListCachedVideosTool:
@@ -255,6 +293,7 @@ class TestGetTranscriptTool:
 
         video_dir = cache_dir / "onlysrt12345"
         video_dir.mkdir()
+        (video_dir / "state.json").write_text(json.dumps({"video_id": "onlysrt12345"}))
         (video_dir / "audio.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nHi\n")
 
         result = json.loads(await get_transcript("onlysrt12345", format="txt"))
@@ -269,6 +308,7 @@ class TestGetTranscriptTool:
 
         video_dir = cache_dir / "notranscript"
         video_dir.mkdir()
+        (video_dir / "state.json").write_text(json.dumps({"video_id": "notranscript"}))
 
         result = json.loads(await get_transcript("notranscript"))
 
@@ -353,9 +393,10 @@ class TestFindMomentsTool:
         from claudetube.analysis.search import SearchMoment
         from claudetube.mcp_server import find_moments_tool
 
-        # Create video cache dir so existence check passes
+        # Create video cache dir with state.json so existence check passes
         video_dir = cache_dir / "test123"
         video_dir.mkdir()
+        (video_dir / "state.json").write_text(json.dumps({"video_id": "test123"}))
 
         mock_find.return_value = [
             SearchMoment(
@@ -379,23 +420,25 @@ class TestFindMomentsTool:
         assert "Found 1 relevant moment:" in result["formatted"]
 
     @pytest.mark.asyncio
-    @patch("claudetube.mcp_server.find_moments")
-    async def test_returns_error_on_not_found(self, mock_find, cache_dir):
+    async def test_returns_error_on_not_found(self, cache_dir):
         """Returns error when video is not found."""
         from claudetube.mcp_server import find_moments_tool
-
-        mock_find.side_effect = FileNotFoundError("Video not123 not found in cache.")
 
         result = json.loads(await find_moments_tool("not123", "query"))
 
         assert "error" in result
-        assert "not found" in result["error"]
+        assert "not found" in result["error"].lower()
 
     @pytest.mark.asyncio
     @patch("claudetube.mcp_server.find_moments")
     async def test_returns_error_on_no_scenes(self, mock_find, cache_dir):
         """Returns error when video has no scene data."""
         from claudetube.mcp_server import find_moments_tool
+
+        # Create video cache dir with state.json
+        video_dir = cache_dir / "noscenes"
+        video_dir.mkdir()
+        (video_dir / "state.json").write_text(json.dumps({"video_id": "noscenes"}))
 
         mock_find.side_effect = ValueError("Video has no scene data.")
 
@@ -410,9 +453,10 @@ class TestFindMomentsTool:
         """Returns empty results gracefully."""
         from claudetube.mcp_server import find_moments_tool
 
-        # Create video cache dir so existence check passes
+        # Create video cache dir with state.json so existence check passes
         video_dir = cache_dir / "test123"
         video_dir.mkdir()
+        (video_dir / "state.json").write_text(json.dumps({"video_id": "test123"}))
 
         mock_find.return_value = []
 
