@@ -1501,9 +1501,11 @@ class YtDlpTool(VideoTool):
         ]
 
         try:
-            result = self._run(args, timeout=timeout)
-            if not result.success:
-                return None
+            # Note: We don't check result.success here because yt-dlp returns
+            # non-zero exit code if ANY subtitle language fails (e.g., 429 for en-ar),
+            # even when the primary subtitle (en) is successfully downloaded.
+            # Instead, we check for subtitle files after the command completes.
+            self._run(args, timeout=timeout)
         except Exception:
             return None
 

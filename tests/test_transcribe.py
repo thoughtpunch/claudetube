@@ -266,13 +266,23 @@ class TestTranscribeVideo:
 
     @pytest.mark.asyncio
     async def test_no_audio_downloads_from_url_input(self, tmp_path):
-        """When audio missing and input is a URL, uses that URL for download."""
+        """When audio missing and input is a URL, uses that URL for download.
+
+        Note: With 'Cheap First' principle, fetch_subtitles is tried first.
+        We mock it to return None to simulate no subtitles available, which
+        then falls back to audio download + Whisper transcription.
+        """
         video_dir = tmp_path / "dQw4w9WgXcQ"
         video_dir.mkdir(parents=True)
 
         transcriber = _make_transcriber(_make_result(provider="whisper-local"))
 
-        with patch("claudetube.operations.transcribe.download_audio") as mock_dl:
+        with (
+            patch("claudetube.operations.transcribe.fetch_subtitles") as mock_subs,
+            patch("claudetube.operations.transcribe.download_audio") as mock_dl,
+        ):
+            # No subtitles available - fall back to Whisper
+            mock_subs.return_value = None
 
             def fake_download(url, path):
                 path.write_bytes(b"fake audio")
@@ -287,7 +297,8 @@ class TestTranscribeVideo:
             )
 
         assert result["success"] is True
-        assert mock_dl.called
+        assert mock_subs.called  # Subtitles checked first (Cheap First)
+        assert mock_dl.called  # Then fell back to audio download
 
     @pytest.mark.asyncio
     async def test_audio_download_failure_returns_error(self, tmp_path):
