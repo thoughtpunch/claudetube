@@ -229,3 +229,4 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 Task completed: Tue Feb  3 14:44:25 CST 2026
 - 2026-02-03 15:26 | claudetube-q241 [P0] | CRITICAL: All tools must use hierarchical paths - flat paths are deprecated
 - 2026-02-03 15:47 | claudetube-9hse [P1] | Cache path uses 'no_channel' when channel_id is known in metadata
+- 2026-02-03 16:52 | claudetube-3zd7 [P0] | Use YouTube subtitles before Whisper (Cheap First)
