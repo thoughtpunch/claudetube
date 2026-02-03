@@ -223,3 +223,5 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 - 2026-02-03 09:05 | claudetube-unf [P2] | Define yt-dlp output template matching cache structure
 - 2026-02-03 09:12 | claudetube-vzb [P2] | Implement batch playlist download using yt-dlp templates
 - 2026-02-03 09:17 | claudetube-sws [P3] | Configure parallel output paths for subtitles and thumbnails
+- 2026-02-03 14:15 | claudetube-a7fm [P1] | Create integration test: test_mcp_tools_e2e.py
+- 2026-02-03 14:31 | claudetube-a7fm [P1] | Create integration test: test_mcp_tools_e2e.py
