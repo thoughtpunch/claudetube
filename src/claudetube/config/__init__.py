@@ -23,6 +23,8 @@ from claudetube.config.output_templates import (
     NO_PLAYLIST,
     TEMPLATES,
     OutputTemplates,
+    build_audio_download_args,
+    build_cli_args,
     build_outtmpl_dict,
     get_output_path,
 )
@@ -45,6 +47,8 @@ __all__ = [
     "NO_PLAYLIST",
     "TEMPLATES",
     "OutputTemplates",
+    "build_audio_download_args",
+    "build_cli_args",
     "build_outtmpl_dict",
     "get_output_path",
 ]

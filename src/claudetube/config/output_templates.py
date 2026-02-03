@@ -136,3 +136,143 @@ def build_outtmpl_dict(cache_base: Path) -> dict[str, str]:
         "subtitle": get_output_path("subtitle", cache_base),
         "infojson": get_output_path("infojson", cache_base),
     }
+
+
+def build_cli_args(
+    cache_base: Path,
+    *,
+    include_audio: bool = True,
+    include_thumbnail: bool = True,
+    include_subtitles: bool = True,
+    include_infojson: bool = True,
+) -> list[str]:
+    """Build yt-dlp CLI arguments for multi-path output.
+
+    Generates -P (paths) and -o (output template) arguments that configure
+    yt-dlp to download different asset types to their correct locations
+    within the cache hierarchy.
+
+    The -P flag sets the base path for each type:
+        -P home:CACHE_BASE          # Main output directory
+        -P thumbnail:CACHE_BASE     # Thumbnail files
+        -P subtitle:CACHE_BASE      # Subtitle files
+        -P infojson:CACHE_BASE      # Info JSON files
+
+    The -o flag sets type-specific templates:
+        -o "thumbnail:TEMPLATE"     # Where thumbnails go
+        -o "subtitle:TEMPLATE"      # Where subtitles go
+        -o "infojson:TEMPLATE"      # Where info.json goes
+
+    Args:
+        cache_base: Base cache directory (e.g., ~/.claude/video_cache)
+        include_audio: Include audio download output template (default)
+        include_thumbnail: Include --write-thumbnail and thumbnail output
+        include_subtitles: Include --write-subs and subtitle output
+        include_infojson: Include --write-info-json and infojson output
+
+    Returns:
+        List of CLI arguments for yt-dlp.
+
+    Example:
+        >>> from pathlib import Path
+        >>> args = build_cli_args(Path('/cache'), include_infojson=False)
+        >>> '-P' in args
+        True
+        >>> '--write-thumbnail' in args
+        True
+    """
+    args: list[str] = []
+    cache_str = str(cache_base)
+
+    # Set the base home path
+    args.extend(["-P", f"home:{cache_str}"])
+
+    # Audio output template (the main/default output)
+    if include_audio:
+        args.extend(["-o", TEMPLATES.audio])
+
+    # Thumbnail: set path prefix and type-specific template
+    if include_thumbnail:
+        args.extend(["-P", f"thumbnail:{cache_str}"])
+        args.extend(["-o", f"thumbnail:{TEMPLATES.thumbnail}"])
+        args.append("--write-thumbnail")
+        args.extend(["--convert-thumbnails", "jpg"])
+
+    # Subtitles: set path prefix and type-specific template
+    if include_subtitles:
+        args.extend(["-P", f"subtitle:{cache_str}"])
+        args.extend(["-o", f"subtitle:{TEMPLATES.subtitle}"])
+        args.append("--write-subs")
+        args.append("--write-auto-subs")
+        args.extend(["--sub-langs", "en.*,en"])
+        args.extend(["--convert-subs", "srt"])
+
+    # Info JSON: set path prefix and type-specific template
+    if include_infojson:
+        args.extend(["-P", f"infojson:{cache_str}"])
+        args.extend(["-o", f"infojson:{TEMPLATES.infojson}"])
+        args.append("--write-info-json")
+
+    return args
+
+
+def build_audio_download_args(
+    cache_base: Path,
+    url: str,
+    *,
+    quality: str = "64K",
+    include_thumbnail: bool = True,
+    include_subtitles: bool = True,
+    include_infojson: bool = False,
+) -> list[str]:
+    """Build complete yt-dlp CLI arguments for audio download with assets.
+
+    Combines multi-path output configuration with audio extraction settings.
+    This is designed for claudetube's typical workflow: download audio + metadata.
+
+    Args:
+        cache_base: Base cache directory
+        url: Video URL to download
+        quality: Audio quality (e.g., "64K", "128K")
+        include_thumbnail: Download thumbnail (default: True)
+        include_subtitles: Download subtitles (default: True)
+        include_infojson: Write info.json (default: False, use metadata instead)
+
+    Returns:
+        Complete list of CLI arguments for yt-dlp audio download.
+
+    Example:
+        >>> from pathlib import Path
+        >>> args = build_audio_download_args(
+        ...     Path('/cache'),
+        ...     'https://youtube.com/watch?v=dQw4w9WgXcQ',
+        ...     quality='128K',
+        ... )
+        >>> '-x' in args  # Extract audio
+        True
+        >>> '--audio-format' in args
+        True
+    """
+    # Start with multi-path output configuration
+    args = build_cli_args(
+        cache_base,
+        include_audio=True,
+        include_thumbnail=include_thumbnail,
+        include_subtitles=include_subtitles,
+        include_infojson=include_infojson,
+    )
+
+    # Audio extraction settings
+    args.extend([
+        "-f", "ba",              # Best audio format
+        "-x",                    # Extract audio
+        "--audio-format", "mp3",
+        "--audio-quality", quality,
+        "--no-playlist",
+        "--no-warnings",
+    ])
+
+    # Add the URL last
+    args.append(url)
+
+    return args

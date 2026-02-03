@@ -9,6 +9,8 @@ from claudetube.config.output_templates import (
     NO_PLAYLIST,
     TEMPLATES,
     OutputTemplates,
+    build_audio_download_args,
+    build_cli_args,
     build_outtmpl_dict,
     get_output_path,
 )
@@ -219,3 +221,191 @@ class TestTemplateHierarchy:
         channel_part = templates.audio.split("/")[1]
         # Should try channel_id first, then uploader_id, then fallback
         assert channel_part == f"%(channel_id|uploader_id|{NO_CHANNEL})s"
+
+
+class TestBuildCliArgs:
+    """Tests for build_cli_args function."""
+
+    def test_returns_list(self):
+        """Test function returns a list."""
+        result = build_cli_args(Path("/cache"))
+        assert isinstance(result, list)
+
+    def test_contains_home_path(self):
+        """Test args contain -P home:CACHE_BASE."""
+        result = build_cli_args(Path("/cache"))
+        assert "-P" in result
+        # Find the home path argument
+        p_indices = [i for i, x in enumerate(result) if x == "-P"]
+        home_args = [result[i + 1] for i in p_indices if i + 1 < len(result)]
+        assert any(arg.startswith("home:") for arg in home_args)
+
+    def test_contains_thumbnail_path(self):
+        """Test args contain -P thumbnail:CACHE_BASE."""
+        result = build_cli_args(Path("/cache"))
+        p_indices = [i for i, x in enumerate(result) if x == "-P"]
+        path_args = [result[i + 1] for i in p_indices if i + 1 < len(result)]
+        assert any(arg.startswith("thumbnail:") for arg in path_args)
+
+    def test_contains_subtitle_path(self):
+        """Test args contain -P subtitle:CACHE_BASE."""
+        result = build_cli_args(Path("/cache"))
+        p_indices = [i for i, x in enumerate(result) if x == "-P"]
+        path_args = [result[i + 1] for i in p_indices if i + 1 < len(result)]
+        assert any(arg.startswith("subtitle:") for arg in path_args)
+
+    def test_contains_infojson_path(self):
+        """Test args contain -P infojson:CACHE_BASE."""
+        result = build_cli_args(Path("/cache"))
+        p_indices = [i for i, x in enumerate(result) if x == "-P"]
+        path_args = [result[i + 1] for i in p_indices if i + 1 < len(result)]
+        assert any(arg.startswith("infojson:") for arg in path_args)
+
+    def test_contains_output_templates(self):
+        """Test args contain -o TYPE:TEMPLATE for each type."""
+        result = build_cli_args(Path("/cache"))
+        o_indices = [i for i, x in enumerate(result) if x == "-o"]
+        output_args = [result[i + 1] for i in o_indices if i + 1 < len(result)]
+
+        # Should have thumbnail, subtitle, and infojson type prefixes
+        assert any(arg.startswith("thumbnail:") for arg in output_args)
+        assert any(arg.startswith("subtitle:") for arg in output_args)
+        assert any(arg.startswith("infojson:") for arg in output_args)
+
+    def test_contains_write_flags(self):
+        """Test args contain write flags for each asset type."""
+        result = build_cli_args(Path("/cache"))
+        assert "--write-thumbnail" in result
+        assert "--write-subs" in result
+        assert "--write-info-json" in result
+
+    def test_exclude_thumbnail(self):
+        """Test thumbnail can be excluded."""
+        result = build_cli_args(Path("/cache"), include_thumbnail=False)
+        assert "--write-thumbnail" not in result
+        # No thumbnail path prefix
+        p_indices = [i for i, x in enumerate(result) if x == "-P"]
+        path_args = [result[i + 1] for i in p_indices if i + 1 < len(result)]
+        assert not any(arg.startswith("thumbnail:") for arg in path_args)
+
+    def test_exclude_subtitles(self):
+        """Test subtitles can be excluded."""
+        result = build_cli_args(Path("/cache"), include_subtitles=False)
+        assert "--write-subs" not in result
+        # No subtitle path prefix
+        p_indices = [i for i, x in enumerate(result) if x == "-P"]
+        path_args = [result[i + 1] for i in p_indices if i + 1 < len(result)]
+        assert not any(arg.startswith("subtitle:") for arg in path_args)
+
+    def test_exclude_infojson(self):
+        """Test infojson can be excluded."""
+        result = build_cli_args(Path("/cache"), include_infojson=False)
+        assert "--write-info-json" not in result
+
+    def test_subtitle_options(self):
+        """Test subtitle-specific options are included."""
+        result = build_cli_args(Path("/cache"))
+        assert "--write-auto-subs" in result
+        assert "--sub-langs" in result
+        assert "--convert-subs" in result
+
+    def test_thumbnail_conversion(self):
+        """Test thumbnail conversion to jpg is included."""
+        result = build_cli_args(Path("/cache"))
+        assert "--convert-thumbnails" in result
+        idx = result.index("--convert-thumbnails")
+        assert result[idx + 1] == "jpg"
+
+
+class TestBuildAudioDownloadArgs:
+    """Tests for build_audio_download_args function."""
+
+    def test_returns_list(self):
+        """Test function returns a list."""
+        result = build_audio_download_args(Path("/cache"), "https://example.com/video")
+        assert isinstance(result, list)
+
+    def test_url_at_end(self):
+        """Test URL is the last argument."""
+        url = "https://example.com/video"
+        result = build_audio_download_args(Path("/cache"), url)
+        assert result[-1] == url
+
+    def test_contains_audio_extraction(self):
+        """Test args contain audio extraction flags."""
+        result = build_audio_download_args(Path("/cache"), "https://example.com/video")
+        assert "-x" in result
+        assert "--audio-format" in result
+        assert "mp3" in result
+
+    def test_contains_quality_setting(self):
+        """Test args contain audio quality setting."""
+        result = build_audio_download_args(
+            Path("/cache"), "https://example.com/video", quality="128K"
+        )
+        assert "--audio-quality" in result
+        idx = result.index("--audio-quality")
+        assert result[idx + 1] == "128K"
+
+    def test_default_quality(self):
+        """Test default quality is 64K."""
+        result = build_audio_download_args(Path("/cache"), "https://example.com/video")
+        idx = result.index("--audio-quality")
+        assert result[idx + 1] == "64K"
+
+    def test_no_playlist_flag(self):
+        """Test --no-playlist flag is included."""
+        result = build_audio_download_args(Path("/cache"), "https://example.com/video")
+        assert "--no-playlist" in result
+
+    def test_thumbnail_included_by_default(self):
+        """Test thumbnail is included by default."""
+        result = build_audio_download_args(Path("/cache"), "https://example.com/video")
+        assert "--write-thumbnail" in result
+
+    def test_subtitles_included_by_default(self):
+        """Test subtitles are included by default."""
+        result = build_audio_download_args(Path("/cache"), "https://example.com/video")
+        assert "--write-subs" in result
+
+    def test_infojson_excluded_by_default(self):
+        """Test infojson is excluded by default."""
+        result = build_audio_download_args(Path("/cache"), "https://example.com/video")
+        assert "--write-info-json" not in result
+
+    def test_include_infojson(self):
+        """Test infojson can be included."""
+        result = build_audio_download_args(
+            Path("/cache"), "https://example.com/video", include_infojson=True
+        )
+        assert "--write-info-json" in result
+
+    def test_exclude_thumbnail(self):
+        """Test thumbnail can be excluded."""
+        result = build_audio_download_args(
+            Path("/cache"), "https://example.com/video", include_thumbnail=False
+        )
+        assert "--write-thumbnail" not in result
+
+    def test_exclude_subtitles(self):
+        """Test subtitles can be excluded."""
+        result = build_audio_download_args(
+            Path("/cache"), "https://example.com/video", include_subtitles=False
+        )
+        assert "--write-subs" not in result
+
+    def test_contains_format_selection(self):
+        """Test args contain best audio format selection."""
+        result = build_audio_download_args(Path("/cache"), "https://example.com/video")
+        assert "-f" in result
+        idx = result.index("-f")
+        assert result[idx + 1] == "ba"
+
+    def test_contains_multi_path_args(self):
+        """Test args contain multi-path output configuration."""
+        result = build_audio_download_args(Path("/cache"), "https://example.com/video")
+        # Should have -P for home path at minimum
+        assert "-P" in result
+        p_indices = [i for i, x in enumerate(result) if x == "-P"]
+        path_args = [result[i + 1] for i in p_indices if i + 1 < len(result)]
+        assert any(arg.startswith("home:") for arg in path_args)
