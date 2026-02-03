@@ -1,4 +1,4 @@
-# claudetube - Minimal Provider Configuration
+# claudetube - Minimal Configuration
 #
 # Place this file at:
 #   Project: .claudetube/config.yaml
@@ -6,19 +6,30 @@
 #
 # claudetube works out of the box with zero configuration!
 # Defaults: whisper-local for transcription, claude-code for vision/reasoning.
-# Only add config if you want to use external AI providers.
+# Add config only to customize behavior or fix YouTube 403 errors.
+#
+# Full reference: see config.full.yaml
 
 # Cache directory (optional - defaults to ~/.claude/video_cache)
 # cache_dir: ~/my-video-cache
 
-providers:
-  # Add API keys for providers you want to use.
-  # Keys can reference environment variables with ${VAR_NAME}.
-  openai:
-    api_key: ${OPENAI_API_KEY}
+# YouTube authentication (recommended - prevents 403 errors)
+youtube:
+  cookies_from_browser: chrome    # or: firefox, safari, brave, edge
 
-  # Set your preferred provider for each capability.
-  preferences:
-    transcription: whisper-local    # Free, local (default)
-    vision: claude-code             # Uses host Claude (default)
-    reasoning: claude-code          # Uses host Claude (default)
+providers:
+  # Local provider settings
+  local:
+    whisper_model: small          # tiny (fast), small (balanced), large (best)
+    whisper_language: en          # Skip auto-detection for faster transcription
+
+  # Add API keys for external providers you want to use.
+  # Keys can reference environment variables with ${VAR_NAME}.
+  # openai:
+  #   api_key: ${OPENAI_API_KEY}
+
+  # Set your preferred provider for each capability (defaults shown).
+  # preferences:
+  #   transcription: whisper-local
+  #   vision: claude-code
+  #   reasoning: claude-code

@@ -1,121 +1,234 @@
-# claudetube - Full Provider Configuration Reference
+# ══════════════════════════════════════════════════════════════════════════════
+# claudetube - Full Configuration Reference
+# ══════════════════════════════════════════════════════════════════════════════
 #
 # Place this file at:
 #   Project-level: .claudetube/config.yaml   (highest priority)
 #   User-level:    ~/.config/claudetube/config.yaml
 #
-# Configuration priority:
-#   1. Environment variables (CLAUDETUBE_CACHE_DIR)
+# Configuration priority (highest to lowest):
+#   1. Environment variables (CLAUDETUBE_CACHE_DIR, etc.)
 #   2. Project config (.claudetube/config.yaml)
 #   3. User config (~/.config/claudetube/config.yaml)
 #   4. Built-in defaults
 #
-# ──────────────────────────────────────────────────────────
-# MIGRATING FROM ENVIRONMENT VARIABLES
-# ──────────────────────────────────────────────────────────
-# If you previously used env vars, they still work as fallbacks:
+# Environment variable syntax:
+#   Use ${ENV_VAR} to reference environment variables in any string value.
+#   Example: api_key: ${OPENAI_API_KEY}
 #
-#   OPENAI_API_KEY          → providers.openai.api_key
-#   ANTHROPIC_API_KEY       → providers.anthropic.api_key
-#   GOOGLE_API_KEY          → providers.google.api_key
-#   DEEPGRAM_API_KEY        → providers.deepgram.api_key
-#   ASSEMBLYAI_API_KEY      → providers.assemblyai.api_key
-#   VOYAGE_API_KEY          → providers.voyage.api_key
-#   CLAUDETUBE_CACHE_DIR    → cache_dir
-#
-# CLAUDETUBE_*_API_KEY variants also work (e.g., CLAUDETUBE_OPENAI_API_KEY).
-# YAML config takes priority over env vars when both are set.
-# ──────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
 
-# Cache directory for downloaded videos, audio, transcripts, and frames.
-# Supports ~ expansion and relative paths (resolved from config file location).
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CACHE DIRECTORY
+# ──────────────────────────────────────────────────────────────────────────────
+# Where claudetube stores downloaded videos, audio, transcripts, and frames.
+#
+# Supports:
+#   - ~ expansion: ~/my-cache → /Users/you/my-cache
+#   - Relative paths: ./cache → resolved from config file location
+#   - Absolute paths: /data/claudetube
+#
 # Default: ~/.claude/video_cache
+# Env override: CLAUDETUBE_CACHE_DIR
+
 # cache_dir: ~/.claude/video_cache
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# YOUTUBE AUTHENTICATION
+# ──────────────────────────────────────────────────────────────────────────────
+# YouTube enforces PO (Proof of Origin) tokens and rate limits. Without
+# authentication, downloads may fail with 403 errors.
+#
+# Authentication levels (cumulative):
+#   0: No auth         → May break as YouTube tightens access
+#   1: deno only       → android_vr HLS formats (basic)
+#   2: Cookies + deno  → Premium: full access; Free: android_vr
+#   3: Manual PO token → Tokens expire ~12 hours
+#   4: bgutil server   → Automated PO tokens (recommended)
+#
+# Check current status: use youtube_auth_status MCP tool
+# Troubleshooting: see documentation/guides/youtube-auth.md
+
+youtube:
+  # ┌──────────────────────────────────────────────────────────────────────────┐
+  # │ COOKIE SOURCE (pick ONE - first match wins)                              │
+  # └──────────────────────────────────────────────────────────────────────────┘
+  #
+  # Option 1: Extract cookies directly from your browser (recommended)
+  # Supported: chrome, firefox, safari, brave, edge, opera, vivaldi, chromium
+  #
+  # cookies_from_browser: chrome
+
+  # Option 2: Use a Netscape-format cookies.txt file
+  # Export from browser using extensions like "Get cookies.txt" or "cookies.txt"
+  #
+  # cookies_file: ~/.config/claudetube/youtube-cookies.txt
+
+  # ┌──────────────────────────────────────────────────────────────────────────┐
+  # │ PO TOKEN (Proof of Origin)                                               │
+  # └──────────────────────────────────────────────────────────────────────────┘
+  #
+  # Manual PO token (expires ~12 hours, requires periodic refresh)
+  # Format: CLIENT.TYPE+TOKEN or just TOKEN
+  # Get token: https://github.com/yt-dlp/yt-dlp/wiki/Extractors#po-token
+  #
+  # po_token: "web.gvs+YOUR_TOKEN_HERE"
+
+  # ┌──────────────────────────────────────────────────────────────────────────┐
+  # │ BGUTIL PO TOKEN PROVIDER (automated, recommended)                        │
+  # └──────────────────────────────────────────────────────────────────────────┘
+  #
+  # Install: pip install bgutil-ytdlp-pot-provider
+  #
+  # Option A: HTTP server mode (best - runs token server in background)
+  # Start server: pot_server &
+  #
+  # pot_server_url: "http://127.0.0.1:4416"
+
+  # Option B: Script mode (slower, generates token per request)
+  # Requires Node.js and bgutil-ytdlp-pot-provider script
+  #
+  # pot_script_path: "/path/to/generate_once.js"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# AI PROVIDERS
+# ──────────────────────────────────────────────────────────────────────────────
+
 providers:
-  # ────────────────────────────────────────────────────────
-  # API PROVIDER CREDENTIALS
-  # ────────────────────────────────────────────────────────
+  # ┌──────────────────────────────────────────────────────────────────────────┐
+  # │ API PROVIDER CREDENTIALS                                                 │
+  # └──────────────────────────────────────────────────────────────────────────┘
+  #
   # Each provider accepts:
   #   api_key: API key (use ${ENV_VAR} to reference environment variables)
   #   model:   Default model name (optional, uses provider default)
-  #   (extra): Provider-specific settings as additional keys
+  #   (extra): Provider-specific settings
+  #
+  # Legacy env var fallbacks (still work if YAML not set):
+  #   OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY,
+  #   DEEPGRAM_API_KEY, ASSEMBLYAI_API_KEY, VOYAGE_API_KEY
+  #   Also: CLAUDETUBE_*_API_KEY variants (e.g., CLAUDETUBE_OPENAI_API_KEY)
 
   openai:
     api_key: ${OPENAI_API_KEY}
-    model: gpt-4o                   # or gpt-4o-mini, gpt-4-turbo, etc.
+    model: gpt-4o                   # or gpt-4o-mini, gpt-4-turbo, o1, o1-mini
 
   anthropic:
     api_key: ${ANTHROPIC_API_KEY}
-    model: claude-sonnet-4-20250514       # or claude-3-haiku, claude-3-opus, etc.
+    model: claude-sonnet-4-20250514       # or claude-3-haiku, claude-3-opus
 
   google:
     api_key: ${GOOGLE_API_KEY}
-    model: gemini-2.0-flash         # Only provider with native video support
+    model: gemini-2.0-flash         # Only provider with native VIDEO support
+                                    # Also: gemini-1.5-pro, gemini-1.5-flash
 
   deepgram:
     api_key: ${DEEPGRAM_API_KEY}
-    # Deepgram: transcription with diarization (speaker detection)
+    # Transcription with speaker diarization (who said what)
+    # Pricing: https://deepgram.com/pricing
 
   assemblyai:
     api_key: ${ASSEMBLYAI_API_KEY}
-    # AssemblyAI: transcription with auto-chapters and diarization
+    # Transcription with auto-chapters and diarization
+    # Pricing: https://www.assemblyai.com/pricing
 
   voyage:
     api_key: ${VOYAGE_API_KEY}
-    # Voyage AI: text embeddings for semantic search
+    # High-quality text embeddings for semantic search
+    # Models: voyage-3, voyage-3-lite, voyage-code-3
 
-  # ────────────────────────────────────────────────────────
-  # LOCAL PROVIDER SETTINGS
-  # ────────────────────────────────────────────────────────
+  litellm:
+    api_key: ${LITELLM_API_KEY}
+    model: anthropic/claude-sonnet-4-20250514  # Any model LiteLLM supports
+    # LiteLLM: unified interface to 100+ LLM providers
+    # See: https://docs.litellm.ai/docs/providers
+
+  # ┌──────────────────────────────────────────────────────────────────────────┐
+  # │ LOCAL PROVIDER SETTINGS                                                  │
+  # └──────────────────────────────────────────────────────────────────────────┘
+  #
+  # Settings for providers that run locally (no API key needed)
+
   local:
-    whisper_model: small            # tiny, base, small, medium, large
-    whisper_language: en            # Default language (skips detection, faster)
-                                    # Video's declared language overrides this
-    ollama_model: llava:13b         # Any Ollama model with vision support
+    # Whisper model for local transcription (faster-whisper)
+    # Sizes: tiny (fastest), base, small (balanced), medium, large (best quality)
+    # GPU: large model needs ~10GB VRAM; small works on most systems
+    whisper_model: small
 
-  # ────────────────────────────────────────────────────────
-  # CAPABILITY PREFERENCES
-  # ────────────────────────────────────────────────────────
+    # Default language for transcription
+    # Setting this skips Whisper's auto-detection, making transcription faster
+    # The video's declared language (from metadata) takes priority over this
+    # Use ISO 639-1 codes: en, es, fr, de, ja, zh, etc.
+    whisper_language: en
+
+    # Ollama model for local vision/reasoning
+    # Requires Ollama running: https://ollama.ai
+    # Models with vision: llava, bakllava, llava-llama3, moondream
+    ollama_model: llava:13b
+
+  # ┌──────────────────────────────────────────────────────────────────────────┐
+  # │ CAPABILITY PREFERENCES                                                   │
+  # └──────────────────────────────────────────────────────────────────────────┘
+  #
   # Which provider to use by default for each capability.
   # You can use provider names or aliases (e.g., "gemini" for "google").
   #
-  # Available capabilities and valid providers:
-  #
+  # Capabilities and valid providers:
   #   transcription: whisper-local, openai, deepgram, assemblyai
   #   vision:        claude-code, anthropic, openai, google, ollama
-  #   video:         google (only Gemini supports native video)
-  #   reasoning:     claude-code, anthropic, openai, google, ollama
+  #   video:         google (only Gemini supports native video input)
+  #   reasoning:     claude-code, anthropic, openai, google, ollama, litellm
   #   embedding:     voyage, local-embedder
 
   preferences:
     transcription: whisper-local    # Free, runs locally (default)
-    vision: claude-code             # Uses host Claude in Claude Code (default)
+    vision: claude-code             # Uses host Claude in Claude Code (free*)
     video: google                   # Only Gemini supports native video
-    reasoning: claude-code          # Uses host Claude in Claude Code (default)
-    embedding: voyage               # High-quality embeddings (default)
+    reasoning: claude-code          # Uses host Claude in Claude Code (free*)
+    embedding: voyage               # High-quality semantic embeddings
 
-  # ────────────────────────────────────────────────────────
-  # FALLBACK CHAINS
-  # ────────────────────────────────────────────────────────
-  # If the preferred provider fails (rate limit, error, unavailable),
-  # try these providers in order. claude-code is always available
-  # as the ultimate fallback for vision and reasoning.
+    # Cost preference: how to order fallback providers
+    #   "cost"    → Prefer cheaper providers first (default)
+    #   "quality" → Use config order as-is
+    cost_preference: cost
+
+  # ┌──────────────────────────────────────────────────────────────────────────┐
+  # │ FALLBACK CHAINS                                                          │
+  # └──────────────────────────────────────────────────────────────────────────┘
   #
-  # Note: claude-code CANNOT transcribe audio — only use it for
-  # vision and reasoning fallbacks.
+  # If the preferred provider fails (rate limit, error, unavailable),
+  # try these providers in order.
+  #
+  # Note: claude-code is always available as ultimate fallback for
+  # vision and reasoning (but NOT transcription - it can't process audio)
 
   fallbacks:
     transcription: [openai, whisper-local]
     vision: [anthropic, openai, claude-code]
     reasoning: [anthropic, openai, claude-code]
 
-# ──────────────────────────────────────────────────────────
+  # ┌──────────────────────────────────────────────────────────────────────────┐
+  # │ PARALLEL FALLBACK (experimental)                                         │
+  # └──────────────────────────────────────────────────────────────────────────┘
+  #
+  # When enabled, try all fallback providers concurrently and return the
+  # first successful result. Faster but uses more API calls/credits.
+  #
+  # parallel_fallback:
+  #   vision: true
+  #   reasoning: false
+  #   transcription: false
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PROVIDER CAPABILITY MATRIX
-# ──────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
 #
 # Provider       | Transcribe | Vision | Video | Reason | Embed | Cost
-# ──────────────────────────────────────────────────────────────────────
+# ───────────────┼────────────┼────────┼───────┼────────┼───────┼──────
 # whisper-local  |     ✓      |        |       |        |       | Free
 # openai         |     ✓      |   ✓    |       |   ✓    |       | $$
 # anthropic      |            |   ✓    |       |   ✓    |       | $$
@@ -124,8 +237,9 @@ providers:
 # assemblyai     |     ✓      |        |       |        |       | $
 # claude-code    |            |   ✓    |       |   ✓    |       | Free*
 # ollama         |            |   ✓    |       |   ✓    |       | Free
+# litellm        |            |   ✓    |       |   ✓    |       | Varies
 # voyage         |            |        |       |        |   ✓   | $
 # local-embedder |            |        |       |        |   ✓   | Free
 #
 # * claude-code is included with Claude Code subscription
-# ──────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════

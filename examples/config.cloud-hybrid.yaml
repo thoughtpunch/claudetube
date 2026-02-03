@@ -8,6 +8,10 @@
 #   Project: .claudetube/config.yaml
 #   User:    ~/.config/claudetube/config.yaml
 
+# YouTube authentication (recommended - prevents 403 errors)
+youtube:
+  cookies_from_browser: chrome    # or: firefox, safari, brave, edge
+
 providers:
   # ──────────────────────────────────────────────────────
   # API PROVIDER CREDENTIALS
@@ -27,6 +31,7 @@ providers:
   # ──────────────────────────────────────────────────────
   local:
     whisper_model: small            # Local transcription (free)
+    whisper_language: en            # Skip auto-detection (faster)
 
   # ──────────────────────────────────────────────────────
   # CAPABILITY PREFERENCES

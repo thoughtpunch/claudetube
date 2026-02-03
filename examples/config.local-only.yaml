@@ -10,6 +10,10 @@
 # Store cache wherever you like (optional, defaults to ~/.claude/video_cache)
 # cache_dir: ~/video-cache
 
+# YouTube authentication (recommended - prevents 403 errors)
+youtube:
+  cookies_from_browser: chrome    # or: firefox, safari, brave, edge
+
 providers:
   # ──────────────────────────────────────────────────────
   # LOCAL PROVIDER SETTINGS
@@ -22,6 +26,9 @@ providers:
     #   medium → high accuracy (~5GB VRAM)
     #   large → highest accuracy (~10GB VRAM)
     whisper_model: small
+
+    # Default transcription language (skips auto-detection, faster)
+    whisper_language: en
 
     # Ollama model for vision and reasoning.
     # Must be a model with vision support. Examples:
