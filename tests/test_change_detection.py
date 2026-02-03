@@ -199,6 +199,124 @@ class TestCosineSimilarity:
         assert similarity == 0.0
 
 
+class TestWordOverlapSimilarity:
+    """Tests for transcript-based word overlap similarity."""
+
+    def test_identical_texts(self):
+        """Identical texts should have high similarity."""
+        from claudetube.operations.change_detection import _word_overlap_similarity
+
+        text = "The neural network has multiple layers for processing data."
+        similarity = _word_overlap_similarity(text, text)
+        assert similarity == 1.0
+
+    def test_different_texts(self):
+        """Very different texts should have low similarity."""
+        from claudetube.operations.change_detection import _word_overlap_similarity
+
+        text_a = "Neural networks are machine learning models."
+        text_b = "Cooking recipes for Italian pasta dishes."
+        similarity = _word_overlap_similarity(text_a, text_b)
+        assert similarity < 0.1
+
+    def test_similar_texts(self):
+        """Similar texts should have moderate similarity."""
+        from claudetube.operations.change_detection import _word_overlap_similarity
+
+        text_a = "Neural networks have layers and weights for deep learning."
+        text_b = "Deep neural networks use multiple layers with trainable weights."
+        similarity = _word_overlap_similarity(text_a, text_b)
+        assert 0.3 < similarity < 1.0  # Some overlap but not identical
+
+    def test_empty_text(self):
+        """Empty text should return 0."""
+        from claudetube.operations.change_detection import _word_overlap_similarity
+
+        assert _word_overlap_similarity("", "some text") == 0.0
+        assert _word_overlap_similarity("some text", "") == 0.0
+        assert _word_overlap_similarity("", "") == 0.0
+
+    def test_filters_stop_words(self):
+        """Should filter common stop words."""
+        from claudetube.operations.change_detection import _word_overlap_similarity
+
+        # These texts share stop words but not content words
+        text_a = "The quick brown fox jumps over."
+        text_b = "The lazy dog sleeps under."
+        # Without stop word filtering, similarity would be higher
+        similarity = _word_overlap_similarity(text_a, text_b)
+        assert similarity < 0.3  # Very different content words
+
+
+class TestInferContentTypeFromTranscript:
+    """Tests for transcript-based content type inference."""
+
+    def test_code_content(self):
+        """Should detect code/programming content."""
+        from claudetube.operations.change_detection import (
+            _infer_content_type_from_transcript,
+        )
+
+        transcript = (
+            "Let's define a function that takes an array and loops through it. "
+            "We'll import the necessary modules and handle any syntax errors."
+        )
+        assert _infer_content_type_from_transcript(transcript) == "code"
+
+    def test_math_diagram_content(self):
+        """Should detect math/diagram content."""
+        from claudetube.operations.change_detection import (
+            _infer_content_type_from_transcript,
+        )
+
+        transcript = (
+            "The sigmoid function takes the equation and transforms it. "
+            "Looking at the graph, we can see the derivative approaching zero. "
+            "Each neuron in this layer has a weight vector."
+        )
+        assert _infer_content_type_from_transcript(transcript) == "diagram"
+
+    def test_interview_content(self):
+        """Should detect interview content."""
+        from claudetube.operations.change_detection import (
+            _infer_content_type_from_transcript,
+        )
+
+        transcript = (
+            "Welcome to the show! Today we have a special guest joining us. "
+            "Tell us about your experience in the field."
+        )
+        assert _infer_content_type_from_transcript(transcript) == "interview"
+
+    def test_presenter_content(self):
+        """Should detect presenter content when no specific type matches."""
+        from claudetube.operations.change_detection import (
+            _infer_content_type_from_transcript,
+        )
+
+        # Needs 50+ words to trigger presenter detection
+        transcript = (
+            "Today we're going to explore an interesting topic that I've been "
+            "thinking about for a while. I want to share some insights with you "
+            "about how this works and why it matters. Let me explain what I mean "
+            "by that and give you some examples from my experience. Over the years "
+            "I've learned a lot about this subject and I think you'll find it "
+            "fascinating too. There are many different perspectives we can consider "
+            "when looking at this problem."
+        )
+        # Substantial speech without specific type indicators = presenter
+        assert _infer_content_type_from_transcript(transcript) == "presenter"
+
+    def test_empty_transcript(self):
+        """Should return unknown for empty transcript."""
+        from claudetube.operations.change_detection import (
+            _infer_content_type_from_transcript,
+        )
+
+        assert _infer_content_type_from_transcript("") == "unknown"
+        assert _infer_content_type_from_transcript(None) == "unknown"
+
+
 class TestExtractObjects:
     """Tests for object extraction from scene data."""
 

@@ -184,6 +184,200 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (norm_a * norm_b))
 
 
+def _word_overlap_similarity(text_a: str, text_b: str) -> float:
+    """Compute word overlap similarity between two texts.
+
+    Uses Jaccard similarity on word sets as a simple fallback
+    when embeddings are not available.
+
+    Args:
+        text_a: First text
+        text_b: Second text
+
+    Returns:
+        Similarity score (0 to 1)
+    """
+    if not text_a or not text_b:
+        return 0.0
+
+    # Simple word tokenization and normalization
+    import re
+
+    def tokenize(text: str) -> set[str]:
+        words = re.findall(r"\b[a-zA-Z]{3,}\b", text.lower())
+        # Filter common stop words
+        stop_words = {
+            "the",
+            "and",
+            "for",
+            "that",
+            "this",
+            "with",
+            "are",
+            "was",
+            "were",
+            "you",
+            "have",
+            "has",
+            "had",
+            "can",
+            "but",
+            "not",
+            "what",
+            "all",
+            "when",
+            "from",
+            "they",
+            "will",
+            "would",
+            "there",
+            "their",
+            "which",
+            "about",
+            "just",
+            "like",
+            "into",
+            "your",
+            "also",
+            "been",
+            "more",
+            "some",
+            "then",
+            "them",
+        }
+        return {w for w in words if w not in stop_words}
+
+    words_a = tokenize(text_a)
+    words_b = tokenize(text_b)
+
+    if not words_a or not words_b:
+        return 0.0
+
+    # Jaccard similarity
+    intersection = len(words_a & words_b)
+    union = len(words_a | words_b)
+
+    return intersection / union if union > 0 else 0.0
+
+
+def _infer_content_type_from_transcript(transcript: str) -> str:
+    """Infer content type from transcript text using keyword analysis.
+
+    This is a fallback when visual analysis is not available.
+
+    Args:
+        transcript: Transcript text for the scene
+
+    Returns:
+        Inferred content type or 'unknown'
+    """
+    if not transcript:
+        return "unknown"
+
+    text = transcript.lower()
+
+    # Code/programming indicators
+    code_keywords = [
+        "function",
+        "variable",
+        "class",
+        "method",
+        "import",
+        "define",
+        "syntax",
+        "code",
+        "programming",
+        "python",
+        "javascript",
+        "compile",
+        "debug",
+        "error",
+        "bug",
+        "stack",
+        "array",
+        "loop",
+        "algorithm",
+    ]
+    if sum(1 for kw in code_keywords if kw in text) >= 3:
+        return "code"
+
+    # Math/diagram indicators
+    math_keywords = [
+        "equation",
+        "formula",
+        "matrix",
+        "vector",
+        "derivative",
+        "integral",
+        "function",
+        "graph",
+        "plot",
+        "axis",
+        "coordinate",
+        "sigmoid",
+        "neuron",
+        "layer",
+        "weight",
+        "gradient",
+        "backpropagation",
+    ]
+    if sum(1 for kw in math_keywords if kw in text) >= 3:
+        return "diagram"
+
+    # Presentation/slides indicators
+    slide_keywords = [
+        "slide",
+        "next slide",
+        "presentation",
+        "bullet point",
+        "summary",
+        "agenda",
+        "outline",
+        "takeaway",
+        "key point",
+    ]
+    if sum(1 for kw in slide_keywords if kw in text) >= 2:
+        return "slides"
+
+    # Interview/conversation indicators
+    interview_keywords = [
+        "interview",
+        "guest",
+        "welcome",
+        "today we have",
+        "joining us",
+        "question",
+        "tell us about",
+        "what do you think",
+        "in your experience",
+    ]
+    if sum(1 for kw in interview_keywords if kw in text) >= 2:
+        return "interview"
+
+    # Demo/screencast indicators
+    demo_keywords = [
+        "click",
+        "button",
+        "screen",
+        "window",
+        "browser",
+        "website",
+        "demo",
+        "showing",
+        "let me show",
+        "as you can see",
+    ]
+    if sum(1 for kw in demo_keywords if kw in text) >= 2:
+        return "screencast"
+
+    # Default to presenter (talking head) if substantial speech content
+    word_count = len(text.split())
+    if word_count > 50:
+        return "presenter"
+
+    return "unknown"
+
+
 def _load_visual_data(cache_dir: Path, scene_id: int) -> dict | None:
     """Load visual.json for a scene.
 
@@ -293,28 +487,33 @@ def _extract_objects(visual_data: dict | None, technical_data: dict | None) -> s
 
 
 def _get_content_type(
-    visual_data: dict | None, technical_data: dict | None
+    visual_data: dict | None,
+    technical_data: dict | None,
+    transcript: str | None = None,
 ) -> str | None:
     """Extract primary content type from scene data.
+
+    Follows priority: technical.json > visual.json > transcript inference
 
     Args:
         visual_data: Visual data dict
         technical_data: Technical data dict
+        transcript: Optional transcript text for fallback inference
 
     Returns:
-        Content type string or None
+        Content type string or 'unknown'
     """
-    # Technical data is more reliable for content type
+    # Technical data is most reliable for content type
     if technical_data:
         content_type = technical_data.get("content_type")
-        if content_type:
+        if content_type and content_type != "unknown":
             return content_type
 
         # Check frames for consistent content type
         frame_types = []
         for frame in technical_data.get("frames", []):
             ft = frame.get("content_type")
-            if ft:
+            if ft and ft != "unknown":
                 frame_types.append(ft)
         if frame_types:
             # Return most common
@@ -326,7 +525,7 @@ def _get_content_type(
     if visual_data:
         description = visual_data.get("description", "").lower()
 
-        # Heuristic content type detection
+        # Heuristic content type detection from visual description
         if any(
             kw in description
             for kw in ["code", "editor", "terminal", "function", "class"]
@@ -346,6 +545,10 @@ def _get_content_type(
         if any(kw in description for kw in ["screen", "browser", "website", "app"]):
             return "screencast"
 
+    # Fallback to transcript-based inference
+    if transcript:
+        return _infer_content_type_from_transcript(transcript)
+
     return "unknown"
 
 
@@ -356,6 +559,11 @@ def _detect_changes_between_scenes(
     embeddings: dict[int, np.ndarray] | None = None,
 ) -> SceneChange:
     """Detect changes between two consecutive scenes.
+
+    Uses a tiered approach (cheap first, expensive last):
+    1. Try embedding similarity for topic shift (most accurate)
+    2. Fall back to transcript word overlap similarity
+    3. Use transcript-based content type inference if no visual data
 
     Args:
         scene_a: First scene (earlier)
@@ -372,6 +580,10 @@ def _detect_changes_between_scenes(
     technical_a = _load_technical_data(cache_dir, scene_a.scene_id)
     technical_b = _load_technical_data(cache_dir, scene_b.scene_id)
 
+    # Get transcript text from scene boundaries
+    transcript_a = scene_a.transcript_text or scene_a.transcript_segment or ""
+    transcript_b = scene_b.transcript_text or scene_b.transcript_segment or ""
+
     # 1. Visual element changes
     objects_a = _extract_objects(visual_a, technical_a)
     objects_b = _extract_objects(visual_b, technical_b)
@@ -382,12 +594,18 @@ def _detect_changes_between_scenes(
         persistent=sorted(objects_a & objects_b),
     )
 
-    # 2. Content type change
-    content_type_a = _get_content_type(visual_a, technical_a)
-    content_type_b = _get_content_type(visual_b, technical_b)
-    content_type_change = content_type_a != content_type_b
+    # 2. Content type change (with transcript fallback)
+    content_type_a = _get_content_type(visual_a, technical_a, transcript_a)
+    content_type_b = _get_content_type(visual_b, technical_b, transcript_b)
 
-    # 3. Topic shift via embedding similarity
+    # Only consider it a content type change if both types are known
+    content_type_change = (
+        content_type_a != content_type_b
+        and content_type_a != "unknown"
+        and content_type_b != "unknown"
+    )
+
+    # 3. Topic shift via embedding similarity OR transcript word overlap
     topic_shift_score = 0.0
 
     if embeddings:
@@ -398,6 +616,13 @@ def _detect_changes_between_scenes(
             similarity = _cosine_similarity(emb_a, emb_b)
             # Convert similarity to shift score (0 = same, 1 = different)
             topic_shift_score = 1.0 - max(0.0, min(1.0, similarity))
+
+    # Fallback: use transcript word overlap if no embeddings or embedding missing
+    if topic_shift_score == 0.0 and transcript_a and transcript_b:
+        similarity = _word_overlap_similarity(transcript_a, transcript_b)
+        # Convert similarity to shift score
+        # Scale up since word overlap typically produces lower similarity values
+        topic_shift_score = 1.0 - max(0.0, min(1.0, similarity * 1.5))
 
     return SceneChange(
         scene_a_id=scene_a.scene_id,
@@ -501,7 +726,7 @@ def detect_scene_changes(
             "message": "Video has fewer than 2 scenes, no changes to detect",
         }
 
-    # 2. Load embeddings if available
+    # 2. Load embeddings if available (for semantic topic shift detection)
     log_timed("Scene changes: loading embeddings...", t0)
     embeddings = _load_embeddings_dict(cache_dir)
 
@@ -510,7 +735,9 @@ def detect_scene_changes(
             f"Loaded {len(embeddings)} scene embeddings for topic shift detection"
         )
     else:
-        logger.info("No embeddings available, topic shift scores will be 0")
+        logger.info(
+            "No embeddings available, falling back to transcript word overlap for topic shift"
+        )
 
     # 3. Detect changes between consecutive scenes
     log_timed("Scene changes: detecting changes between scenes...", t0)
