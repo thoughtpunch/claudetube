@@ -28,3 +28,5 @@ Investigated the reported bug where MCP tool calls returned "Video not found" wh
 - 2026-02-03 17:28 | claudetube-lx2j [P2] | Whisper SRT segments too long (30+ seconds)
 - 2026-02-03 17:34 | claudetube-amqw [P0] | MCP server cache resolution differs from direct Python
 - 2026-02-03 17:41 | claudetube-3zd7 [P0] | Use YouTube subtitles before Whisper (Cheap First)
+- 2026-02-03 17:53 | claudetube-amqw [P0] | MCP server cache resolution differs from direct Python
+- 2026-02-03 23:53 | claudetube-amqw [P0] | VERIFIED CLOSED - Bug was fixed in e1a1f29, confirmed MCP and direct Python both work
