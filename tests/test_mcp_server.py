@@ -11,8 +11,15 @@ from claudetube.core import VideoResult
 
 @pytest.fixture
 def cache_dir(tmp_path):
-    """Provide a temporary cache directory and patch get_cache_dir."""
-    with patch("claudetube.mcp_server.get_cache_dir", return_value=tmp_path):
+    """Provide a temporary cache directory and patch get_cache_dir.
+
+    Also patches the SQL list function to return None, forcing filesystem
+    fallback so tests use the temp directory instead of the real DB.
+    """
+    with (
+        patch("claudetube.mcp_server.get_cache_dir", return_value=tmp_path),
+        patch("claudetube.db.queries.list_cached_videos_sql", return_value=None),
+    ):
         yield tmp_path
 
 
@@ -346,6 +353,10 @@ class TestFindMomentsTool:
         from claudetube.analysis.search import SearchMoment
         from claudetube.mcp_server import find_moments_tool
 
+        # Create video cache dir so existence check passes
+        video_dir = cache_dir / "test123"
+        video_dir.mkdir()
+
         mock_find.return_value = [
             SearchMoment(
                 rank=1,
@@ -398,6 +409,10 @@ class TestFindMomentsTool:
     async def test_empty_results(self, mock_find, cache_dir):
         """Returns empty results gracefully."""
         from claudetube.mcp_server import find_moments_tool
+
+        # Create video cache dir so existence check passes
+        video_dir = cache_dir / "test123"
+        video_dir.mkdir()
 
         mock_find.return_value = []
 

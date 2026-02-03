@@ -355,25 +355,8 @@ async def list_cached_videos() -> str:
     Returns JSON with video ID, title, duration, and transcript source
     for each cached video.
     """
-    cache_dir = get_cache_dir()
-    videos = []
-    if cache_dir.exists():
-        for state_file in sorted(cache_dir.glob("*/state.json")):
-            try:
-                state = json.loads(state_file.read_text())
-                videos.append(
-                    {
-                        "video_id": state.get("video_id", state_file.parent.name),
-                        "title": state.get("title"),
-                        "duration_string": state.get("duration_string"),
-                        "transcript_complete": state.get("transcript_complete", False),
-                        "transcript_source": state.get("transcript_source"),
-                        "cache_dir": str(state_file.parent),
-                    }
-                )
-            except (json.JSONDecodeError, OSError):
-                continue
-
+    cache = CacheManager(get_cache_dir())
+    videos = cache.list_cached_videos()
     return json.dumps({"count": len(videos), "videos": videos}, indent=2)
 
 
@@ -859,6 +842,13 @@ async def find_moments_tool(
     """
     video_id = extract_video_id(video_id)
 
+    # Resolve cache path using CacheManager (supports both flat and nested paths)
+    video_cache_dir = _resolve_cache_dir(video_id)
+    if not video_cache_dir.exists():
+        return json.dumps(
+            {"error": f"Video {video_id} not found in cache. Run process_video() first."}
+        )
+
     try:
         moments = await asyncio.to_thread(
             find_moments,
@@ -866,6 +856,8 @@ async def find_moments_tool(
             query,
             top_k=top_k,
             semantic_weight=semantic_weight,
+            # Pass parent so find_moments can construct the path correctly
+            cache_dir=video_cache_dir.parent,
         )
     except (FileNotFoundError, ValueError) as e:
         return json.dumps({"error": str(e)})
@@ -1770,12 +1762,20 @@ async def watch_video_tool(
     """
     video_id = extract_video_id(video_id)
 
+    # Resolve cache path using CacheManager (supports both flat and nested paths)
+    video_cache_dir = _resolve_cache_dir(video_id)
+    if not video_cache_dir.exists():
+        return json.dumps(
+            {"error": "Video not cached. Run process_video first.", "video_id": video_id}
+        )
+
     result = await asyncio.to_thread(
         watch_video,
         video_id,
         question,
         max_iterations=max_iterations,
-        output_base=get_cache_dir(),
+        # Pass parent so watch_video can construct the path correctly
+        output_base=video_cache_dir.parent,
     )
 
     return json.dumps(result, indent=2)
