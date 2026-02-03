@@ -141,6 +141,7 @@ class ProvidersConfig:
 
     # Local provider configs
     whisper_local_model: str = "small"
+    whisper_local_language: str = "en"  # Default language for transcription
     ollama_model: str = "llava:13b"
 
     # Preferences (which provider to use for each capability)
@@ -405,7 +406,7 @@ def validate_providers_config(
                     )
 
             # Check for unknown local keys
-            valid_local_keys = {"whisper_model", "ollama_model"}
+            valid_local_keys = {"whisper_model", "whisper_language", "ollama_model"}
             for key in local:
                 if key not in valid_local_keys:
                     result.warnings.append(
@@ -551,6 +552,8 @@ def load_providers_config(config_dict: dict | None = None) -> ProvidersConfig:
     if isinstance(local, dict):
         if "whisper_model" in local:
             config.whisper_local_model = str(local["whisper_model"])
+        if "whisper_language" in local:
+            config.whisper_local_language = str(local["whisper_language"])
         if "ollama_model" in local:
             config.ollama_model = str(local["ollama_model"])
 

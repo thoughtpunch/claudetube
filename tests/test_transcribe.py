@@ -413,3 +413,64 @@ class TestTranscribeVideo:
         # Should NOT return cached since txt is missing
         assert result["source"] != "cached"
         transcriber.transcribe.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_uses_video_declared_language(self, tmp_path):
+        """When video state has declared language, should pass it to transcriber."""
+        from claudetube.cache.manager import CacheManager
+        from claudetube.models.state import VideoState
+
+        cache = CacheManager(tmp_path)
+        state = VideoState(
+            video_id="abc123",
+            url="https://example.com/video",
+            title="Test Video",
+            language="es",  # Spanish declared in metadata
+        )
+        cache.save_state("abc123", state)
+        (tmp_path / "abc123" / "audio.mp3").write_bytes(b"fake audio")
+
+        transcriber = _make_transcriber(_make_result(provider="whisper-local"))
+
+        await transcribe_video(
+            "abc123",
+            output_base=tmp_path,
+            transcriber=transcriber,
+        )
+
+        # Should pass the video's declared language to the transcriber
+        transcriber.transcribe.assert_called_once()
+        call_kwargs = transcriber.transcribe.call_args.kwargs
+        assert call_kwargs.get("language") == "es"
+
+    @pytest.mark.asyncio
+    async def test_uses_config_default_language_when_no_video_language(self, tmp_path):
+        """When video has no declared language, should use config default."""
+        from claudetube.cache.manager import CacheManager
+        from claudetube.models.state import VideoState
+
+        cache = CacheManager(tmp_path)
+        state = VideoState(
+            video_id="abc123",
+            url="https://example.com/video",
+            title="Test Video",
+            language=None,  # No language declared
+        )
+        cache.save_state("abc123", state)
+        (tmp_path / "abc123" / "audio.mp3").write_bytes(b"fake audio")
+
+        transcriber = _make_transcriber(_make_result(provider="whisper-local"))
+
+        with patch("claudetube.providers.config.get_providers_config") as mock_config:
+            mock_config.return_value.whisper_local_language = "fr"
+
+            await transcribe_video(
+                "abc123",
+                output_base=tmp_path,
+                transcriber=transcriber,
+            )
+
+        # Should pass the config default language
+        transcriber.transcribe.assert_called_once()
+        call_kwargs = transcriber.transcribe.call_args.kwargs
+        assert call_kwargs.get("language") == "fr"

@@ -277,11 +277,25 @@ async def transcribe_video(
 
         transcriber = get_provider("whisper-local", model_size=whisper_model)
 
+    # Determine language: video's declared language > config default > "en"
+    language = None
+    state = cache.get_state(video_id)
+    if state and state.language:
+        language = state.language
+    else:
+        # Fall back to config default
+        from claudetube.providers.config import get_providers_config
+
+        providers_config = get_providers_config()
+        language = providers_config.whisper_local_language
+
     # Execute operation
     log_timed("Transcribing...", t0)
     try:
         op = TranscribeOperation(transcriber)
-        result = await op.execute(video_id, audio_path, cache_dir=output_base)
+        result = await op.execute(
+            video_id, audio_path, language=language, cache_dir=output_base
+        )
     except (TranscriptionError, FileNotFoundError) as e:
         return {
             "success": False,

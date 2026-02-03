@@ -70,6 +70,8 @@ providers:
   # ────────────────────────────────────────────────────────
   local:
     whisper_model: small            # tiny, base, small, medium, large
+    whisper_language: en            # Default language (skips detection, faster)
+                                    # Video's declared language overrides this
     ollama_model: llava:13b         # Any Ollama model with vision support
 
   # ────────────────────────────────────────────────────────
