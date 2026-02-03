@@ -34,8 +34,10 @@ from claudetube.operations.code_evolution import (
 )
 from claudetube.operations.download import (
     DownloadProgress,
+    PlaylistDownloadResult,
     ProgressCallback,
     download_audio,
+    download_playlist,
     download_thumbnail,
     download_video_segment,
     extract_audio_local,
@@ -119,9 +121,11 @@ __all__ = [
     # Progress tracking
     "DownloadProgress",
     "ProgressCallback",
+    "PlaylistDownloadResult",
     # Download operations
     "fetch_metadata",
     "download_audio",
+    "download_playlist",
     "download_video_segment",
     "download_thumbnail",
     "extract_audio_local",

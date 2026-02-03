@@ -379,3 +379,215 @@ class TestExtractAudioLocal:
 
         call_args = mock_tool.extract_audio.call_args
         assert call_args[0][1] == expected_output
+
+
+# ---------------------------------------------------------------------------
+# download_playlist
+# ---------------------------------------------------------------------------
+
+
+class TestDownloadPlaylist:
+    """Tests for download_playlist()."""
+
+    @patch("claudetube.operations.download.YtDlpTool")
+    def test_basic_playlist_download(self, mock_cls, tmp_path):
+        """Test successful playlist download."""
+        from claudetube.tools.base import ToolResult
+
+        mock_tool = mock_cls.return_value
+        mock_tool._is_youtube_url.return_value = True
+        mock_tool._youtube_config_args.return_value = []
+        mock_tool._run.return_value = ToolResult(
+            success=True,
+            stdout="",
+            stderr="",
+            returncode=0,
+        )
+
+        result = download.download_playlist(
+            "https://youtube.com/playlist?list=PLxxx",
+            cache_base=tmp_path,
+        )
+
+        assert result.playlist_url == "https://youtube.com/playlist?list=PLxxx"
+        assert result.cache_base == tmp_path
+        assert result.archive_file == tmp_path / "playlists" / "download_archive.txt"
+        mock_tool._run.assert_called_once()
+
+    @patch("claudetube.operations.download.YtDlpTool")
+    def test_playlist_download_with_skipped_videos(self, mock_cls, tmp_path):
+        """Test playlist download with some videos already in archive."""
+        from claudetube.tools.base import ToolResult
+
+        mock_tool = mock_cls.return_value
+        mock_tool._is_youtube_url.return_value = True
+        mock_tool._youtube_config_args.return_value = []
+        mock_tool._run.return_value = ToolResult(
+            success=True,
+            stdout=(
+                "[download] abc123 has already been recorded in the archive\n"
+                "[download] def456 has already been recorded in the archive\n"
+            ),
+            stderr="",
+            returncode=0,
+        )
+
+        result = download.download_playlist(
+            "https://youtube.com/playlist?list=PLxxx",
+            cache_base=tmp_path,
+        )
+
+        assert result.skipped_count == 2
+        assert result.downloaded_count == 0
+
+    @patch("claudetube.operations.download.YtDlpTool")
+    def test_playlist_download_with_errors(self, mock_cls, tmp_path):
+        """Test playlist download with some video errors."""
+        from claudetube.tools.base import ToolResult
+
+        mock_tool = mock_cls.return_value
+        mock_tool._is_youtube_url.return_value = True
+        mock_tool._youtube_config_args.return_value = []
+        mock_tool._run.return_value = ToolResult(
+            success=True,  # Partial success
+            stdout="",
+            stderr="ERROR: Video abc123 is unavailable\n",
+            returncode=0,
+        )
+
+        result = download.download_playlist(
+            "https://youtube.com/playlist?list=PLxxx",
+            cache_base=tmp_path,
+        )
+
+        assert result.failed_count == 1
+        assert "ERROR: Video abc123 is unavailable" in result.errors
+
+    @patch("claudetube.operations.download.YtDlpTool")
+    def test_playlist_download_uses_output_template(self, mock_cls, tmp_path):
+        """Test that playlist download uses correct output template."""
+        from claudetube.tools.base import ToolResult
+
+        mock_tool = mock_cls.return_value
+        mock_tool._is_youtube_url.return_value = False
+        mock_tool._run.return_value = ToolResult(
+            success=True,
+            stdout="",
+            stderr="",
+            returncode=0,
+        )
+
+        download.download_playlist(
+            "https://vimeo.com/playlist/123",
+            cache_base=tmp_path,
+        )
+
+        # Check that -o argument contains the template
+        call_args = mock_tool._run.call_args[0][0]
+        assert "-o" in call_args
+        o_idx = call_args.index("-o")
+        output_template = call_args[o_idx + 1]
+        # Template should contain the base path and yt-dlp placeholders
+        assert str(tmp_path) in output_template
+        assert "%(extractor)s" in output_template
+        assert "%(id)s" in output_template
+
+    @patch("claudetube.operations.download.YtDlpTool")
+    def test_playlist_download_creates_archive_dir(self, mock_cls, tmp_path):
+        """Test that archive file parent directory is created."""
+        from claudetube.tools.base import ToolResult
+
+        mock_tool = mock_cls.return_value
+        mock_tool._is_youtube_url.return_value = False
+        mock_tool._run.return_value = ToolResult(
+            success=True,
+            stdout="",
+            stderr="",
+            returncode=0,
+        )
+
+        # Use a nested cache path that doesn't exist yet
+        cache_base = tmp_path / "deep" / "cache"
+
+        download.download_playlist(
+            "https://vimeo.com/playlist/123",
+            cache_base=cache_base,
+        )
+
+        # Archive directory should have been created
+        assert (cache_base / "playlists").exists()
+
+    @patch("claudetube.operations.download.YtDlpTool")
+    def test_playlist_download_custom_quality(self, mock_cls, tmp_path):
+        """Test playlist download with custom audio quality."""
+        from claudetube.tools.base import ToolResult
+
+        mock_tool = mock_cls.return_value
+        mock_tool._is_youtube_url.return_value = False
+        mock_tool._run.return_value = ToolResult(
+            success=True,
+            stdout="",
+            stderr="",
+            returncode=0,
+        )
+
+        download.download_playlist(
+            "https://vimeo.com/playlist/123",
+            cache_base=tmp_path,
+            quality="128K",
+        )
+
+        call_args = mock_tool._run.call_args[0][0]
+        assert "--audio-quality" in call_args
+        q_idx = call_args.index("--audio-quality")
+        assert call_args[q_idx + 1] == "128K"
+
+    @patch("claudetube.operations.download.YtDlpTool")
+    def test_playlist_download_complete_failure_raises(self, mock_cls, tmp_path):
+        """Test that complete playlist failure raises exception."""
+        from claudetube.tools.base import ToolResult
+
+        mock_tool = mock_cls.return_value
+        mock_tool._is_youtube_url.return_value = True
+        mock_tool._youtube_config_args.return_value = []
+        mock_tool._run.return_value = ToolResult(
+            success=False,
+            stdout="",
+            stderr="ERROR: Playlist not found",
+            returncode=1,
+        )
+
+        with pytest.raises(DownloadError):
+            download.download_playlist(
+                "https://youtube.com/playlist?list=PLxxx",
+                cache_base=tmp_path,
+            )
+
+    @patch("claudetube.operations.download.YtDlpTool")
+    def test_playlist_download_with_progress_callback(self, mock_cls, tmp_path):
+        """Test playlist download with progress callback."""
+        from claudetube.tools.base import ToolResult
+
+        mock_tool = mock_cls.return_value
+        mock_tool._is_youtube_url.return_value = False
+        mock_tool._run_with_progress.return_value = ToolResult(
+            success=True,
+            stdout="",
+            stderr="",
+            returncode=0,
+        )
+
+        progress_updates = []
+
+        def on_progress(progress):
+            progress_updates.append(progress)
+
+        download.download_playlist(
+            "https://vimeo.com/playlist/123",
+            cache_base=tmp_path,
+            on_progress=on_progress,
+        )
+
+        # Should use _run_with_progress instead of _run
+        mock_tool._run_with_progress.assert_called_once()
+        mock_tool._run.assert_not_called()

@@ -4,7 +4,9 @@ Download operations for videos and metadata.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from claudetube.tools.ffmpeg import FFmpegTool
@@ -17,18 +19,45 @@ from claudetube.tools.yt_dlp import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+
+@dataclass
+class PlaylistDownloadResult:
+    """Result of a playlist batch download operation.
+
+    Attributes:
+        playlist_url: Original playlist URL.
+        cache_base: Cache base directory used.
+        archive_file: Path to the download archive file.
+        downloaded_count: Number of videos downloaded in this run.
+        skipped_count: Number of videos skipped (already in archive).
+        failed_count: Number of videos that failed to download.
+        video_ids: List of video IDs successfully downloaded.
+        errors: List of error messages for failed downloads.
+    """
+
+    playlist_url: str
+    cache_base: Path
+    archive_file: Path
+    downloaded_count: int = 0
+    skipped_count: int = 0
+    failed_count: int = 0
+    video_ids: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
 logger = logging.getLogger(__name__)
 
 # Re-export progress types for callers
 __all__ = [
     "DownloadProgress",
     "ProgressCallback",
+    "PlaylistDownloadResult",
     "fetch_metadata",
     "download_audio",
     "download_thumbnail",
     "fetch_subtitles",
     "download_video_segment",
     "extract_audio_local",
+    "download_playlist",
 ]
 
 # Singleton tool instance
@@ -210,3 +239,167 @@ def extract_audio_local(
 
     logger.info(f"Extracted audio: {output_path}")
     return output_path
+
+
+def download_playlist(
+    playlist_url: str,
+    cache_base: Path | None = None,
+    quality: str = "64K",
+    concurrent_fragments: int = 4,
+    on_progress: ProgressCallback | None = None,
+) -> PlaylistDownloadResult:
+    """Download all videos in a playlist using yt-dlp's native batch handling.
+
+    Uses a single yt-dlp command with output templates for efficient batch
+    downloads. Leverages --download-archive for resume support and skip
+    tracking.
+
+    Benefits over per-video Python loops:
+    - Single command downloads all videos
+    - yt-dlp handles rate limiting, retries, concurrent downloads
+    - Progress tracking across playlist
+    - Resume support built-in via --download-archive
+
+    Args:
+        playlist_url: URL to a playlist (YouTube, Vimeo, etc.)
+        cache_base: Base cache directory. Defaults to get_cache_dir().
+        quality: Audio quality (e.g., "64K", "128K"). Default "64K".
+        concurrent_fragments: Number of concurrent download fragments. Default 4.
+        on_progress: Optional callback for progress updates.
+            Receives DownloadProgress objects with status, percent, speed, etc.
+
+    Returns:
+        PlaylistDownloadResult with download statistics and video IDs.
+
+    Raises:
+        DownloadError: If the playlist download fails completely.
+    """
+    from pathlib import Path as PathLib
+
+    from claudetube.config.loader import get_cache_dir
+    from claudetube.config.output_templates import get_output_path
+
+    if cache_base is None:
+        cache_base = get_cache_dir()
+
+    # Ensure cache_base is a Path object
+    cache_base = PathLib(cache_base)
+
+    # Archive file for tracking completed downloads (enables resume)
+    archive_file = cache_base / "playlists" / "download_archive.txt"
+    archive_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Build output template for audio files
+    output_template = get_output_path("audio", cache_base)
+
+    tool = _get_yt_dlp()
+
+    # Build yt-dlp args for playlist batch download
+    args = [
+        # Output template matching cache structure
+        "-o",
+        output_template,
+        # Audio extraction
+        "-f",
+        "ba",  # Best audio
+        "-x",  # Extract audio
+        "--audio-format",
+        "mp3",
+        "--audio-quality",
+        quality,
+        # Playlist handling
+        "--yes-playlist",  # Ensure playlist is treated as playlist
+        # Resume support
+        "--download-archive",
+        str(archive_file),
+        # Performance
+        "-N",
+        str(concurrent_fragments),
+        # Output control
+        "--no-warnings",
+        # Write metadata alongside audio
+        "--write-info-json",
+        "--write-thumbnail",
+        "--convert-thumbnails",
+        "jpg",
+        # The playlist URL
+        playlist_url,
+    ]
+
+    # Add YouTube-specific config if applicable
+    if tool._is_youtube_url(playlist_url):
+        yt_args = tool._youtube_config_args()
+        args = yt_args + args
+
+    # Track results
+    result = PlaylistDownloadResult(
+        playlist_url=playlist_url,
+        cache_base=cache_base,
+        archive_file=archive_file,
+    )
+
+    # Parse progress to track per-video results
+    def _progress_wrapper(progress: DownloadProgress) -> None:
+        # Track completed downloads
+        if progress.status == "finished" and progress.filename:
+            # Extract video_id from filename path
+            # Path: cache_base/domain/channel/playlist/video_id/audio.mp3
+            try:
+                path = PathLib(progress.filename)
+                # video_id is parent directory name
+                video_id = path.parent.name
+                if video_id and video_id not in result.video_ids:
+                    result.video_ids.append(video_id)
+                    result.downloaded_count += 1
+            except Exception:
+                pass
+
+        # Pass through to user callback
+        if on_progress:
+            with contextlib.suppress(Exception):
+                on_progress(progress)
+
+    # Run the download
+    if on_progress:
+        run_result = tool._run_with_progress(args, on_progress=_progress_wrapper)
+    else:
+        run_result = tool._run(args)
+
+    # Parse output for statistics
+    if run_result.stdout:
+        for line in run_result.stdout.splitlines():
+            # yt-dlp prints "has already been recorded in the archive" for skipped
+            if "has already been recorded in the archive" in line:
+                result.skipped_count += 1
+            # Track errors from stdout
+            elif "ERROR:" in line:
+                result.errors.append(line.strip())
+                result.failed_count += 1
+
+    # Also check stderr for errors
+    if run_result.stderr:
+        for line in run_result.stderr.splitlines():
+            if "ERROR:" in line and line.strip() not in result.errors:
+                result.errors.append(line.strip())
+                result.failed_count += 1
+
+    # If complete failure, raise exception
+    if not run_result.success and result.downloaded_count == 0:
+        from claudetube.tools.yt_dlp import (
+            parse_yt_dlp_error,
+            yt_dlp_error_to_exception,
+        )
+
+        stderr = run_result.stderr or "Unknown error"
+        parsed_error = parse_yt_dlp_error(stderr)
+        raise yt_dlp_error_to_exception(
+            parsed_error,
+            is_youtube=tool._is_youtube_url(playlist_url),
+        )
+
+    logger.info(
+        f"Playlist download complete: {result.downloaded_count} downloaded, "
+        f"{result.skipped_count} skipped, {result.failed_count} failed"
+    )
+
+    return result
