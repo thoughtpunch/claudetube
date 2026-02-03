@@ -124,6 +124,7 @@ while [ $iteration -lt $MAX_ITERATIONS ]; do
     # ── Phase 1: Epic Review ──────────────────────────────────────
     verbose "Phase 1: Checking for epics needing review..."
     REVIEW_EPIC=""
+    ORPHAN_EPIC=""
     OPEN_EPICS=$(bd list --status open --json 2>/dev/null \
         | jq -r '[.[] | select(.issue_type == "epic") | .id] | .[]' 2>/dev/null || true)
 
@@ -142,6 +143,9 @@ while [ $iteration -lt $MAX_ITERATIONS ]; do
         if [ "$ALL_CLOSED" = "all_closed" ]; then
             REVIEW_EPIC="$epic_id"
             break
+        elif [ "$ALL_CLOSED" = "no_children" ]; then
+            # Track orphan epics (no parent-child links)
+            ORPHAN_EPIC="$epic_id"
         fi
     done
 
@@ -203,6 +207,29 @@ Begin. Review thoroughly."
         no_task_streak=0
         sleep 2
         continue
+    fi
+
+    # ── Phase 1b: Handle orphan epics (no parent-child links) ─────
+    # If we found an orphan epic and there are no other non-epic tasks, close it
+    if [ -n "$ORPHAN_EPIC" ]; then
+        NON_EPIC_COUNT=$(bd list --status open --json 2>/dev/null \
+            | jq '[.[] | select(.issue_type == "epic" | not)] | length' 2>/dev/null || echo "0")
+
+        if [ "$NON_EPIC_COUNT" -eq 0 ]; then
+            log "Orphan epic: $ORPHAN_EPIC (no children linked, no other tasks)"
+            verbose "Auto-closing orphan epic since all related work appears complete"
+
+            # Get epic title for the close reason
+            EPIC_TITLE=$(bd show "$ORPHAN_EPIC" --json 2>/dev/null | jq -r '.[0].title // "Unknown"' 2>/dev/null || echo "Unknown")
+
+            bd close "$ORPHAN_EPIC" --reason "Auto-closed: Epic has no linked children and no other open tasks remain. Work appears complete." 2>/dev/null || true
+            log "Closed orphan epic: $ORPHAN_EPIC - $EPIC_TITLE"
+
+            bd sync 2>/dev/null || true
+            no_task_streak=0
+            sleep 2
+            continue
+        fi
     fi
 
     # ── Phase 2: Find actionable task ─────────────────────────────
