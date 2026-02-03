@@ -343,3 +343,138 @@ class TestBackwardsCompatibility:
         for exc in exceptions:
             with pytest.raises(DownloadError):
                 raise exc
+
+
+class TestDiagnosticExtraction:
+    """Test extraction of diagnostic details from yt-dlp stderr."""
+
+    def test_extract_warnings(self):
+        """Warning messages are extracted from stderr."""
+        stderr = """[youtube] abc123: Downloading webpage
+WARNING: Unable to download webpage
+WARNING: PO Token is recommended for this request
+ERROR: HTTP Error 403: Forbidden"""
+        error = parse_yt_dlp_error(stderr)
+
+        assert len(error.warnings) == 2
+        assert "Unable to download webpage" in error.warnings
+        assert "PO Token is recommended for this request" in error.warnings
+
+    def test_extract_sabr_warning(self):
+        """SABR (Server ABR) detection is included in details."""
+        stderr = """[youtube] abc123: Downloading webpage
+WARNING: Server ABR streaming detected
+ERROR: HTTP Error 403: Forbidden"""
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.details.get("sabr_detected") is True
+        assert "sabr_note" in error.details
+
+    def test_extract_po_token_issue(self):
+        """PO Token issues are detected and noted."""
+        stderr = """[youtube] abc123: Downloading player
+WARNING: PO Token required for this request
+ERROR: HTTP Error 403: Forbidden"""
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.details.get("po_token_issue") is True
+        assert "po_token_note" in error.details
+
+    def test_extract_nsig_issue(self):
+        """nsig extraction failures are detected."""
+        stderr = """[youtube] abc123: Downloading player
+ERROR: nsig extraction failed: Unable to find function"""
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.details.get("nsig_issue") is True
+        assert "nsig_note" in error.details
+
+    def test_extract_player_issue(self):
+        """Player extraction failures are detected."""
+        stderr = """[youtube] abc123: Downloading webpage
+ERROR: Unable to extract player configuration"""
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.details.get("player_issue") is True
+        assert "player_note" in error.details
+
+    def test_warnings_included_in_exception(self):
+        """Warnings are passed through to exception details."""
+        stderr = """WARNING: Test warning
+ERROR: Something failed"""
+        error = parse_yt_dlp_error(stderr)
+        exc = yt_dlp_error_to_exception(error)
+
+        assert "warnings" in exc.details
+        assert "Test warning" in exc.details["warnings"]
+
+
+class TestClientsTriedExtraction:
+    """Test extraction of YouTube clients tried from stderr."""
+
+    def test_extract_single_client(self):
+        """Single client is extracted from log."""
+        from claudetube.tools.yt_dlp import _extract_clients_tried
+
+        stderr = "[youtube] abc123: Extracting video data with client: default"
+        clients = _extract_clients_tried(stderr)
+
+        assert clients == ["default"]
+
+    def test_extract_multiple_clients(self):
+        """Multiple clients are extracted in order."""
+        from claudetube.tools.yt_dlp import _extract_clients_tried
+
+        stderr = """[youtube] abc123: Extracting video data with client: default
+[youtube] abc123: Extracting video data with client: mweb
+[youtube] abc123: Extracting video data with client: android_vr"""
+        clients = _extract_clients_tried(stderr)
+
+        assert clients == ["default", "mweb", "android_vr"]
+
+    def test_no_duplicates(self):
+        """Duplicate client mentions are deduplicated."""
+        from claudetube.tools.yt_dlp import _extract_clients_tried
+
+        stderr = """[youtube] abc123: Extracting video data with client: default
+[youtube] abc123: Extracting video data with client: default"""
+        clients = _extract_clients_tried(stderr)
+
+        assert clients == ["default"]
+
+    def test_clients_added_to_exception(self):
+        """Clients tried are added to exception when is_youtube=True."""
+        stderr = """[youtube] abc123: Extracting video data with client: default
+[youtube] abc123: Extracting video data with client: mweb
+ERROR: HTTP Error 403: Forbidden"""
+        error = parse_yt_dlp_error(stderr)
+        exc = yt_dlp_error_to_exception(error, is_youtube=True)
+
+        assert "clients_tried" in exc.details
+        assert exc.details["clients_tried"] == ["default", "mweb"]
+
+
+class TestYtDlpErrorWarnings:
+    """Test YtDlpError warnings field."""
+
+    def test_error_has_warnings_field(self):
+        """YtDlpError dataclass has warnings field."""
+        error = YtDlpError(
+            category="auth",
+            message="HTTP Error 403",
+            stderr="ERROR: HTTP Error 403",
+            details={},
+            warnings=["Warning 1", "Warning 2"],
+        )
+
+        assert error.warnings == ["Warning 1", "Warning 2"]
+
+    def test_error_default_empty_warnings(self):
+        """Warnings default to empty list."""
+        error = YtDlpError(
+            category="auth",
+            message="HTTP Error 403",
+            stderr="ERROR: HTTP Error 403",
+        )
+
+        assert error.warnings == []

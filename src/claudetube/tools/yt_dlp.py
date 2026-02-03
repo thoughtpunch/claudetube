@@ -135,12 +135,14 @@ class YtDlpError:
         message: The original error message from yt-dlp
         stderr: Full stderr output for debugging
         details: Additional parsed details (error codes, URLs, etc.)
+        warnings: List of warning messages extracted from stderr
     """
 
     category: str
     message: str
     stderr: str
     details: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
 
 
 # Error patterns for classification
@@ -258,29 +260,148 @@ _ERROR_PATTERNS: list[tuple[re.Pattern, str, Callable[[re.Match], dict] | None]]
 ]
 
 
+# Patterns for extracting warnings and diagnostic info
+_WARNING_PATTERN = re.compile(r"WARNING:\s*(.+?)(?:\n|$)", re.IGNORECASE)
+_CLIENT_PATTERN = re.compile(r"\[youtube\].*?Extracting.*?client:\s*(\w+)", re.IGNORECASE)
+_SABR_PATTERN = re.compile(r"SABR|Server ABR|serverAbrStreamingUrl", re.IGNORECASE)
+_PO_TOKEN_WARNING_PATTERN = re.compile(
+    r"(?:PO Token|po_token|Proof of Origin).*?(?:required|needed|missing|invalid)",
+    re.IGNORECASE,
+)
+_NSIG_PATTERN = re.compile(r"nsig.*?(?:function|extract|failed)", re.IGNORECASE)
+_PLAYER_PATTERN = re.compile(
+    r"player.*?(?:response|error|failed)|Unable to extract.*?player", re.IGNORECASE
+)
+
+
+def _extract_warnings(stderr: str) -> list[str]:
+    """Extract warning messages from yt-dlp stderr.
+
+    Args:
+        stderr: Full stderr output from yt-dlp
+
+    Returns:
+        List of warning message strings
+    """
+    warnings = []
+    for match in _WARNING_PATTERN.finditer(stderr):
+        warning_text = match.group(1).strip()
+        if warning_text and warning_text not in warnings:
+            warnings.append(warning_text)
+    return warnings
+
+
+def _extract_clients_tried(stderr: str) -> list[str]:
+    """Extract YouTube client names that were tried from yt-dlp output.
+
+    yt-dlp logs which clients it attempts (default, mweb, android, ios, etc.)
+    when extracting video info.
+
+    Args:
+        stderr: Full stderr output from yt-dlp
+
+    Returns:
+        List of client names tried (e.g., ["default", "mweb", "android_vr"])
+    """
+    clients = []
+    for match in _CLIENT_PATTERN.finditer(stderr):
+        client = match.group(1).lower()
+        if client not in clients:
+            clients.append(client)
+    return clients
+
+
+def _extract_diagnostic_details(stderr: str) -> dict[str, Any]:
+    """Extract additional diagnostic details from yt-dlp stderr.
+
+    Looks for:
+    - SABR/Server ABR warnings (YouTube's adaptive streaming)
+    - PO Token issues
+    - nsig extraction failures
+    - Player extraction errors
+
+    Args:
+        stderr: Full stderr output from yt-dlp
+
+    Returns:
+        Dict with diagnostic flags and details
+    """
+    details: dict[str, Any] = {}
+
+    # Check for SABR (Server ABR) issues
+    if _SABR_PATTERN.search(stderr):
+        details["sabr_detected"] = True
+        details["sabr_note"] = (
+            "YouTube is using Server ABR streaming. "
+            "This requires proper authentication to access."
+        )
+
+    # Check for PO Token warnings
+    if _PO_TOKEN_WARNING_PATTERN.search(stderr):
+        details["po_token_issue"] = True
+        details["po_token_note"] = (
+            "A valid PO (Proof of Origin) token is required. "
+            "Configure cookies and PO token in config.yaml."
+        )
+
+    # Check for nsig extraction failures
+    if _NSIG_PATTERN.search(stderr):
+        details["nsig_issue"] = True
+        details["nsig_note"] = (
+            "Failed to extract signature. This often indicates "
+            "YouTube has updated their player. Try: pip install -U yt-dlp"
+        )
+
+    # Check for player extraction issues
+    if _PLAYER_PATTERN.search(stderr):
+        details["player_issue"] = True
+        details["player_note"] = (
+            "Failed to extract player information. "
+            "Ensure deno is installed for JS challenge solving."
+        )
+
+    return details
+
+
 def parse_yt_dlp_error(stderr: str) -> YtDlpError:
     """Parse yt-dlp stderr output into structured error information.
+
+    Extracts:
+    - Error category (auth, geo_restricted, unavailable, etc.)
+    - Main error message
+    - Warning messages
+    - Diagnostic details (SABR, PO token, nsig issues)
+    - HTTP status codes when present
 
     Args:
         stderr: The stderr output from a failed yt-dlp command
 
     Returns:
-        YtDlpError with category, message, and details
+        YtDlpError with category, message, details, and warnings
     """
     # Extract the main ERROR message if present
     error_match = re.search(r"ERROR:\s*(.+?)(?:\n|$)", stderr)
     message = error_match.group(1).strip() if error_match else stderr.strip()
+
+    # Extract warnings
+    warnings = _extract_warnings(stderr)
+
+    # Extract diagnostic details
+    diagnostic_details = _extract_diagnostic_details(stderr)
 
     # Try each pattern to classify the error
     for pattern, category, detail_extractor in _ERROR_PATTERNS:
         match = pattern.search(stderr)
         if match:
             details = detail_extractor(match) if detail_extractor else {}
+            # Merge diagnostic details
+            details.update(diagnostic_details)
             return YtDlpError(
                 category=category,
                 message=message,
                 stderr=stderr,
                 details=details,
+                warnings=warnings,
             )
 
     # Default to "unknown" category
@@ -288,7 +409,8 @@ def parse_yt_dlp_error(stderr: str) -> YtDlpError:
         category="unknown",
         message=message,
         stderr=stderr,
-        details={},
+        details=diagnostic_details,
+        warnings=warnings,
     )
 
 
@@ -314,6 +436,17 @@ def yt_dlp_error_to_exception(
     message = error.message
     stderr = error.stderr
     details = dict(error.details)  # Copy to avoid mutation
+
+    # Add warnings to details if present
+    if error.warnings:
+        details["warnings"] = error.warnings
+
+    # Extract clients tried from stderr if not provided
+    if clients_tried is None and is_youtube:
+        clients_tried = _extract_clients_tried(stderr)
+
+    if clients_tried:
+        details["clients_tried"] = clients_tried
 
     # Map categories to typed exceptions
     if category in ("auth", "po_token"):
@@ -509,6 +642,10 @@ class YtDlpTool(VideoTool):
                         "(403 / format-not-available workaround)"
                     )
                     first_stderr = stderr
+
+                    # Extract clients tried from first attempt
+                    first_clients = _extract_clients_tried(first_stderr) or ["default"]
+
                     client_args = [
                         "--extractor-args",
                         "youtube:player_client=default,mweb",
@@ -524,6 +661,16 @@ class YtDlpTool(VideoTool):
                     # If retry also failed, combine both errors for debugging
                     if result.returncode != 0:
                         retry_stderr = result.stderr or ""
+                        retry_clients_list = _extract_clients_tried(retry_stderr) or [
+                            "default",
+                            "mweb",
+                        ]
+
+                        # Build structured error with all clients tried
+                        all_clients = list(
+                            dict.fromkeys(first_clients + retry_clients_list)
+                        )
+
                         # Append actionable auth diagnostic for 403 errors
                         auth_guidance = ""
                         if "403" in first_stderr or "403" in retry_stderr:
@@ -534,11 +681,31 @@ class YtDlpTool(VideoTool):
                                     "\nYouTube download failed (403). "
                                     "See: documentation/guides/youtube-auth.md"
                                 )
-                        combined = (
-                            f"[First attempt] {first_stderr.strip()}\n"
-                            f"[Retry with default,mweb] {retry_stderr.strip()}"
-                            f"{auth_guidance}"
+
+                        # Format combined error with diagnostic info
+                        combined_parts = [
+                            f"[Clients tried: {', '.join(all_clients)}]",
+                            "",
+                            f"[First attempt] {first_stderr.strip()}",
+                            "",
+                            f"[Retry with default,mweb] {retry_stderr.strip()}",
+                        ]
+
+                        # Add warnings summary if present
+                        first_warnings = _extract_warnings(first_stderr)
+                        retry_warnings = _extract_warnings(retry_stderr)
+                        all_warnings = list(
+                            dict.fromkeys(first_warnings + retry_warnings)
                         )
+                        if all_warnings:
+                            combined_parts.append("")
+                            combined_parts.append("[Warnings]")
+                            for w in all_warnings:
+                                combined_parts.append(f"  - {w}")
+
+                        combined_parts.append(auth_guidance)
+
+                        combined = "\n".join(combined_parts)
                         result = subprocess.CompletedProcess(
                             args=cmd_retry,
                             returncode=result.returncode,
