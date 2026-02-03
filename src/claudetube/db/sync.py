@@ -697,3 +697,318 @@ def update_pipeline_step(
     except Exception:
         logger.debug("Failed to update pipeline step", exc_info=True)
         return False
+
+
+def sync_scene(
+    video_uuid: str,
+    scene_id: int,
+    start_time: float,
+    end_time: float,
+    *,
+    title: str | None = None,
+    transcript_text: str | None = None,
+    method: str | None = None,
+    relevance_boost: float = 1.0,
+) -> str | None:
+    """Sync a scene record to SQLite.
+
+    Creates a new scene record for the given video. The scene's transcript_text
+    is indexed by FTS5 for per-scene search.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_uuid: UUID of the parent video record (from videos table).
+        scene_id: Sequential scene identifier (0-indexed).
+        start_time: Scene start time in seconds.
+        end_time: Scene end time in seconds.
+        title: Optional scene title (e.g., from chapter).
+        transcript_text: Transcript text for this scene segment.
+        method: Segmentation method (transcript, visual, hybrid, chapters).
+        relevance_boost: Relevance boost multiplier (default: 1.0).
+
+    Returns:
+        The generated UUID for the scene, or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        from claudetube.db.repos.scenes import SceneRepository
+
+        repo = SceneRepository(db)
+
+        # Check if scene already exists (by video + scene_id)
+        existing = repo.get_scene(video_uuid, scene_id)
+        if existing:
+            logger.debug(
+                "Scene %d already exists for video %s",
+                scene_id,
+                video_uuid,
+            )
+            return existing["id"]
+
+        scene_uuid = repo.insert(
+            video_uuid=video_uuid,
+            scene_id=scene_id,
+            start_time=start_time,
+            end_time=end_time,
+            title=title,
+            transcript_text=transcript_text,
+            method=method,
+            relevance_boost=relevance_boost,
+        )
+        logger.debug("Synced scene %d for video %s", scene_id, video_uuid)
+        return scene_uuid
+
+    except Exception:
+        logger.debug("Failed to sync scene to SQLite", exc_info=True)
+        return None
+
+
+def sync_scenes_bulk(
+    video_uuid: str,
+    scenes: list[dict[str, Any]],
+) -> list[str] | None:
+    """Sync multiple scenes to SQLite efficiently.
+
+    Uses bulk insert for better performance when syncing all scenes at once.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_uuid: UUID of the parent video record.
+        scenes: List of scene dicts with scene_id, start_time, end_time, etc.
+
+    Returns:
+        List of generated UUIDs for the scenes, or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        from claudetube.db.repos.scenes import SceneRepository
+
+        repo = SceneRepository(db)
+
+        # Check if any scenes already exist for this video
+        existing_count = repo.count_by_video(video_uuid)
+        if existing_count > 0:
+            logger.debug(
+                "Scenes already exist for video %s, skipping bulk insert",
+                video_uuid,
+            )
+            return None
+
+        uuids = repo.bulk_insert(video_uuid, scenes)
+        logger.debug("Synced %d scenes for video %s", len(uuids), video_uuid)
+        return uuids
+
+    except Exception:
+        logger.debug("Failed to bulk sync scenes to SQLite", exc_info=True)
+        return None
+
+
+def sync_frame(
+    video_uuid: str,
+    timestamp: float,
+    extraction_type: str,
+    file_path: str,
+    *,
+    scene_id: int | None = None,
+    quality_tier: str | None = None,
+    is_thumbnail: bool = False,
+    width: int | None = None,
+    height: int | None = None,
+    file_size_bytes: int | None = None,
+) -> str | None:
+    """Sync a frame record to SQLite.
+
+    Creates a new frame record for the given video.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_uuid: UUID of the parent video record (from videos table).
+        timestamp: Frame timestamp in seconds.
+        extraction_type: Type of extraction (drill, hq, keyframe, thumbnail).
+        file_path: Relative path to the frame file in cache.
+        scene_id: Scene identifier (NULL for video-level extractions).
+        quality_tier: Quality tier (lowest, low, medium, high, highest).
+        is_thumbnail: Whether this is the video's thumbnail image.
+        width: Frame width in pixels.
+        height: Frame height in pixels.
+        file_size_bytes: File size in bytes.
+
+    Returns:
+        The generated UUID for the frame, or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        from claudetube.db.repos.frames import FrameRepository
+
+        repo = FrameRepository(db)
+
+        frame_uuid = repo.insert(
+            video_uuid=video_uuid,
+            timestamp=timestamp,
+            extraction_type=extraction_type,
+            file_path=file_path,
+            scene_id=scene_id,
+            quality_tier=quality_tier,
+            is_thumbnail=is_thumbnail,
+            width=width,
+            height=height,
+            file_size_bytes=file_size_bytes,
+        )
+        logger.debug(
+            "Synced %s frame at %.1fs for video %s",
+            extraction_type,
+            timestamp,
+            video_uuid,
+        )
+        return frame_uuid
+
+    except Exception:
+        logger.debug("Failed to sync frame to SQLite", exc_info=True)
+        return None
+
+
+def sync_visual_description(
+    video_uuid: str,
+    scene_id: int,
+    description: str,
+    *,
+    provider: str | None = None,
+    file_path: str | None = None,
+) -> str | None:
+    """Sync a visual description record to SQLite.
+
+    Creates a new visual description record for the given video scene.
+    The description is indexed by FTS5 for cross-video search.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_uuid: UUID of the parent video record (from videos table).
+        scene_id: The scene identifier (0-indexed).
+        description: The visual description text.
+        provider: Optional provider name (e.g., 'anthropic', 'openai').
+        file_path: Optional path to the JSON file.
+
+    Returns:
+        The generated UUID for the visual description, or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        from claudetube.db.repos.visual_descriptions import VisualDescriptionRepository
+
+        repo = VisualDescriptionRepository(db)
+
+        # Check if visual description already exists (by video + scene_id)
+        existing = repo.get_by_scene(video_uuid, scene_id)
+        if existing:
+            logger.debug(
+                "Visual description already exists for video %s scene %d",
+                video_uuid,
+                scene_id,
+            )
+            return existing["id"]
+
+        visual_uuid = repo.insert(
+            video_uuid=video_uuid,
+            scene_id=scene_id,
+            description=description,
+            provider=provider,
+            file_path=file_path,
+        )
+        logger.debug(
+            "Synced visual description for video %s scene %d",
+            video_uuid,
+            scene_id,
+        )
+        return visual_uuid
+
+    except Exception:
+        logger.debug("Failed to sync visual description to SQLite", exc_info=True)
+        return None
+
+
+def sync_technical_content(
+    video_uuid: str,
+    scene_id: int,
+    has_code: bool,
+    has_text: bool,
+    *,
+    provider: str | None = None,
+    ocr_text: str | None = None,
+    code_language: str | None = None,
+    file_path: str | None = None,
+) -> str | None:
+    """Sync a technical content record to SQLite.
+
+    Creates a new technical content record for the given video scene.
+    The ocr_text is indexed by FTS5 for cross-video search.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_uuid: UUID of the parent video record (from videos table).
+        scene_id: The scene identifier (0-indexed).
+        has_code: Whether code was detected in the scene.
+        has_text: Whether text was detected in the scene.
+        provider: Optional provider name (e.g., 'anthropic', 'openai').
+        ocr_text: Extracted OCR text for FTS search.
+        code_language: Detected programming language.
+        file_path: Optional path to the JSON file.
+
+    Returns:
+        The generated UUID for the technical content, or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        from claudetube.db.repos.technical_content import TechnicalContentRepository
+
+        repo = TechnicalContentRepository(db)
+
+        # Check if technical content already exists (by video + scene_id)
+        existing = repo.get_by_scene(video_uuid, scene_id)
+        if existing:
+            logger.debug(
+                "Technical content already exists for video %s scene %d",
+                video_uuid,
+                scene_id,
+            )
+            return existing["id"]
+
+        tech_uuid = repo.insert(
+            video_uuid=video_uuid,
+            scene_id=scene_id,
+            has_code=has_code,
+            has_text=has_text,
+            provider=provider,
+            ocr_text=ocr_text,
+            code_language=code_language,
+            file_path=file_path,
+        )
+        logger.debug(
+            "Synced technical content for video %s scene %d",
+            video_uuid,
+            scene_id,
+        )
+        return tech_uuid
+
+    except Exception:
+        logger.debug("Failed to sync technical content to SQLite", exc_info=True)
+        return None

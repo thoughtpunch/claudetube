@@ -283,6 +283,50 @@ def _select_keyframes_for_scene(
         if seg_path.exists():
             seg_path.unlink()
 
+    # Dual-write: sync keyframes to SQLite (fire-and-forget)
+    try:
+        from claudetube.db.sync import get_video_uuid, record_pipeline_step, sync_frame
+
+        video_uuid = get_video_uuid(video_id)
+        if video_uuid and frames:
+            for frame_path in frames:
+                # Extract timestamp from filename (format: kf_MM_SS.jpg)
+                try:
+                    name = frame_path.stem
+                    parts = name.split("_")
+                    if len(parts) >= 3:
+                        minutes = int(parts[1])
+                        seconds = int(parts[2])
+                        timestamp = minutes * 60 + seconds
+                    else:
+                        timestamp = scene.start_time
+                except (ValueError, IndexError):
+                    timestamp = scene.start_time
+
+                # Get relative path from cache_dir
+                relative_path = str(frame_path.relative_to(cache_dir))
+
+                sync_frame(
+                    video_uuid=video_uuid,
+                    timestamp=float(timestamp),
+                    extraction_type="keyframe",
+                    file_path=relative_path,
+                    scene_id=scene.scene_id,
+                    quality_tier="medium",
+                    width=854,
+                )
+
+            # Record pipeline step for keyframe extraction
+            record_pipeline_step(
+                video_id,
+                step_type="keyframe_extract",
+                status="completed",
+                scene_id=scene.scene_id,
+            )
+    except Exception:
+        # Fire-and-forget: don't disrupt keyframe extraction
+        pass
+
     return frames
 
 
@@ -454,6 +498,45 @@ def generate_visual_transcript(
         visual_path.parent.mkdir(parents=True, exist_ok=True)
         visual_path.write_text(json.dumps(visual_desc.to_dict(), indent=2))
         results.append(visual_desc)
+
+        # Dual-write: sync visual description to SQLite (fire-and-forget)
+        try:
+            from claudetube.db.sync import (
+                get_video_uuid,
+                record_pipeline_step,
+                sync_visual_description,
+            )
+
+            video_uuid = get_video_uuid(video_id)
+            if video_uuid:
+                # Get relative path for storage
+                relative_path = str(visual_path.relative_to(cache_dir))
+
+                # Determine provider name
+                provider_name = None
+                if hasattr(operation, "vision") and hasattr(operation.vision, "info"):
+                    provider_name = operation.vision.info.name
+
+                sync_visual_description(
+                    video_uuid=video_uuid,
+                    scene_id=scene.scene_id,
+                    description=visual_desc.description,
+                    provider=provider_name,
+                    file_path=relative_path,
+                )
+
+                # Record pipeline step for visual analysis
+                record_pipeline_step(
+                    video_id,
+                    step_type="visual_analyze",
+                    status="completed",
+                    provider=provider_name,
+                    scene_id=scene.scene_id,
+                )
+        except Exception:
+            # Fire-and-forget: don't disrupt visual transcript generation
+            pass
+
         log_timed(f"Scene {scene.scene_id}: visual transcript generated", t0)
 
     # Update state.json if all scenes processed

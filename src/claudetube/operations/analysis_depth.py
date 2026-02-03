@@ -243,6 +243,56 @@ def extract_technical_content(
         # Cache the result
         _save_technical_content(cache_dir, scene.scene_id, content)
 
+        # Dual-write: sync technical content to SQLite (fire-and-forget)
+        try:
+            from claudetube.db.sync import (
+                get_video_uuid,
+                record_pipeline_step,
+                sync_technical_content,
+            )
+
+            video_uuid = get_video_uuid(video_id)
+            if video_uuid:
+                # Join OCR text for FTS indexing
+                combined_ocr_text = "\n".join(ocr_text) if ocr_text else None
+
+                # Determine if code and text are present
+                has_code = bool(code_blocks)
+                has_text = bool(ocr_text)
+
+                # Detect primary code language
+                code_language = None
+                if code_blocks:
+                    # Get the most common language from code blocks
+                    langs = [b.get("language") for b in code_blocks if b.get("language")]
+                    if langs:
+                        code_language = max(set(langs), key=langs.count)
+
+                # Get relative file path
+                tech_path = get_technical_json_path(cache_dir, scene.scene_id)
+                relative_path = str(tech_path.relative_to(cache_dir))
+
+                sync_technical_content(
+                    video_uuid=video_uuid,
+                    scene_id=scene.scene_id,
+                    has_code=has_code,
+                    has_text=has_text,
+                    ocr_text=combined_ocr_text,
+                    code_language=code_language,
+                    file_path=relative_path,
+                )
+
+                # Record pipeline step for deep analysis
+                record_pipeline_step(
+                    video_id,
+                    step_type="deep_analyze",
+                    status="completed",
+                    scene_id=scene.scene_id,
+                )
+        except Exception:
+            # Fire-and-forget: don't disrupt technical content extraction
+            pass
+
         return content
 
     except ImportError as e:

@@ -262,7 +262,7 @@ def load_scenes_data(cache_dir: Path) -> ScenesData | None:
 
 
 def save_scenes_data(cache_dir: Path, data: ScenesData) -> None:
-    """Save scenes.json data.
+    """Save scenes.json data and sync to SQLite.
 
     Args:
         cache_dir: Video cache directory
@@ -270,6 +270,39 @@ def save_scenes_data(cache_dir: Path, data: ScenesData) -> None:
     """
     scenes_json = get_scenes_json_path(cache_dir)
     scenes_json.write_text(json.dumps(data.to_dict(), indent=2))
+
+    # Dual-write: sync scenes to SQLite (fire-and-forget)
+    try:
+        from claudetube.db.sync import (
+            get_video_uuid,
+            record_pipeline_step,
+            sync_scenes_bulk,
+        )
+
+        video_uuid = get_video_uuid(data.video_id)
+        if video_uuid:
+            # Build scene dicts for bulk insert
+            scene_dicts = []
+            for scene in data.scenes:
+                scene_dicts.append({
+                    "scene_id": scene.scene_id,
+                    "start_time": scene.start_time,
+                    "end_time": scene.end_time,
+                    "title": scene.title,
+                    "transcript_text": scene.transcript_text,
+                    "method": data.method,
+                })
+            sync_scenes_bulk(video_uuid, scene_dicts)
+
+            # Record pipeline step for scene detection
+            record_pipeline_step(
+                data.video_id,
+                step_type="scene_detect",
+                status="completed",
+            )
+    except Exception:
+        # Fire-and-forget: don't disrupt JSON writes
+        pass
 
 
 def list_scene_keyframes(cache_dir: Path, scene_id: int) -> list[Path]:

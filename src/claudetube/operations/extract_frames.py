@@ -142,6 +142,45 @@ def extract_frames(
         state["quality_extractions"] = extractions
         state_file.write_text(json.dumps(state, indent=2))
 
+    # Dual-write: sync frames to SQLite (fire-and-forget)
+    try:
+        from claudetube.db.sync import get_video_uuid, sync_frame
+
+        video_uuid = get_video_uuid(video_id)
+        if video_uuid:
+            for frame_path in frames:
+                # Extract timestamp from filename (format: drill_MMSS.jpg)
+                try:
+                    name = frame_path.stem
+                    parts = name.split("_")
+                    if len(parts) >= 2:
+                        ts_part = parts[1]
+                        if len(ts_part) == 4:
+                            minutes = int(ts_part[:2])
+                            seconds = int(ts_part[2:])
+                            timestamp = minutes * 60 + seconds
+                        else:
+                            timestamp = start_time
+                    else:
+                        timestamp = start_time
+                except (ValueError, IndexError):
+                    timestamp = start_time
+
+                # Get relative path from cache_dir
+                relative_path = str(frame_path.relative_to(cache_dir))
+
+                sync_frame(
+                    video_uuid=video_uuid,
+                    timestamp=float(timestamp),
+                    extraction_type="drill",
+                    file_path=relative_path,
+                    quality_tier=quality,
+                    width=effective_width,
+                )
+    except Exception:
+        # Fire-and-forget: don't disrupt frame extraction
+        pass
+
     log_timed(f"Drill-in complete ({quality}): {len(frames)} frames", t0)
     return frames
 
@@ -239,6 +278,45 @@ def extract_hq_frames(
     # Clean up segment file
     if hq_video_path.exists():
         hq_video_path.unlink()
+
+    # Dual-write: sync HQ frames to SQLite (fire-and-forget)
+    try:
+        from claudetube.db.sync import get_video_uuid, sync_frame
+
+        video_uuid = get_video_uuid(video_id)
+        if video_uuid:
+            for frame_path in frames:
+                # Extract timestamp from filename (format: hq_MMSS.jpg)
+                try:
+                    name = frame_path.stem
+                    parts = name.split("_")
+                    if len(parts) >= 2:
+                        ts_part = parts[1]
+                        if len(ts_part) == 4:
+                            minutes = int(ts_part[:2])
+                            seconds = int(ts_part[2:])
+                            timestamp = minutes * 60 + seconds
+                        else:
+                            timestamp = start_time
+                    else:
+                        timestamp = start_time
+                except (ValueError, IndexError):
+                    timestamp = start_time
+
+                # Get relative path from cache_dir
+                relative_path = str(frame_path.relative_to(cache_dir))
+
+                sync_frame(
+                    video_uuid=video_uuid,
+                    timestamp=float(timestamp),
+                    extraction_type="hq",
+                    file_path=relative_path,
+                    quality_tier="high",
+                    width=width,
+                )
+    except Exception:
+        # Fire-and-forget: don't disrupt frame extraction
+        pass
 
     log_timed(f"HQ drill-in complete: {len(frames)} frames", t0)
     return frames
@@ -350,6 +428,45 @@ def extract_frames_local(
         state_data["quality_extractions"] = extractions
         state_file.write_text(json.dumps(state_data, indent=2))
 
+    # Dual-write: sync frames to SQLite (fire-and-forget)
+    try:
+        from claudetube.db.sync import get_video_uuid, sync_frame
+
+        video_uuid = get_video_uuid(video_id)
+        if video_uuid:
+            for frame_path in frames:
+                # Extract timestamp from filename (format: frame_MMSS.jpg)
+                try:
+                    name = frame_path.stem
+                    parts = name.split("_")
+                    if len(parts) >= 2:
+                        ts_part = parts[1]
+                        if len(ts_part) == 4:
+                            minutes = int(ts_part[:2])
+                            seconds = int(ts_part[2:])
+                            timestamp = minutes * 60 + seconds
+                        else:
+                            timestamp = start_time
+                    else:
+                        timestamp = start_time
+                except (ValueError, IndexError):
+                    timestamp = start_time
+
+                # Get relative path from cache_dir
+                relative_path = str(frame_path.relative_to(cache_dir))
+
+                sync_frame(
+                    video_uuid=video_uuid,
+                    timestamp=float(timestamp),
+                    extraction_type="drill",
+                    file_path=relative_path,
+                    quality_tier=quality,
+                    width=width,
+                )
+    except Exception:
+        # Fire-and-forget: don't disrupt frame extraction
+        pass
+
     log_timed(f"Local drill-in complete ({quality}): {len(frames)} frames", t0)
     return frames
 
@@ -432,6 +549,45 @@ def extract_hq_frames_local(
         seek_offset=0.0,  # No offset needed - seeking directly in source
         prefix="hq",
     )
+
+    # Dual-write: sync HQ frames to SQLite (fire-and-forget)
+    try:
+        from claudetube.db.sync import get_video_uuid, sync_frame
+
+        video_uuid = get_video_uuid(video_id)
+        if video_uuid:
+            for frame_path in frames:
+                # Extract timestamp from filename (format: hq_MMSS.jpg)
+                try:
+                    name = frame_path.stem
+                    parts = name.split("_")
+                    if len(parts) >= 2:
+                        ts_part = parts[1]
+                        if len(ts_part) == 4:
+                            minutes = int(ts_part[:2])
+                            seconds = int(ts_part[2:])
+                            timestamp = minutes * 60 + seconds
+                        else:
+                            timestamp = start_time
+                    else:
+                        timestamp = start_time
+                except (ValueError, IndexError):
+                    timestamp = start_time
+
+                # Get relative path from cache_dir
+                relative_path = str(frame_path.relative_to(cache_dir))
+
+                sync_frame(
+                    video_uuid=video_uuid,
+                    timestamp=float(timestamp),
+                    extraction_type="hq",
+                    file_path=relative_path,
+                    quality_tier="high",
+                    width=width,
+                )
+    except Exception:
+        # Fire-and-forget: don't disrupt frame extraction
+        pass
 
     log_timed(f"Local HQ drill-in complete: {len(frames)} frames", t0)
     return frames

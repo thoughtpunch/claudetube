@@ -127,6 +127,26 @@ def process_video(
             state.has_thumbnail = True
             cache.save_state(video_id, state)
             log_timed("Thumbnail saved", t0)
+
+            # Dual-write: sync thumbnail to SQLite (fire-and-forget)
+            try:
+                from claudetube.db.sync import get_video_uuid, sync_frame
+
+                video_uuid = get_video_uuid(video_id)
+                if video_uuid:
+                    # Get relative path from cache_dir
+                    relative_path = "thumbnail.jpg"
+
+                    sync_frame(
+                        video_uuid=video_uuid,
+                        timestamp=0.0,
+                        extraction_type="thumbnail",
+                        file_path=relative_path,
+                        is_thumbnail=True,
+                    )
+            except Exception:
+                # Fire-and-forget: don't disrupt thumbnail download
+                pass
         else:
             log_timed("No thumbnail available", t0)
 
@@ -472,6 +492,27 @@ def process_local_video(
             state.has_thumbnail = True
             cache.save_state(video_id, state)
             log_timed("Thumbnail generated", t0)
+
+            # Dual-write: sync thumbnail to SQLite (fire-and-forget)
+            try:
+                from claudetube.db.sync import get_video_uuid, sync_frame
+
+                video_uuid = get_video_uuid(video_id)
+                if video_uuid:
+                    # Get relative path from cache_dir
+                    relative_path = "thumbnail.jpg"
+
+                    sync_frame(
+                        video_uuid=video_uuid,
+                        timestamp=thumb_time,
+                        extraction_type="thumbnail",
+                        file_path=relative_path,
+                        is_thumbnail=True,
+                        width=480,
+                    )
+            except Exception:
+                # Fire-and-forget: don't disrupt thumbnail generation
+                pass
         else:
             log_timed("Thumbnail generation failed", t0)
 
