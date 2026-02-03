@@ -238,9 +238,10 @@ class TestEnrichVideo:
             channel="UCchannel",
         )
 
-        # Create directory
+        # Create directory with state.json so it's a real video dir
         old_dir = temp_cache_dir / "youtube" / "UCchannel" / "no_playlist" / "vid456"
         old_dir.mkdir(parents=True)
+        (old_dir / "state.json").write_text("{}")
         (old_dir / "audio.mp3").write_text("audio")
 
         # Enrich with playlist info
@@ -325,9 +326,10 @@ class TestEnrichVideo:
             cache_path="youtube/no_channel/no_playlist/vid222",
         )
 
-        # Create directory but make new location unmovable
+        # Create directory with content (state.json) so it's a real video dir
         old_dir = temp_cache_dir / "youtube" / "no_channel" / "no_playlist" / "vid222"
         old_dir.mkdir(parents=True)
+        (old_dir / "state.json").write_text("{}")
 
         with patch("shutil.move", side_effect=OSError("Permission denied")):
             enrich_video("vid222", {"channel_id": "UCnew"}, temp_cache_dir)

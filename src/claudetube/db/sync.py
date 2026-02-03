@@ -249,9 +249,19 @@ def enrich_video(video_id: str, metadata: dict[str, Any], cache_base: Path) -> N
 
         new_dir = cache_base / new_cache_path
 
-        # Attempt to move the directory
-        if old_dir.exists() and not new_dir.exists():
+        # Check if old_dir has actual content (state.json)
+        old_has_content = old_dir.exists() and (old_dir / "state.json").exists()
+        new_has_content = new_dir.exists() and (new_dir / "state.json").exists()
+
+        # Attempt to move/merge the directory
+        if old_has_content and not new_has_content:
+            # Old has content, new doesn't (or doesn't exist) - move old to new
             try:
+                if new_dir.exists():
+                    # New dir exists but is empty shell - remove it first
+                    shutil.rmtree(str(new_dir))
+                    logger.debug("Removed empty shell directory: %s", new_dir)
+
                 # Create parent directories
                 new_dir.parent.mkdir(parents=True, exist_ok=True)
 
@@ -280,17 +290,26 @@ def enrich_video(video_id: str, metadata: dict[str, Any], cache_base: Path) -> N
                 )
                 # Still UPSERT metadata, but keep old cache_path
                 _upsert_metadata_only(db, video_id, domain, old_cache_path, metadata)
-        else:
-            # Can't move (source doesn't exist or dest already exists)
-            # Just UPSERT metadata
-            if new_dir.exists():
-                # New location already exists - use it
-                _upsert_with_new_path(
-                    db, video_id, domain, new_cache_path, channel, playlist, metadata
+        elif new_has_content:
+            # New location has content - use it, clean up old if it exists
+            if old_has_content and old_dir != new_dir:
+                # Both have content - this shouldn't happen, but prefer new
+                logger.warning(
+                    "Both old and new cache dirs have content: %s, %s. Using new.",
+                    old_cache_path,
+                    new_cache_path,
                 )
-            else:
-                # Source doesn't exist - keep old path
-                _upsert_metadata_only(db, video_id, domain, old_cache_path, metadata)
+            _upsert_with_new_path(
+                db, video_id, domain, new_cache_path, channel, playlist, metadata
+            )
+        elif old_has_content:
+            # Old has content, can't determine new state - keep old path
+            _upsert_metadata_only(db, video_id, domain, old_cache_path, metadata)
+        else:
+            # Neither has content - just update metadata with new path
+            _upsert_with_new_path(
+                db, video_id, domain, new_cache_path, channel, playlist, metadata
+            )
 
     except Exception:
         logger.debug("Failed to enrich video in SQLite", exc_info=True)
