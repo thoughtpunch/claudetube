@@ -2,13 +2,13 @@
 Temporal grounding search for finding moments in videos.
 
 Implements semantic search over video scenes with a tiered strategy:
-1. TEXT - Fast transcript search (instant)
-2. EMBEDDINGS - Vector similarity search (if text search fails)
+1. TEXT - Fast transcript search via FTS5 (instant)
+2. EMBEDDINGS - Vector similarity search via sqlite-vec (if text search fails)
 3. QUERY EXPANSION - Optional LLM-powered query expansion for better recall
 
 Architecture: Cheap First, Expensive Last
-- Text search: <100ms (regex/substring matching)
-- Embedding search: <500ms (query embed + ChromaDB lookup)
+- FTS5 search: <100ms (SQLite full-text search)
+- Embedding search: <500ms (query embed + sqlite-vec KNN)
 - Query expansion: ~1-2s (LLM call, optional)
 """
 
@@ -39,11 +39,12 @@ class SearchMoment:
     relevance: float  # 0.0 to 1.0, higher is better
     preview: str  # Transcript snippet
     timestamp_str: str  # Human-readable timestamp (MM:SS or HH:MM:SS)
-    match_type: str  # "text" or "semantic"
+    match_type: str  # "text", "fts", "semantic", "text+semantic", etc.
+    video_id: str | None = None  # For cross-video search
 
     def to_dict(self) -> dict:
         """Convert to JSON-serializable dict."""
-        return {
+        result = {
             "rank": self.rank,
             "scene_id": self.scene_id,
             "start_time": self.start_time,
@@ -53,6 +54,9 @@ class SearchMoment:
             "timestamp_str": self.timestamp_str,
             "match_type": self.match_type,
         }
+        if self.video_id is not None:
+            result["video_id"] = self.video_id
+        return result
 
 
 def format_timestamp(seconds: float) -> str:
@@ -70,6 +74,347 @@ def format_timestamp(seconds: float) -> str:
     if h:
         return f"{h}:{m:02d}:{s:02d}"
     return f"{m}:{s:02d}"
+
+
+# =============================================================================
+# Score Normalization
+# =============================================================================
+
+
+def normalize_fts_score(rank: float, max_rank: float = -20.0) -> float:
+    """Normalize FTS5 BM25 rank to 0-1 relevance score.
+
+    FTS5 BM25 rank is negative (more negative = better match).
+    Typical range is -20 to 0 for good matches.
+
+    Args:
+        rank: FTS5 rank value (negative).
+        max_rank: The "best" rank value (most negative). Scores at or
+            beyond this are clamped to 1.0.
+
+    Returns:
+        Normalized score in range [0.0, 1.0] where higher is better.
+    """
+    if rank >= 0:
+        return 0.0
+    # Clamp to max_rank
+    clamped = max(rank, max_rank)
+    # Linear interpolation: max_rank -> 1.0, 0 -> 0.0
+    return min(1.0, -clamped / -max_rank)
+
+
+def normalize_vec_distance(distance: float, max_distance: float = 2.0) -> float:
+    """Normalize sqlite-vec distance to 0-1 relevance score.
+
+    sqlite-vec uses L2 distance by default (lower = closer = better).
+    Typical L2 distances range 0-2 for normalized embeddings.
+
+    Args:
+        distance: L2 distance (positive, lower is better).
+        max_distance: Maximum expected distance. Distances at or beyond
+            this are clamped to 0.0 relevance.
+
+    Returns:
+        Normalized score in range [0.0, 1.0] where higher is better.
+    """
+    if distance < 0:
+        distance = 0
+    if distance >= max_distance:
+        return 0.0
+    return 1.0 - (distance / max_distance)
+
+
+# =============================================================================
+# FTS5 Search (Text)
+# =============================================================================
+
+
+def _search_fts5(
+    video_id: str,
+    query: str,
+    top_k: int = 5,
+) -> list[SearchMoment]:
+    """Search scenes using FTS5 full-text search.
+
+    Args:
+        video_id: Video identifier.
+        query: Natural language query.
+        top_k: Maximum number of results.
+
+    Returns:
+        List of SearchMoment objects sorted by relevance.
+    """
+    try:
+        from claudetube.db.queries import search_transcripts_fts
+
+        fts_result = search_transcripts_fts(video_id, query, top_k)
+        if fts_result is None:
+            return []
+
+        moments = []
+        for i, row in enumerate(fts_result):
+            preview = _create_preview(
+                row.get("transcript_text", ""), query, max_len=150
+            )
+            # FTS5 returns relevance already normalized in queries.py
+            relevance = row.get("relevance", 0.5)
+            moments.append(
+                SearchMoment(
+                    rank=i + 1,
+                    scene_id=row["scene_id"],
+                    start_time=row["start_time"],
+                    end_time=row["end_time"],
+                    relevance=relevance,
+                    preview=preview,
+                    timestamp_str=format_timestamp(row["start_time"]),
+                    match_type="fts",
+                )
+            )
+        return moments
+    except Exception:
+        logger.debug("FTS5 search failed", exc_info=True)
+        return []
+
+
+def _search_fts5_cross_video(
+    query: str,
+    top_k: int = 10,
+) -> list[SearchMoment]:
+    """Search scenes across ALL videos using FTS5.
+
+    Args:
+        query: Natural language query.
+        top_k: Maximum number of results.
+
+    Returns:
+        List of SearchMoment objects with video context.
+    """
+    try:
+        from claudetube.db.queries import search_transcripts_fts_cross_video
+
+        fts_result = search_transcripts_fts_cross_video(query, top_k)
+        if fts_result is None:
+            return []
+
+        moments = []
+        for i, row in enumerate(fts_result):
+            preview = _create_preview(
+                row.get("transcript_text", ""), query, max_len=150
+            )
+            relevance = row.get("relevance", 0.5)
+            moments.append(
+                SearchMoment(
+                    rank=i + 1,
+                    scene_id=row["scene_id"],
+                    start_time=row["start_time"],
+                    end_time=row["end_time"],
+                    relevance=relevance,
+                    preview=preview,
+                    timestamp_str=format_timestamp(row["start_time"]),
+                    match_type="fts",
+                    video_id=row.get("video_id"),
+                )
+            )
+        return moments
+    except Exception:
+        logger.debug("Cross-video FTS5 search failed", exc_info=True)
+        return []
+
+
+# =============================================================================
+# sqlite-vec Search (Semantic/Vector)
+# =============================================================================
+
+
+def _search_vec(
+    video_id: str,
+    query: str,
+    top_k: int = 5,
+    cache_dir: Path | None = None,
+) -> list[SearchMoment]:
+    """Search scenes using sqlite-vec vector similarity.
+
+    Args:
+        video_id: Video identifier.
+        query: Natural language query.
+        top_k: Maximum number of results.
+        cache_dir: Optional cache directory.
+
+    Returns:
+        List of SearchMoment objects sorted by similarity.
+    """
+    try:
+        from claudetube.config.loader import get_cache_dir
+
+        if cache_dir is None:
+            cache_dir = get_cache_dir()
+
+        video_cache_dir = cache_dir / video_id
+
+        from claudetube.analysis.vector_index import (
+            has_vector_index,
+            search_scenes_by_text,
+        )
+
+        if not has_vector_index(video_cache_dir):
+            return []
+
+        results = search_scenes_by_text(video_cache_dir, query, top_k=top_k)
+
+        moments = []
+        for i, result in enumerate(results):
+            # Normalize distance to relevance
+            relevance = normalize_vec_distance(result.distance)
+
+            preview = result.transcript_preview
+            if not preview and result.visual_description:
+                preview = f"[Visual: {result.visual_description[:100]}...]"
+            elif not preview:
+                preview = "[No transcript]"
+
+            moments.append(
+                SearchMoment(
+                    rank=i + 1,
+                    scene_id=result.scene_id,
+                    start_time=result.start_time,
+                    end_time=result.end_time,
+                    relevance=relevance,
+                    preview=preview[:150] + "..." if len(preview) > 150 else preview,
+                    timestamp_str=format_timestamp(result.start_time),
+                    match_type="semantic",
+                )
+            )
+        return moments
+    except Exception:
+        logger.debug("sqlite-vec search failed", exc_info=True)
+        return []
+
+
+def _search_vec_cross_video(
+    query: str,
+    top_k: int = 10,
+) -> list[SearchMoment]:
+    """Search scenes across ALL videos using sqlite-vec.
+
+    Args:
+        query: Natural language query.
+        top_k: Maximum number of results.
+
+    Returns:
+        List of SearchMoment objects with video context.
+    """
+    try:
+        from claudetube.analysis.vector_index import search_similar_cross_video
+
+        results = search_similar_cross_video(query, top_k=top_k)
+
+        moments = []
+        for i, result in enumerate(results):
+            relevance = normalize_vec_distance(result.distance)
+
+            preview = result.transcript_preview
+            if not preview:
+                preview = "[No transcript]"
+
+            moments.append(
+                SearchMoment(
+                    rank=i + 1,
+                    scene_id=result.scene_id,
+                    start_time=result.start_time,
+                    end_time=result.end_time,
+                    relevance=relevance,
+                    preview=preview[:150] + "..." if len(preview) > 150 else preview,
+                    timestamp_str=format_timestamp(result.start_time),
+                    match_type="semantic",
+                    video_id=result.video_id,
+                )
+            )
+        return moments
+    except Exception:
+        logger.debug("Cross-video vec search failed", exc_info=True)
+        return []
+
+
+# =============================================================================
+# Unified Search (FTS5 + sqlite-vec)
+# =============================================================================
+
+
+def unified_search(
+    video_id: str,
+    query: str,
+    top_k: int = 5,
+    semantic_weight: float = 0.5,
+    cache_dir: Path | None = None,
+) -> list[SearchMoment]:
+    """Unified search combining FTS5 and sqlite-vec results.
+
+    Searches both FTS5 (keyword matching) and sqlite-vec (semantic similarity),
+    then blends scores for results that appear in both.
+
+    Score blending formula:
+        final_score = (1 - semantic_weight) * fts_score + semantic_weight * vec_score
+
+    Args:
+        video_id: Video identifier.
+        query: Natural language query.
+        top_k: Maximum number of results.
+        semantic_weight: Weight for semantic scores (0.0 to 1.0).
+            Text weight is 1 - semantic_weight.
+        cache_dir: Optional cache directory.
+
+    Returns:
+        List of SearchMoment objects sorted by blended relevance.
+    """
+    # Get FTS results
+    fts_results = _search_fts5(video_id, query, top_k=top_k * 2)
+
+    # Get vec results
+    vec_results = _search_vec(video_id, query, top_k=top_k * 2, cache_dir=cache_dir)
+
+    # If no results from either, try fallback in-memory search
+    if not fts_results and not vec_results:
+        from claudetube.config.loader import get_cache_dir
+
+        if cache_dir is None:
+            cache_dir = get_cache_dir()
+        video_cache_dir = cache_dir / video_id
+        return _search_transcript_text_memory(video_cache_dir, query, top_k)
+
+    # Merge and blend
+    return _merge_results(fts_results, vec_results, top_k, semantic_weight)
+
+
+def unified_search_cross_video(
+    query: str,
+    top_k: int = 10,
+    semantic_weight: float = 0.5,
+) -> list[SearchMoment]:
+    """Unified cross-video search combining FTS5 and sqlite-vec.
+
+    Searches across ALL cached videos using both FTS5 and sqlite-vec.
+
+    Args:
+        query: Natural language query.
+        top_k: Maximum number of results.
+        semantic_weight: Weight for semantic scores (0.0 to 1.0).
+
+    Returns:
+        List of SearchMoment objects with video context.
+    """
+    # Get FTS results
+    fts_results = _search_fts5_cross_video(query, top_k=top_k * 2)
+
+    # Get vec results
+    vec_results = _search_vec_cross_video(query, top_k=top_k * 2)
+
+    # Merge with video-aware deduplication
+    return _merge_results_cross_video(fts_results, vec_results, top_k, semantic_weight)
+
+
+# =============================================================================
+# In-Memory Fallback (for backward compatibility)
+# =============================================================================
 
 
 def _search_transcript_text(
@@ -94,31 +439,9 @@ def _search_transcript_text(
     video_id = cache_dir.name
 
     # Try FTS search first (faster and more accurate)
-    try:
-        from claudetube.db.queries import search_transcripts_fts
-
-        fts_result = search_transcripts_fts(video_id, query, top_k)
-        if fts_result is not None and fts_result:
-            moments = []
-            for i, row in enumerate(fts_result):
-                preview = _create_preview(
-                    row.get("transcript_text", ""), query, max_len=150
-                )
-                moments.append(
-                    SearchMoment(
-                        rank=i + 1,
-                        scene_id=row["scene_id"],
-                        start_time=row["start_time"],
-                        end_time=row["end_time"],
-                        relevance=row.get("relevance", 0.5),
-                        preview=preview,
-                        timestamp_str=format_timestamp(row["start_time"]),
-                        match_type="fts",
-                    )
-                )
-            return moments
-    except Exception:
-        pass
+    fts_results = _search_fts5(video_id, query, top_k)
+    if fts_results:
+        return fts_results
 
     # Fallback: in-memory text matching
     return _search_transcript_text_memory(cache_dir, query, top_k)
@@ -275,48 +598,8 @@ def _search_embedding(
     Returns:
         List of SearchMoment objects sorted by relevance.
     """
-    from claudetube.analysis.vector_index import (
-        has_vector_index,
-        search_scenes_by_text,
-    )
-
-    if not has_vector_index(cache_dir):
-        logger.debug(f"No vector index found at {cache_dir}")
-        return []
-
-    try:
-        results = search_scenes_by_text(cache_dir, query, top_k=top_k)
-    except Exception as e:
-        logger.warning(f"Embedding search failed: {e}")
-        return []
-
-    moments = []
-    for i, result in enumerate(results):
-        # Convert distance to relevance (assuming L2 distance)
-        # Lower distance = higher relevance
-        # Typical L2 distances range 0-2 for normalized embeddings
-        relevance = max(0.0, 1.0 - (result.distance / 2.0))
-
-        preview = result.transcript_preview
-        if not preview and result.visual_description:
-            preview = f"[Visual: {result.visual_description[:100]}...]"
-        elif not preview:
-            preview = "[No transcript]"
-
-        moments.append(
-            SearchMoment(
-                rank=i + 1,
-                scene_id=result.scene_id,
-                start_time=result.start_time,
-                end_time=result.end_time,
-                relevance=relevance,
-                preview=preview[:150] + "..." if len(preview) > 150 else preview,
-                timestamp_str=format_timestamp(result.start_time),
-                match_type="semantic",
-            )
-        )
-
-    return moments
+    video_id = cache_dir.name
+    return _search_vec(video_id, query, top_k, cache_dir.parent)
 
 
 async def expand_query(query: str, reasoner: Reasoner) -> list[str]:
@@ -420,8 +703,8 @@ def find_moments(
     """Find scenes matching a natural language query.
 
     Implements tiered search following "Cheap First, Expensive Last":
-    1. TEXT - Fast transcript text matching
-    2. SEMANTIC - Vector embedding similarity (if text search has few results)
+    1. UNIFIED - Combined FTS5 + sqlite-vec search with score blending
+    2. TEXT - Fast transcript text matching (fallback)
     3. QUERY EXPANSION - Optional LLM-powered expansion for better recall
 
     Args:
@@ -452,16 +735,17 @@ def find_moments(
 
     # Resolve cache directory
     if cache_dir is None:
-        cache_dir = get_cache_dir() / video_id
+        cache_dir = get_cache_dir()
+        video_cache_dir = cache_dir / video_id
     else:
-        cache_dir = cache_dir / video_id
+        video_cache_dir = cache_dir / video_id
 
-    if not cache_dir.exists():
+    if not video_cache_dir.exists():
         raise FileNotFoundError(
             f"Video {video_id} not found in cache. Run process_video() first."
         )
 
-    if not has_scenes(cache_dir):
+    if not has_scenes(video_cache_dir):
         raise ValueError(
             f"Video {video_id} has no scene data. Run scene segmentation first."
         )
@@ -486,46 +770,38 @@ def find_moments(
     if strategy == "text":
         if expanded_queries:
             return _search_with_expanded_queries(
-                cache_dir, query, expanded_queries, top_k
+                video_cache_dir, query, expanded_queries, top_k
             )
-        return _search_transcript_text(cache_dir, query, top_k)
+        return _search_transcript_text(video_cache_dir, query, top_k)
     elif strategy == "semantic":
-        if not has_vector_index(cache_dir):
+        if not has_vector_index(video_cache_dir):
             raise ValueError(
                 f"Video {video_id} has no vector index. "
                 "Run build_scene_index() first for semantic search."
             )
-        return _search_embedding(cache_dir, query, top_k)
+        return _search_embedding(video_cache_dir, query, top_k)
 
-    # Auto strategy: try text first, fall back to semantic
+    # Auto strategy: use unified search (FTS5 + vec)
+    results = unified_search(
+        video_id, query, top_k=top_k,
+        semantic_weight=semantic_weight,
+        cache_dir=cache_dir,
+    )
+
+    if results:
+        logger.info(f"Unified search found {len(results)} results")
+        return results
+
+    # If unified search returned nothing, try expanded queries
     if expanded_queries:
         text_results = _search_with_expanded_queries(
-            cache_dir, query, expanded_queries, top_k
+            video_cache_dir, query, expanded_queries, top_k
         )
-    else:
-        text_results = _search_transcript_text(cache_dir, query, top_k)
+        if text_results:
+            return text_results
 
-    # If text search found good results (high relevance), return them
-    if text_results and text_results[0].relevance >= 0.5:
-        logger.info(f"Text search found {len(text_results)} results")
-        return text_results
-
-    # Try semantic search if available
-    if has_vector_index(cache_dir):
-        semantic_results = _search_embedding(cache_dir, query, top_k)
-        if semantic_results:
-            all_results = _merge_results(
-                text_results, semantic_results, top_k, semantic_weight
-            )
-            logger.info(
-                f"Combined search found {len(all_results)} results "
-                f"(text: {len(text_results)}, semantic: {len(semantic_results)})"
-            )
-            return all_results
-
-    # Return whatever text results we have
-    logger.info(f"Text-only search found {len(text_results)} results")
-    return text_results
+    # Last resort: in-memory text search
+    return _search_transcript_text_memory(video_cache_dir, query, top_k)
 
 
 def _merge_results(
@@ -595,6 +871,82 @@ def _merge_results(
     # Sort by relevance and take top_k
     sorted_moments = sorted(
         by_scene.values(),
+        key=lambda m: m.relevance,
+        reverse=True,
+    )[:top_k]
+
+    # Reassign ranks
+    for i, moment in enumerate(sorted_moments):
+        moment.rank = i + 1
+
+    return sorted_moments
+
+
+def _merge_results_cross_video(
+    text_results: list[SearchMoment],
+    semantic_results: list[SearchMoment],
+    top_k: int,
+    semantic_weight: float = 0.5,
+) -> list[SearchMoment]:
+    """Merge cross-video results with video-aware deduplication.
+
+    Same as _merge_results but uses (video_id, scene_id) as the key
+    for deduplication.
+
+    Args:
+        text_results: Results from text search.
+        semantic_results: Results from semantic search.
+        top_k: Maximum number of results.
+        semantic_weight: Weight for semantic scores (0.0 to 1.0).
+
+    Returns:
+        Merged and deduplicated results sorted by combined relevance.
+    """
+    text_weight = 1.0 - semantic_weight
+
+    # Index by (video_id, scene_id)
+    def make_key(m: SearchMoment) -> tuple[str | None, int]:
+        return (m.video_id, m.scene_id)
+
+    text_by_key: dict[tuple[str | None, int], SearchMoment] = {}
+    for moment in text_results:
+        key = make_key(moment)
+        existing = text_by_key.get(key)
+        if existing is None or moment.relevance > existing.relevance:
+            text_by_key[key] = moment
+
+    semantic_by_key: dict[tuple[str | None, int], SearchMoment] = {}
+    for moment in semantic_results:
+        key = make_key(moment)
+        existing = semantic_by_key.get(key)
+        if existing is None or moment.relevance > existing.relevance:
+            semantic_by_key[key] = moment
+
+    # Combine scores
+    all_keys = set(text_by_key) | set(semantic_by_key)
+    by_key: dict[tuple[str | None, int], SearchMoment] = {}
+
+    for key in all_keys:
+        text_moment = text_by_key.get(key)
+        semantic_moment = semantic_by_key.get(key)
+
+        if text_moment and semantic_moment:
+            combined_relevance = (
+                text_weight * text_moment.relevance
+                + semantic_weight * semantic_moment.relevance
+            )
+            text_moment.relevance = min(combined_relevance, 1.0)
+            text_moment.match_type = "text+semantic"
+            by_key[key] = text_moment
+        elif text_moment:
+            by_key[key] = text_moment
+        else:
+            assert semantic_moment is not None
+            by_key[key] = semantic_moment
+
+    # Sort by relevance and take top_k
+    sorted_moments = sorted(
+        by_key.values(),
         key=lambda m: m.relevance,
         reverse=True,
     )[:top_k]

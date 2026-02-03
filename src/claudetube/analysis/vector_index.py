@@ -1,23 +1,21 @@
 """
-Vector index for semantic scene search using ChromaDB.
+Vector index for semantic scene search using sqlite-vec.
 
-Provides fast similarity search over scene embeddings with metadata.
+Provides fast similarity search over scene embeddings stored in SQLite.
 
 Architecture: Cheap First, Expensive Last
-1. CACHE - Check for existing index
-2. BUILD - Create index from cached embeddings
-3. QUERY - Sub-second similarity search
+1. CACHE - Check for existing embeddings in DB
+2. BUILD - Create embeddings via provider pattern
+3. QUERY - Sub-second KNN similarity search
 
 Config:
-- Index stored in cache_dir/embeddings/chroma/
+- Embeddings stored in vec_embeddings virtual table
+- Metadata in vec_metadata table links to video/scene
 - Persistent by default (survives restarts)
-- Metadata includes timestamps, transcript previews
 """
 
 from __future__ import annotations
 
-import contextlib
-import json
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -32,9 +30,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Collection name for scenes
-SCENES_COLLECTION = "scenes"
-
 # Maximum transcript preview length in metadata
 MAX_TRANSCRIPT_PREVIEW = 500
 
@@ -44,36 +39,95 @@ class SearchResult:
     """Single search result from vector index."""
 
     scene_id: int
-    distance: float  # Lower is better for L2, higher for cosine
+    distance: float  # Lower is better (L2/cosine distance)
     start_time: float
     end_time: float
     transcript_preview: str
     visual_description: str
+    video_id: str | None = None  # For cross-video search
 
 
-def _get_chroma_path(cache_dir: Path) -> Path:
-    """Get path to ChromaDB storage directory.
-
-    Args:
-        cache_dir: Video cache directory.
+def _get_db():
+    """Get the database instance.
 
     Returns:
-        Path to embeddings/chroma/ directory.
+        Database instance or None if unavailable.
     """
-    return cache_dir / "embeddings" / "chroma"
+    try:
+        from claudetube.db import get_database
+
+        return get_database()
+    except Exception:
+        logger.debug("Database unavailable for vector operations", exc_info=True)
+        return None
+
+
+def _get_vec_store(db=None):
+    """Get a VecStore instance.
+
+    Args:
+        db: Optional database instance. Uses singleton if None.
+
+    Returns:
+        VecStore instance or None if unavailable.
+    """
+    if db is None:
+        db = _get_db()
+    if db is None:
+        return None
+
+    try:
+        from claudetube.db.vec import VecStore
+
+        return VecStore(db)
+    except Exception:
+        logger.debug("VecStore unavailable", exc_info=True)
+        return None
 
 
 def has_vector_index(cache_dir: Path) -> bool:
     """Check if vector index exists for this video.
 
+    With sqlite-vec, this checks if there are embeddings in the
+    vec_embeddings table for the video.
+
     Args:
-        cache_dir: Video cache directory.
+        cache_dir: Video cache directory (used to extract video_id).
 
     Returns:
-        True if ChromaDB index exists.
+        True if embeddings exist for this video.
     """
-    chroma_path = _get_chroma_path(cache_dir)
-    return chroma_path.exists() and (chroma_path / "chroma.sqlite3").exists()
+    # Extract video_id from cache_dir
+    video_id = cache_dir.name
+
+    db = _get_db()
+    if db is None:
+        # Fall back to checking for legacy ChromaDB index
+        chroma_path = cache_dir / "embeddings" / "chroma"
+        return chroma_path.exists() and (chroma_path / "chroma.sqlite3").exists()
+
+    try:
+        # Check if video exists in DB
+        from claudetube.db.repos.videos import VideoRepository
+
+        video_repo = VideoRepository(db)
+        video = video_repo.get_by_video_id(video_id)
+        if video is None:
+            return False
+
+        # Check if there are embeddings for this video
+        cursor = db.execute(
+            """
+            SELECT COUNT(*) as cnt FROM vec_metadata
+            WHERE video_id = ?
+            """,
+            (video["id"],),
+        )
+        row = cursor.fetchone()
+        return row["cnt"] > 0 if row else False
+    except Exception:
+        logger.debug("Error checking vector index", exc_info=True)
+        return False
 
 
 def build_scene_index(
@@ -84,7 +138,9 @@ def build_scene_index(
 ) -> int:
     """Create searchable vector index of video scenes.
 
-    Stores scene embeddings in ChromaDB with metadata for fast retrieval.
+    Stores scene embeddings in sqlite-vec with metadata for fast retrieval.
+    With the auto-embed feature, this may be a no-op since embeddings are
+    created at write time.
 
     Args:
         cache_dir: Video cache directory.
@@ -96,151 +152,176 @@ def build_scene_index(
         Number of scenes indexed.
 
     Raises:
-        ImportError: If chromadb not installed.
         ValueError: If scenes and embeddings don't match.
     """
-    try:
-        import chromadb
-        from chromadb.config import Settings
-    except ImportError as e:
-        raise ImportError(
-            "chromadb required for vector search. "
-            "Install with: pip install 'claudetube[search]'"
-        ) from e
-
     if not embeddings:
         logger.warning("No embeddings provided, skipping index build")
         return 0
 
-    # Build scene_id -> embedding mapping
-    emb_by_id = {e.scene_id: e for e in embeddings}
+    if video_id is None:
+        video_id = cache_dir.name
 
-    # Load visual descriptions if available
-    visual_by_id: dict[int, str] = {}
-    for scene in scenes:
-        if hasattr(scene, "scene_id"):
-            scene_id = scene.scene_id
-        else:
-            scene_id = scene.get("scene_id", 0)
-
-        visual_path = cache_dir / "scenes" / f"scene_{scene_id:03d}" / "visual.json"
-        if visual_path.exists():
-            try:
-                visual_data = json.loads(visual_path.read_text())
-                visual_by_id[scene_id] = visual_data.get("description", "")[
-                    :MAX_TRANSCRIPT_PREVIEW
-                ]
-            except Exception:
-                pass
-
-    # Create persistent ChromaDB client
-    chroma_path = _get_chroma_path(cache_dir)
-    chroma_path.mkdir(parents=True, exist_ok=True)
-
-    client = chromadb.PersistentClient(
-        path=str(chroma_path),
-        settings=Settings(anonymized_telemetry=False),
-    )
-
-    # Delete existing collection if present (for rebuilds)
-    with contextlib.suppress(Exception):
-        client.delete_collection(SCENES_COLLECTION)
-
-    # Create new collection
-    collection = client.create_collection(
-        name=SCENES_COLLECTION,
-        metadata={"video_id": video_id or "unknown"},
-    )
-
-    # Prepare data for batch add
-    ids = []
-    embs = []
-    metadatas = []
-    documents = []
-
-    for scene in scenes:
-        if hasattr(scene, "scene_id"):
-            scene_id = scene.scene_id
-            start = scene.start_time
-            end = scene.end_time
-            transcript = scene.transcript_text or ""
-        else:
-            scene_id = scene.get("scene_id", 0)
-            start = scene.get("start_time", 0)
-            end = scene.get("end_time", 0)
-            transcript = scene.get("transcript_text", "")
-
-        # Skip if no embedding for this scene
-        if scene_id not in emb_by_id:
-            logger.warning(f"No embedding for scene {scene_id}, skipping")
-            continue
-
-        emb = emb_by_id[scene_id]
-
-        ids.append(f"scene_{scene_id}")
-        embs.append(emb.embedding.tolist())
-        metadatas.append(
-            {
-                "scene_id": scene_id,
-                "start_time": start,
-                "end_time": end,
-                "transcript_preview": transcript[:MAX_TRANSCRIPT_PREVIEW],
-                "visual_description": visual_by_id.get(scene_id, ""),
-            }
-        )
-        documents.append(transcript)
-
-    if not ids:
-        logger.warning("No scenes with embeddings to index")
+    db = _get_db()
+    if db is None:
+        logger.warning("Database unavailable, cannot build vector index")
         return 0
 
-    # Batch add to collection
-    collection.add(
-        ids=ids,
-        embeddings=embs,
-        metadatas=metadatas,
-        documents=documents,
-    )
+    try:
+        from claudetube.db.repos.videos import VideoRepository
+        from claudetube.db.vec import VecStore
 
-    logger.info(f"Built vector index with {len(ids)} scenes at {chroma_path}")
-    return len(ids)
+        video_repo = VideoRepository(db)
+        video = video_repo.get_by_video_id(video_id)
+
+        if video is None:
+            logger.warning("Video %s not in database, cannot index embeddings", video_id)
+            return 0
+
+        video_uuid = video["id"]
+        vec_store = VecStore(db)
+
+        if not vec_store.is_available():
+            logger.warning("sqlite-vec extension not available")
+            return 0
+
+        # Build scene_id -> embedding mapping
+        emb_by_id = {e.scene_id: e for e in embeddings}
+
+        # Process each scene
+        indexed_count = 0
+        for scene in scenes:
+            if hasattr(scene, "scene_id"):
+                scene_id = scene.scene_id
+                start_time = scene.start_time
+                end_time = scene.end_time
+            else:
+                scene_id = scene.get("scene_id", 0)
+                start_time = scene.get("start_time", 0)
+                end_time = scene.get("end_time", 0)
+
+            if scene_id not in emb_by_id:
+                logger.warning("No embedding for scene %d, skipping", scene_id)
+                continue
+
+            emb = emb_by_id[scene_id]
+
+            # Store embedding directly without re-computing
+            try:
+                _store_embedding_direct(
+                    db=db,
+                    vec_store=vec_store,
+                    video_uuid=video_uuid,
+                    scene_id=scene_id,
+                    embedding=emb.embedding.tolist(),
+                    start_time=start_time,
+                    end_time=end_time,
+                )
+                indexed_count += 1
+            except Exception as e:
+                logger.warning("Failed to store embedding for scene %d: %s", scene_id, e)
+
+        logger.info("Built vector index with %d scenes for video %s", indexed_count, video_id)
+        return indexed_count
+
+    except Exception as e:
+        logger.warning("Failed to build vector index: %s", e)
+        return 0
+
+
+def _store_embedding_direct(
+    db,
+    vec_store,
+    video_uuid: str,
+    scene_id: int,
+    embedding: list[float],
+    start_time: float | None = None,
+    end_time: float | None = None,
+) -> str | None:
+    """Store a pre-computed embedding directly.
+
+    Args:
+        db: Database connection.
+        vec_store: VecStore instance.
+        video_uuid: Video UUID.
+        scene_id: Scene ID.
+        embedding: Pre-computed embedding vector.
+        start_time: Optional start timestamp.
+        end_time: Optional end timestamp.
+
+    Returns:
+        UUID of the vec_metadata row, or None if failed.
+    """
+    import struct
+    import uuid
+
+    metadata_id = str(uuid.uuid4())
+    source = "scene_transcript"
+
+    try:
+        # Delete existing entry if present (for rebuilds)
+        db.execute(
+            """
+            DELETE FROM vec_metadata
+            WHERE video_id = ? AND scene_id = ? AND source = ?
+            """,
+            (video_uuid, scene_id, source),
+        )
+
+        # Insert metadata
+        db.execute(
+            """
+            INSERT INTO vec_metadata
+                (id, video_id, scene_id, start_time, end_time, source)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (metadata_id, video_uuid, scene_id, start_time, end_time, source),
+        )
+        db.commit()
+
+        # Get the rowid
+        cursor = db.execute(
+            "SELECT rowid FROM vec_metadata WHERE id = ?", (metadata_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+
+        rowid = row["rowid"]
+
+        # Serialize and store embedding
+        embedding_bytes = struct.pack(f"{len(embedding)}f", *embedding)
+
+        # Ensure vec_embeddings table exists
+        if not vec_store._ensure_vec_table():
+            logger.warning("Cannot create vec_embeddings table")
+            return metadata_id
+
+        db.execute(
+            "INSERT OR REPLACE INTO vec_embeddings (rowid, embedding) VALUES (?, ?)",
+            (rowid, embedding_bytes),
+        )
+        db.commit()
+
+        return metadata_id
+    except Exception as e:
+        logger.warning("Failed to store embedding: %s", e)
+        return None
 
 
 def load_scene_index(cache_dir: Path):
     """Load existing vector index for a video.
 
+    With sqlite-vec, this just validates that embeddings exist.
+
     Args:
         cache_dir: Video cache directory.
 
     Returns:
-        ChromaDB collection or None if not found.
-
-    Raises:
-        ImportError: If chromadb not installed.
+        True if index exists, None if not found.
     """
-    try:
-        import chromadb
-        from chromadb.config import Settings
-    except ImportError as e:
-        raise ImportError(
-            "chromadb required for vector search. "
-            "Install with: pip install 'claudetube[search]'"
-        ) from e
-
-    chroma_path = _get_chroma_path(cache_dir)
-    if not has_vector_index(cache_dir):
-        return None
-
-    client = chromadb.PersistentClient(
-        path=str(chroma_path),
-        settings=Settings(anonymized_telemetry=False),
-    )
-
-    try:
-        return client.get_collection(SCENES_COLLECTION)
-    except Exception as e:
-        logger.warning(f"Failed to load vector index: {e}")
-        return None
+    if has_vector_index(cache_dir):
+        return True
+    return None
 
 
 def search_scenes(
@@ -259,41 +340,85 @@ def search_scenes(
         List of SearchResult objects, sorted by similarity.
 
     Raises:
-        ImportError: If chromadb not installed.
         ValueError: If no index exists.
     """
-    collection = load_scene_index(cache_dir)
-    if collection is None:
+    video_id = cache_dir.name
+
+    db = _get_db()
+    if db is None:
         raise ValueError(
-            f"No vector index found at {cache_dir}. Run build_scene_index() first."
+            f"Database unavailable. Cannot search vector index for {cache_dir}."
         )
 
-    # Query the collection
-    results = collection.query(
-        query_embeddings=[query_embedding.tolist()],
-        n_results=top_k,
-        include=["metadatas", "documents", "distances"],
-    )
+    try:
+        from claudetube.db.repos.videos import VideoRepository
 
-    # Parse results
-    search_results = []
-    for meta, dist in zip(
-        results["metadatas"][0],
-        results["distances"][0],
-        strict=True,
-    ):
-        search_results.append(
-            SearchResult(
-                scene_id=meta["scene_id"],
-                distance=dist,
-                start_time=meta["start_time"],
-                end_time=meta["end_time"],
-                transcript_preview=meta.get("transcript_preview", ""),
-                visual_description=meta.get("visual_description", ""),
+        video_repo = VideoRepository(db)
+        video = video_repo.get_by_video_id(video_id)
+
+        if video is None:
+            raise ValueError(
+                f"No vector index found at {cache_dir}. Run build_scene_index() first."
             )
+
+        video_uuid = video["id"]
+
+        vec_store = _get_vec_store(db)
+        if vec_store is None or not vec_store.is_available():
+            raise ValueError("sqlite-vec extension not available")
+
+        # Search using pre-computed embedding
+        results = vec_store.search_by_embedding(
+            query_embedding.tolist(), top_k=top_k, video_uuid=video_uuid
         )
 
-    return search_results
+        # Convert to SearchResult objects with scene metadata
+        search_results = []
+        for result in results:
+            scene_id = result.get("scene_id")
+            if scene_id is None:
+                continue
+
+            # Get scene data for transcript preview
+            transcript_preview = ""
+            visual_description = ""
+
+            from claudetube.db.repos.scenes import SceneRepository
+
+            scene_repo = SceneRepository(db)
+            scene = scene_repo.get_scene(video_uuid, scene_id)
+            if scene:
+                transcript_preview = (scene.get("transcript_text") or "")[:MAX_TRANSCRIPT_PREVIEW]
+
+            # Get visual description if available
+            from claudetube.db.repos.visual_descriptions import (
+                VisualDescriptionRepository,
+            )
+
+            vis_repo = VisualDescriptionRepository(db)
+            vis = vis_repo.get_by_scene(video_uuid, scene_id)
+            if vis:
+                visual_description = vis.get("description", "")[:MAX_TRANSCRIPT_PREVIEW]
+
+            search_results.append(
+                SearchResult(
+                    scene_id=scene_id,
+                    distance=result.get("distance", 0.0),
+                    start_time=result.get("start_time", 0.0),
+                    end_time=result.get("end_time", 0.0),
+                    transcript_preview=transcript_preview,
+                    visual_description=visual_description,
+                    video_id=video_id,
+                )
+            )
+
+        return search_results
+
+    except ValueError:
+        raise
+    except Exception as e:
+        logger.warning("Vector search failed: %s", e)
+        raise ValueError(f"No vector index found at {cache_dir}. Run build_scene_index() first.") from e
 
 
 def search_scenes_by_text(
@@ -318,7 +443,6 @@ def search_scenes_by_text(
         List of SearchResult objects, sorted by similarity.
 
     Raises:
-        ImportError: If required packages not installed.
         ValueError: If no index exists.
     """
     from claudetube.analysis.embeddings import _get_embedder, get_embedding_model
@@ -334,6 +458,92 @@ def search_scenes_by_text(
     return search_scenes(cache_dir, query_embedding, top_k)
 
 
+def search_similar_cross_video(
+    query_text: str,
+    top_k: int = 10,
+) -> list[SearchResult]:
+    """Search for similar scenes across ALL videos.
+
+    This is a new capability enabled by sqlite-vec.
+
+    Args:
+        query_text: Natural language query.
+        top_k: Maximum number of results to return.
+
+    Returns:
+        List of SearchResult objects from any video, sorted by similarity.
+    """
+    db = _get_db()
+    if db is None:
+        return []
+
+    vec_store = _get_vec_store(db)
+    if vec_store is None or not vec_store.is_available():
+        return []
+
+    try:
+        import asyncio
+
+        # Get query embedding
+        embedding = asyncio.get_event_loop().run_until_complete(
+            vec_store.get_embedding(query_text)
+        )
+    except RuntimeError:
+        try:
+            import asyncio
+            embedding = asyncio.run(vec_store.get_embedding(query_text))
+        except Exception:
+            logger.debug("Failed to get query embedding")
+            return []
+
+    if embedding is None:
+        return []
+
+    # Search without video filter (cross-video)
+    results = vec_store.search_by_embedding(embedding, top_k=top_k, video_uuid=None)
+
+    # Convert to SearchResult with video context
+    search_results = []
+    for result in results:
+        video_uuid = result.get("video_id")
+        scene_id = result.get("scene_id")
+
+        if video_uuid is None or scene_id is None:
+            continue
+
+        # Get video natural ID
+        from claudetube.db.repos.videos import VideoRepository
+
+        video_repo = VideoRepository(db)
+        video = video_repo.get_by_uuid(video_uuid)
+        video_natural_id = video["video_id"] if video else None
+
+        # Get scene data
+        transcript_preview = ""
+        visual_description = ""
+
+        from claudetube.db.repos.scenes import SceneRepository
+
+        scene_repo = SceneRepository(db)
+        scene = scene_repo.get_scene(video_uuid, scene_id)
+        if scene:
+            transcript_preview = (scene.get("transcript_text") or "")[:MAX_TRANSCRIPT_PREVIEW]
+
+        search_results.append(
+            SearchResult(
+                scene_id=scene_id,
+                distance=result.get("distance", 0.0),
+                start_time=result.get("start_time", 0.0),
+                end_time=result.get("end_time", 0.0),
+                transcript_preview=transcript_preview,
+                visual_description=visual_description,
+                video_id=video_natural_id,
+            )
+        )
+
+    return search_results
+
+
 def delete_scene_index(cache_dir: Path) -> bool:
     """Delete vector index for a video.
 
@@ -345,11 +555,33 @@ def delete_scene_index(cache_dir: Path) -> bool:
     """
     import shutil
 
-    chroma_path = _get_chroma_path(cache_dir)
+    video_id = cache_dir.name
+
+    db = _get_db()
+    if db is not None:
+        try:
+            from claudetube.db.repos.videos import VideoRepository
+            from claudetube.db.vec import VecStore
+
+            video_repo = VideoRepository(db)
+            video = video_repo.get_by_video_id(video_id)
+
+            if video:
+                vec_store = VecStore(db)
+                count = vec_store.delete_video_embeddings(video["id"])
+                if count > 0:
+                    logger.info("Deleted %d embeddings for video %s", count, video_id)
+                    return True
+        except Exception:
+            logger.debug("Failed to delete embeddings from DB", exc_info=True)
+
+    # Also try to delete legacy ChromaDB index
+    chroma_path = cache_dir / "embeddings" / "chroma"
     if chroma_path.exists():
         shutil.rmtree(chroma_path)
-        logger.info(f"Deleted vector index at {chroma_path}")
+        logger.info("Deleted legacy ChromaDB index at %s", chroma_path)
         return True
+
     return False
 
 
@@ -362,16 +594,44 @@ def get_index_stats(cache_dir: Path) -> dict | None:
     Returns:
         Dict with index stats or None if not found.
     """
-    collection = load_scene_index(cache_dir)
-    if collection is None:
+    video_id = cache_dir.name
+
+    db = _get_db()
+    if db is None:
         return None
 
-    count = collection.count()
-    metadata = collection.metadata
+    try:
+        from claudetube.db.repos.videos import VideoRepository
 
-    return {
-        "num_scenes": count,
-        "video_id": metadata.get("video_id", "unknown"),
-        "collection_name": SCENES_COLLECTION,
-        "path": str(_get_chroma_path(cache_dir)),
-    }
+        video_repo = VideoRepository(db)
+        video = video_repo.get_by_video_id(video_id)
+
+        if video is None:
+            return None
+
+        video_uuid = video["id"]
+
+        # Count embeddings for this video
+        cursor = db.execute(
+            """
+            SELECT COUNT(*) as cnt FROM vec_metadata
+            WHERE video_id = ?
+            """,
+            (video_uuid,),
+        )
+        row = cursor.fetchone()
+        count = row["cnt"] if row else 0
+
+        if count == 0:
+            return None
+
+        return {
+            "num_scenes": count,
+            "video_id": video_id,
+            "storage": "sqlite-vec",
+            "path": "SQLite database",
+        }
+
+    except Exception:
+        logger.debug("Failed to get index stats", exc_info=True)
+        return None

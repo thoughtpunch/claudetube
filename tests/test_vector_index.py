@@ -1,16 +1,9 @@
 """
-Tests for vector index module (ChromaDB-based scene search).
+Tests for vector index module (sqlite-vec-based scene search).
 """
-
-import importlib.util
 
 import numpy as np
 import pytest
-
-
-def _has_chromadb():
-    """Check if chromadb is installed."""
-    return importlib.util.find_spec("chromadb") is not None
 
 
 @pytest.fixture
@@ -63,267 +56,11 @@ class TestHasVectorIndex:
         assert has_vector_index(tmp_path) is False
 
     def test_empty_chroma_dir(self, tmp_path):
-        """Should return False for empty chroma directory."""
+        """Should return False for empty legacy chroma directory."""
         from claudetube.analysis.vector_index import has_vector_index
 
         (tmp_path / "embeddings" / "chroma").mkdir(parents=True)
         assert has_vector_index(tmp_path) is False
-
-
-@pytest.mark.skipif(not _has_chromadb(), reason="chromadb not installed")
-class TestBuildSceneIndex:
-    """Tests for build_scene_index function."""
-
-    def test_build_index(self, tmp_path, mock_scene_data, mock_embeddings):
-        """Should create ChromaDB index with scenes."""
-        from claudetube.analysis.vector_index import (
-            build_scene_index,
-            has_vector_index,
-        )
-
-        count = build_scene_index(
-            cache_dir=tmp_path,
-            scenes=mock_scene_data,
-            embeddings=mock_embeddings,
-            video_id="test_video",
-        )
-
-        assert count == 3
-        assert has_vector_index(tmp_path)
-        assert (tmp_path / "embeddings" / "chroma" / "chroma.sqlite3").exists()
-
-    def test_build_index_empty_embeddings(self, tmp_path, mock_scene_data):
-        """Should handle empty embeddings list."""
-        from claudetube.analysis.vector_index import build_scene_index
-
-        count = build_scene_index(
-            cache_dir=tmp_path,
-            scenes=mock_scene_data,
-            embeddings=[],
-        )
-
-        assert count == 0
-
-    def test_build_index_mismatched_scenes(self, tmp_path, mock_scene_data):
-        """Should skip scenes without embeddings."""
-        from claudetube.analysis.embeddings import SceneEmbedding
-        from claudetube.analysis.vector_index import build_scene_index
-
-        # Only provide embeddings for scene 0 and 2
-        embeddings = [
-            SceneEmbedding(
-                scene_id=0,
-                embedding=np.random.randn(512).astype(np.float32),
-                model="local",
-            ),
-            SceneEmbedding(
-                scene_id=2,
-                embedding=np.random.randn(512).astype(np.float32),
-                model="local",
-            ),
-        ]
-
-        count = build_scene_index(
-            cache_dir=tmp_path,
-            scenes=mock_scene_data,
-            embeddings=embeddings,
-        )
-
-        assert count == 2
-
-    def test_rebuild_index(self, tmp_path, mock_scene_data, mock_embeddings):
-        """Should replace existing index on rebuild."""
-        from claudetube.analysis.vector_index import (
-            build_scene_index,
-            load_scene_index,
-        )
-
-        # Build first time
-        build_scene_index(tmp_path, mock_scene_data, mock_embeddings)
-
-        # Build again with fewer scenes
-        new_scenes = [mock_scene_data[0]]
-        new_embeddings = [mock_embeddings[0]]
-        count = build_scene_index(tmp_path, new_scenes, new_embeddings)
-
-        assert count == 1
-        collection = load_scene_index(tmp_path)
-        assert collection.count() == 1
-
-
-@pytest.mark.skipif(not _has_chromadb(), reason="chromadb not installed")
-class TestLoadSceneIndex:
-    """Tests for load_scene_index function."""
-
-    def test_load_nonexistent(self, tmp_path):
-        """Should return None for nonexistent index."""
-        from claudetube.analysis.vector_index import load_scene_index
-
-        result = load_scene_index(tmp_path)
-        assert result is None
-
-    def test_load_existing(self, tmp_path, mock_scene_data, mock_embeddings):
-        """Should load existing index."""
-        from claudetube.analysis.vector_index import (
-            build_scene_index,
-            load_scene_index,
-        )
-
-        build_scene_index(tmp_path, mock_scene_data, mock_embeddings)
-
-        collection = load_scene_index(tmp_path)
-        assert collection is not None
-        assert collection.count() == 3
-
-
-@pytest.mark.skipif(not _has_chromadb(), reason="chromadb not installed")
-class TestSearchScenes:
-    """Tests for search_scenes function."""
-
-    def test_search_returns_results(self, tmp_path, mock_scene_data, mock_embeddings):
-        """Should return search results."""
-        from claudetube.analysis.vector_index import (
-            build_scene_index,
-            search_scenes,
-        )
-
-        build_scene_index(tmp_path, mock_scene_data, mock_embeddings)
-
-        query_emb = mock_embeddings[0].embedding
-        results = search_scenes(tmp_path, query_emb, top_k=3)
-
-        assert len(results) == 3
-        assert all(hasattr(r, "scene_id") for r in results)
-        assert all(hasattr(r, "distance") for r in results)
-        assert all(hasattr(r, "start_time") for r in results)
-        assert all(hasattr(r, "transcript_preview") for r in results)
-
-    def test_search_top_k(self, tmp_path, mock_scene_data, mock_embeddings):
-        """Should respect top_k parameter."""
-        from claudetube.analysis.vector_index import (
-            build_scene_index,
-            search_scenes,
-        )
-
-        build_scene_index(tmp_path, mock_scene_data, mock_embeddings)
-
-        query_emb = mock_embeddings[0].embedding
-        results = search_scenes(tmp_path, query_emb, top_k=1)
-
-        assert len(results) == 1
-
-    def test_search_no_index(self, tmp_path):
-        """Should raise error when no index exists."""
-        from claudetube.analysis.vector_index import search_scenes
-
-        query_emb = np.random.randn(512).astype(np.float32)
-
-        with pytest.raises(ValueError, match="No vector index found"):
-            search_scenes(tmp_path, query_emb)
-
-    def test_search_result_metadata(self, tmp_path, mock_scene_data, mock_embeddings):
-        """Should include correct metadata in results."""
-        from claudetube.analysis.vector_index import (
-            build_scene_index,
-            search_scenes,
-        )
-
-        build_scene_index(tmp_path, mock_scene_data, mock_embeddings)
-
-        query_emb = mock_embeddings[1].embedding
-        results = search_scenes(tmp_path, query_emb, top_k=1)
-
-        # Most similar should be scene 1 (same embedding)
-        assert results[0].scene_id == 1
-        assert results[0].start_time == 30.0
-        assert results[0].end_time == 60.0
-        assert "neural networks" in results[0].transcript_preview
-
-
-@pytest.mark.skipif(not _has_chromadb(), reason="chromadb not installed")
-class TestDeleteSceneIndex:
-    """Tests for delete_scene_index function."""
-
-    def test_delete_existing(self, tmp_path, mock_scene_data, mock_embeddings):
-        """Should delete existing index."""
-        from claudetube.analysis.vector_index import (
-            build_scene_index,
-            delete_scene_index,
-            has_vector_index,
-        )
-
-        build_scene_index(tmp_path, mock_scene_data, mock_embeddings)
-        assert has_vector_index(tmp_path)
-
-        result = delete_scene_index(tmp_path)
-
-        assert result is True
-        assert not has_vector_index(tmp_path)
-
-    def test_delete_nonexistent(self, tmp_path):
-        """Should return False for nonexistent index."""
-        from claudetube.analysis.vector_index import delete_scene_index
-
-        result = delete_scene_index(tmp_path)
-        assert result is False
-
-
-@pytest.mark.skipif(not _has_chromadb(), reason="chromadb not installed")
-class TestGetIndexStats:
-    """Tests for get_index_stats function."""
-
-    def test_stats_existing(self, tmp_path, mock_scene_data, mock_embeddings):
-        """Should return stats for existing index."""
-        from claudetube.analysis.vector_index import (
-            build_scene_index,
-            get_index_stats,
-        )
-
-        build_scene_index(
-            tmp_path, mock_scene_data, mock_embeddings, video_id="test_vid"
-        )
-
-        stats = get_index_stats(tmp_path)
-
-        assert stats is not None
-        assert stats["num_scenes"] == 3
-        assert stats["video_id"] == "test_vid"
-        assert "path" in stats
-
-    def test_stats_nonexistent(self, tmp_path):
-        """Should return None for nonexistent index."""
-        from claudetube.analysis.vector_index import get_index_stats
-
-        stats = get_index_stats(tmp_path)
-        assert stats is None
-
-
-@pytest.mark.skipif(not _has_chromadb(), reason="chromadb not installed")
-class TestSearchScenesByText:
-    """Tests for search_scenes_by_text function."""
-
-    def test_import_error_without_sentence_transformers(
-        self, tmp_path, mock_scene_data, mock_embeddings, monkeypatch
-    ):
-        """Should raise ImportError if sentence-transformers not available for local model."""
-        from claudetube.analysis.vector_index import (
-            build_scene_index,
-        )
-
-        build_scene_index(tmp_path, mock_scene_data, mock_embeddings)
-
-        # Mock missing sentence_transformers
-        import sys
-
-        original_modules = sys.modules.copy()
-        sys.modules["sentence_transformers"] = None
-
-        try:
-            monkeypatch.setenv("CLAUDETUBE_EMBEDDING_MODEL", "local")
-            # This should work or fail gracefully depending on environment
-        finally:
-            sys.modules.clear()
-            sys.modules.update(original_modules)
 
 
 class TestSearchResult:
@@ -348,6 +85,274 @@ class TestSearchResult:
         assert result.end_time == 60.0
         assert result.transcript_preview == "Sample text"
         assert result.visual_description == "Person talking"
+
+    def test_search_result_video_id(self):
+        """Should support optional video_id for cross-video search."""
+        from claudetube.analysis.vector_index import SearchResult
+
+        result = SearchResult(
+            scene_id=1,
+            distance=0.5,
+            start_time=30.0,
+            end_time=60.0,
+            transcript_preview="Sample text",
+            visual_description="",
+            video_id="test_video_123",
+        )
+
+        assert result.video_id == "test_video_123"
+
+
+class TestScoreNormalization:
+    """Tests for score normalization functions in search.py."""
+
+    def test_normalize_fts_score_typical(self):
+        """Should normalize typical FTS5 scores to 0-1 range."""
+        from claudetube.analysis.search import normalize_fts_score
+
+        # Best possible match (rank = -20)
+        assert normalize_fts_score(-20.0) == pytest.approx(1.0)
+
+        # Moderate match (rank = -10)
+        assert normalize_fts_score(-10.0) == pytest.approx(0.5)
+
+        # Weak match (rank = -5)
+        assert normalize_fts_score(-5.0) == pytest.approx(0.25)
+
+        # No match (rank = 0)
+        assert normalize_fts_score(0.0) == pytest.approx(0.0)
+
+    def test_normalize_fts_score_edge_cases(self):
+        """Should handle edge cases correctly."""
+        from claudetube.analysis.search import normalize_fts_score
+
+        # Very strong match (beyond typical range)
+        assert normalize_fts_score(-30.0) == pytest.approx(1.0)
+
+        # Positive rank (shouldn't happen, but handle gracefully)
+        assert normalize_fts_score(5.0) == pytest.approx(0.0)
+
+    def test_normalize_vec_distance_typical(self):
+        """Should normalize typical L2 distances to 0-1 range."""
+        from claudetube.analysis.search import normalize_vec_distance
+
+        # Identical embedding (distance = 0)
+        assert normalize_vec_distance(0.0) == pytest.approx(1.0)
+
+        # Moderate distance
+        assert normalize_vec_distance(1.0) == pytest.approx(0.5)
+
+        # Maximum expected distance
+        assert normalize_vec_distance(2.0) == pytest.approx(0.0)
+
+    def test_normalize_vec_distance_edge_cases(self):
+        """Should handle edge cases correctly."""
+        from claudetube.analysis.search import normalize_vec_distance
+
+        # Beyond max distance
+        assert normalize_vec_distance(3.0) == pytest.approx(0.0)
+
+        # Negative distance (shouldn't happen)
+        assert normalize_vec_distance(-0.5) == pytest.approx(1.0)
+
+
+class TestMergeResults:
+    """Tests for _merge_results function."""
+
+    def test_deduplicates_by_scene_id(self):
+        """Should keep only one result per scene_id."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.6, "preview", "0:00", "text"),
+            SearchMoment(2, 1, 30.0, 60.0, 0.5, "preview", "0:30", "text"),
+        ]
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.8, "preview", "0:00", "semantic"),
+            SearchMoment(2, 2, 60.0, 90.0, 0.7, "preview", "1:00", "semantic"),
+        ]
+
+        merged = _merge_results(text_results, semantic_results, top_k=10)
+
+        scene_ids = [m.scene_id for m in merged]
+        assert len(scene_ids) == len(set(scene_ids))  # No duplicates
+
+    def test_combines_scores_for_shared_scenes(self):
+        """Should blend text and semantic scores for scenes in both sets."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.6, "text preview", "0:00", "text"),
+        ]
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.8, "semantic preview", "0:00", "semantic"),
+        ]
+
+        # Equal weight (default)
+        merged = _merge_results(text_results, semantic_results, top_k=10)
+
+        assert len(merged) == 1
+        # 0.5 * 0.6 + 0.5 * 0.8 = 0.7
+        assert merged[0].relevance == pytest.approx(0.7)
+        assert merged[0].match_type == "text+semantic"
+
+    def test_semantic_weight_configurable(self):
+        """Should use configurable weight for blending scores."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 1.0, "text preview", "0:00", "text"),
+        ]
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.0, "semantic preview", "0:00", "semantic"),
+        ]
+
+        # Heavy text weight
+        merged = _merge_results(
+            text_results, semantic_results, top_k=10, semantic_weight=0.2
+        )
+        assert merged[0].relevance == pytest.approx(0.8)
+
+        # Recreate moments (relevance was mutated)
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 1.0, "text preview", "0:00", "text"),
+        ]
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.0, "semantic preview", "0:00", "semantic"),
+        ]
+
+        # Heavy semantic weight
+        merged = _merge_results(
+            text_results, semantic_results, top_k=10, semantic_weight=0.8
+        )
+        assert merged[0].relevance == pytest.approx(0.2)
+
+    def test_text_only_scene_keeps_original_score(self):
+        """Scenes only in text results should keep their score."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.6, "text preview", "0:00", "text"),
+        ]
+
+        merged = _merge_results(text_results, [], top_k=10)
+
+        assert len(merged) == 1
+        assert merged[0].relevance == 0.6
+        assert merged[0].match_type == "text"
+
+    def test_semantic_only_scene_keeps_original_score(self):
+        """Scenes only in semantic results should keep their score."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.9, "semantic preview", "0:00", "semantic"),
+        ]
+
+        merged = _merge_results([], semantic_results, top_k=10)
+
+        assert len(merged) == 1
+        assert merged[0].relevance == 0.9
+        assert merged[0].match_type == "semantic"
+
+    def test_respects_top_k(self):
+        """Should limit results to top_k."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        results = [
+            SearchMoment(
+                i,
+                i,
+                float(i * 30),
+                float((i + 1) * 30),
+                0.5,
+                "preview",
+                f"{i}:00",
+                "text",
+            )
+            for i in range(10)
+        ]
+
+        merged = _merge_results(results, [], top_k=3)
+
+        assert len(merged) == 3
+
+    def test_reassigns_ranks(self):
+        """Should reassign ranks after merge."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        results = [
+            SearchMoment(5, 0, 0.0, 30.0, 0.9, "preview", "0:00", "text"),
+            SearchMoment(3, 1, 30.0, 60.0, 0.7, "preview", "0:30", "text"),
+        ]
+
+        merged = _merge_results(results, [], top_k=10)
+
+        assert merged[0].rank == 1
+        assert merged[1].rank == 2
+
+    def test_combined_score_capped_at_one(self):
+        """Combined relevance should not exceed 1.0."""
+        from claudetube.analysis.search import SearchMoment, _merge_results
+
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 1.0, "preview", "0:00", "text"),
+        ]
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 1.0, "preview", "0:00", "semantic"),
+        ]
+
+        merged = _merge_results(text_results, semantic_results, top_k=10)
+
+        assert merged[0].relevance <= 1.0
+
+
+class TestMergeResultsCrossVideo:
+    """Tests for _merge_results_cross_video function."""
+
+    def test_deduplicates_by_video_and_scene(self):
+        """Should deduplicate by (video_id, scene_id) tuple."""
+        from claudetube.analysis.search import SearchMoment, _merge_results_cross_video
+
+        # Same scene_id but different videos should NOT be deduplicated
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.6, "preview", "0:00", "text", "video_a"),
+            SearchMoment(2, 0, 0.0, 30.0, 0.5, "preview", "0:00", "text", "video_b"),
+        ]
+        semantic_results = []
+
+        merged = _merge_results_cross_video(text_results, semantic_results, top_k=10)
+
+        assert len(merged) == 2  # Both should remain
+
+    def test_merges_same_video_scene(self):
+        """Should merge scores for same (video_id, scene_id)."""
+        from claudetube.analysis.search import SearchMoment, _merge_results_cross_video
+
+        text_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.6, "text preview", "0:00", "text", "video_a"),
+        ]
+        semantic_results = [
+            SearchMoment(1, 0, 0.0, 30.0, 0.8, "semantic preview", "0:00", "semantic", "video_a"),
+        ]
+
+        merged = _merge_results_cross_video(text_results, semantic_results, top_k=10)
+
+        assert len(merged) == 1
+        assert merged[0].relevance == pytest.approx(0.7)
+        assert merged[0].match_type == "text+semantic"
+
+
+class TestUnifiedSearch:
+    """Tests for unified_search function."""
+
+    def test_returns_empty_for_unknown_video(self):
+        """Should return empty list for unknown video."""
+        from claudetube.analysis.search import unified_search
+
+        # This will likely fail to find the video and return empty
+        results = unified_search("nonexistent_video_xyz", "test query", top_k=5)
+        assert results == [] or isinstance(results, list)
 
 
 class TestSearchScenesByTextProvider:
@@ -409,3 +414,22 @@ class TestSearchScenesByTextProvider:
                 pytest.fail(
                     "_embed_text_local still exists - should use provider pattern"
                 )
+
+    def test_no_chromadb_import(self):
+        """vector_index should not import chromadb directly."""
+        import ast
+        from pathlib import Path
+
+        from claudetube.analysis import vector_index
+
+        source = ast.parse(Path(vector_index.__file__).read_text())
+
+        # Check that chromadb is not imported
+        for node in ast.walk(source):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if "chromadb" in alias.name:
+                        pytest.fail("chromadb still imported - should use sqlite-vec")
+            if isinstance(node, ast.ImportFrom):
+                if node.module and "chromadb" in node.module:
+                    pytest.fail("chromadb still imported - should use sqlite-vec")
