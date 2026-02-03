@@ -23,14 +23,22 @@ from claudetube.config.quality import (
 
 # Exceptions
 from claudetube.exceptions import (
+    AgeRestrictedError,
     CacheError,
     ClaudetubeError,
     DownloadError,
+    ExtractorError,
+    FormatNotAvailableError,
     FrameExtractionError,
+    GeoRestrictedError,
     MetadataError,
+    NetworkError,
+    RateLimitError,
     SubtitleError,
     ToolNotFoundError,
     TranscriptionError,
+    VideoUnavailableError,
+    YouTubeAuthError,
 )
 from claudetube.models.local_file import LocalFile, LocalFileError
 from claudetube.models.state import VideoState
@@ -88,6 +96,14 @@ __all__ = [
     # Exceptions
     "ClaudetubeError",
     "DownloadError",
+    "YouTubeAuthError",
+    "GeoRestrictedError",
+    "FormatNotAvailableError",
+    "RateLimitError",
+    "ExtractorError",
+    "NetworkError",
+    "VideoUnavailableError",
+    "AgeRestrictedError",
     "TranscriptionError",
     "FrameExtractionError",
     "CacheError",

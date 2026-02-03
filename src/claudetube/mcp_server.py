@@ -125,6 +125,9 @@ async def process_video_tool(
         )
 
     if not result.success:
+        # Return structured error if available, otherwise simple error string
+        if result.error_info:
+            return json.dumps({"error": result.error_info})
         return json.dumps({"error": result.error})
 
     transcript_text = ""

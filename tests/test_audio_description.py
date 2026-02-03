@@ -243,7 +243,7 @@ class TestDownloadAudioDescription:
         result = ToolResult(success=False, stderr="Download failed", returncode=1)
         with (
             patch.object(tool, "_run", return_value=result),
-            pytest.raises(DownloadError, match="Audio description download failed"),
+            pytest.raises(DownloadError, match="Download failed"),
         ):
             tool.download_audio_description(
                 "https://example.com/video",

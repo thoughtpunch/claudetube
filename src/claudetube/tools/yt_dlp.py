@@ -15,7 +15,18 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
-from claudetube.exceptions import DownloadError, MetadataError
+from claudetube.exceptions import (
+    AgeRestrictedError,
+    DownloadError,
+    ExtractorError,
+    FormatNotAvailableError,
+    GeoRestrictedError,
+    MetadataError,
+    NetworkError,
+    RateLimitError,
+    VideoUnavailableError,
+    YouTubeAuthError,
+)
 from claudetube.tools.base import ToolResult, VideoTool
 from claudetube.utils.system import find_tool
 
@@ -222,16 +233,16 @@ _ERROR_PATTERNS: list[tuple[re.Pattern, str, Callable[[re.Match], dict] | None]]
         "ssl",
         None,
     ),
-    (
-        re.compile(r"HTTP Error (\d+)", re.IGNORECASE),
-        "http_error",
-        lambda m: {"http_code": int(m.group(1))},
-    ),
-    # Rate limiting
+    # Rate limiting (must come before generic HTTP error to catch 429 specifically)
     (
         re.compile(r"429|too many requests|rate.?limit", re.IGNORECASE),
         "rate_limited",
         None,
+    ),
+    (
+        re.compile(r"HTTP Error (\d+)", re.IGNORECASE),
+        "http_error",
+        lambda m: {"http_code": int(m.group(1))},
     ),
     # Invalid input
     (
@@ -279,6 +290,129 @@ def parse_yt_dlp_error(stderr: str) -> YtDlpError:
         stderr=stderr,
         details={},
     )
+
+
+def yt_dlp_error_to_exception(
+    error: YtDlpError,
+    *,
+    is_youtube: bool = False,
+    auth_status: dict[str, Any] | None = None,
+    clients_tried: list[str] | None = None,
+) -> DownloadError:
+    """Convert a YtDlpError to a typed DownloadError exception.
+
+    Args:
+        error: The parsed YtDlpError
+        is_youtube: Whether this is a YouTube URL (for auth-specific handling)
+        auth_status: YouTube auth status dict (from check_youtube_auth_status)
+        clients_tried: List of YouTube clients that were attempted
+
+    Returns:
+        Appropriate typed exception based on error category
+    """
+    category = error.category
+    message = error.message
+    stderr = error.stderr
+    details = dict(error.details)  # Copy to avoid mutation
+
+    # Map categories to typed exceptions
+    if category in ("auth", "po_token"):
+        auth_level = auth_status.get("auth_level") if auth_status else None
+        return YouTubeAuthError(
+            message,
+            stderr=stderr,
+            details=details,
+            auth_level=auth_level,
+            clients_tried=clients_tried,
+        )
+
+    if category == "age_restricted":
+        return AgeRestrictedError(
+            message,
+            stderr=stderr,
+            details=details,
+        )
+
+    if category == "geo_restricted":
+        return GeoRestrictedError(
+            message,
+            stderr=stderr,
+            details=details,
+        )
+
+    if category in ("format_unavailable", "no_formats"):
+        return FormatNotAvailableError(
+            message,
+            stderr=stderr,
+            details=details,
+        )
+
+    if category == "rate_limited":
+        return RateLimitError(
+            message,
+            stderr=stderr,
+            details=details,
+        )
+
+    if category in ("network", "ssl"):
+        http_code = details.get("http_code")
+        return NetworkError(
+            message,
+            stderr=stderr,
+            details=details,
+            http_code=http_code,
+        )
+
+    if category == "http_error":
+        http_code = details.get("http_code")
+        # HTTP 403 on YouTube is usually auth-related
+        if http_code == 403 and is_youtube:
+            auth_level = auth_status.get("auth_level") if auth_status else None
+            return YouTubeAuthError(
+                message,
+                stderr=stderr,
+                details=details,
+                auth_level=auth_level,
+                clients_tried=clients_tried,
+            )
+        return NetworkError(
+            message,
+            stderr=stderr,
+            details=details,
+            http_code=http_code,
+        )
+
+    if category in (
+        "unavailable",
+        "removed",
+        "private",
+        "members_only",
+        "copyright",
+        "premiere",
+        "live",
+    ):
+        return VideoUnavailableError(
+            message,
+            stderr=stderr,
+            details=details,
+            reason=category,
+        )
+
+    if category in ("invalid_url", "not_found"):
+        return ExtractorError(
+            message,
+            stderr=stderr,
+            details=details,
+        )
+
+    # Default: generic DownloadError with parsed info
+    return DownloadError(
+        message,
+        category=category,
+        stderr=stderr,
+        details=details,
+    )
+
 
 # Pattern to detect YouTube URLs
 _YOUTUBE_URL_RE = re.compile(
@@ -1064,13 +1198,30 @@ class YtDlpTool(VideoTool):
             fallback_error = result.stderr or ""
             # Include both errors when the fallback also fails
             if first_error and fallback_error:
-                error_detail = (
+                combined_stderr = (
                     f"[audio-only] {first_error.strip()}\n"
                     f"[video fallback] {fallback_error.strip()}"
                 )
             else:
-                error_detail = fallback_error or first_error
-            raise DownloadError(f"Audio download failed: {error_detail}")
+                combined_stderr = fallback_error or first_error
+
+            # Parse error and raise typed exception
+            parsed_error = parse_yt_dlp_error(combined_stderr)
+            is_youtube = self._is_youtube_url(url)
+
+            # Get auth status for YouTube errors
+            auth_status = None
+            clients_tried = ["default", "mweb"]
+            if is_youtube and parsed_error.category in ("auth", "http_error", "po_token"):
+                with contextlib.suppress(Exception):
+                    auth_status = self.check_youtube_auth_status()
+
+            raise yt_dlp_error_to_exception(
+                parsed_error,
+                is_youtube=is_youtube,
+                auth_status=auth_status,
+                clients_tried=clients_tried,
+            )
 
         return output_path
 
@@ -1295,7 +1446,10 @@ class YtDlpTool(VideoTool):
         if format_id is None:
             ad_format = self.check_audio_description(url)
             if ad_format is None:
-                raise DownloadError("No audio description track found")
+                raise FormatNotAvailableError(
+                    "No audio description track found",
+                    details={"requested_format": "audio_description"},
+                )
             format_id = ad_format["format_id"]
 
         yt_args: list[str] = []
@@ -1321,8 +1475,19 @@ class YtDlpTool(VideoTool):
         result = self._run(args)
 
         if not result.success or not output_path.exists():
-            raise DownloadError(
-                f"Audio description download failed: {result.stderr or 'Unknown error'}"
+            stderr = result.stderr or ""
+            parsed_error = parse_yt_dlp_error(stderr)
+            is_youtube = self._is_youtube_url(url)
+
+            auth_status = None
+            if is_youtube and parsed_error.category in ("auth", "http_error", "po_token"):
+                with contextlib.suppress(Exception):
+                    auth_status = self.check_youtube_auth_status()
+
+            raise yt_dlp_error_to_exception(
+                parsed_error,
+                is_youtube=is_youtube,
+                auth_status=auth_status,
             )
 
         return output_path

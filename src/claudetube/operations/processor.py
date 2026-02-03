@@ -131,11 +131,18 @@ def process_video(
     except Exception as e:
         # Record download failure
         safe_update_pipeline_step(download_step_id, "failed", error_message=str(e))
+
+        # Extract structured error info if available
+        error_info = None
+        if hasattr(e, "to_dict"):
+            error_info = e.to_dict()
+
         return VideoResult(
             success=False,
             video_id=video_id,
             output_dir=cache_dir,
             error=str(e),
+            error_info=error_info,
         )
 
     state = VideoState.from_metadata(video_id, url, meta)
@@ -317,11 +324,18 @@ def process_video(
         except Exception as e:
             # Record audio_extract failure
             safe_update_pipeline_step(audio_step_id, "failed", error_message=str(e))
+
+            # Extract structured error info if available
+            error_info = None
+            if hasattr(e, "to_dict"):
+                error_info = e.to_dict()
+
             return VideoResult(
                 success=False,
                 video_id=video_id,
                 output_dir=cache_dir,
                 error=str(e),
+                error_info=error_info,
                 metadata=state.to_dict(),
             )
 

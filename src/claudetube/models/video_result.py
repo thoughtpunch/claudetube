@@ -2,8 +2,13 @@
 VideoResult dataclass for video processing results.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
@@ -19,3 +24,4 @@ class VideoResult:
     frames: list[Path] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
     error: str | None = None
+    error_info: dict[str, Any] | None = None  # Structured error information
