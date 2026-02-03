@@ -1295,7 +1295,7 @@ class YtDlpTool(VideoTool):
             yt_args.extend(self._youtube_config_args())
 
         result = self._run(
-            [*yt_args, "--dump-json", "--no-download", url],
+            [*yt_args, "--dump-json", "--no-download", "--no-playlist", url],
             timeout=timeout,
             retry_clients=False,  # Metadata doesn't hit 403 issues
         )
@@ -1562,7 +1562,7 @@ class YtDlpTool(VideoTool):
             yt_args.extend(self._youtube_config_args())
 
         result = self._run(
-            [*yt_args, "-j", "--no-download", url],
+            [*yt_args, "-j", "--no-download", "--no-playlist", url],
             timeout=timeout,
             retry_clients=False,
         )
