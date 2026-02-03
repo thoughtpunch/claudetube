@@ -39,8 +39,9 @@ class TestClaudeCodeProviderInfo:
         assert not provider.info.can(Capability.EMBED)
 
     def test_info_structured_output(self):
+        """ClaudeCodeProvider cannot return structured output - only formats content."""
         provider = ClaudeCodeProvider()
-        assert provider.info.supports_structured_output is True
+        assert provider.info.supports_structured_output is False
 
     def test_info_no_streaming(self):
         provider = ClaudeCodeProvider()
@@ -141,8 +142,8 @@ class TestAnalyzeImages:
         assert "Describe nothing" in result
 
     @pytest.mark.asyncio
-    async def test_with_pydantic_schema(self, tmp_path):
-        """Schema is formatted as JSON in the output."""
+    async def test_with_schema_raises_not_implemented(self, tmp_path):
+        """Schema parameter raises NotImplementedError (can't return structured data)."""
         img = tmp_path / "frame.jpg"
         img.write_bytes(b"fake image")
 
@@ -154,14 +155,15 @@ class TestAnalyzeImages:
                 objects: list[str] = Field(default_factory=list)
 
             provider = ClaudeCodeProvider()
-            result = await provider.analyze_images(
-                [img], "Extract objects", schema=TestSchema
-            )
+            with pytest.raises(NotImplementedError) as exc_info:
+                await provider.analyze_images(
+                    [img], "Extract objects", schema=TestSchema
+                )
 
-            assert "Respond with JSON matching this schema:" in result
-            assert "```json" in result
-            assert "description" in result
-            assert "objects" in result
+            assert "ClaudeCodeProvider cannot return structured output" in str(
+                exc_info.value
+            )
+            assert "vision provider with API access" in str(exc_info.value)
         except ImportError:
             pytest.skip("pydantic not installed")
 
@@ -279,7 +281,8 @@ class TestReason:
         assert "[Previous response]" not in result
 
     @pytest.mark.asyncio
-    async def test_with_pydantic_schema(self):
+    async def test_with_schema_raises_not_implemented(self):
+        """Schema parameter raises NotImplementedError (can't return structured data)."""
         try:
             from pydantic import BaseModel, Field
 
@@ -288,15 +291,16 @@ class TestReason:
                 key_points: list[str] = Field(default_factory=list)
 
             provider = ClaudeCodeProvider()
-            result = await provider.reason(
-                [{"role": "user", "content": "Summarize"}],
-                schema=Summary,
-            )
+            with pytest.raises(NotImplementedError) as exc_info:
+                await provider.reason(
+                    [{"role": "user", "content": "Summarize"}],
+                    schema=Summary,
+                )
 
-            assert "Respond with JSON matching this schema:" in result
-            assert "```json" in result
-            assert "title" in result
-            assert "key_points" in result
+            assert "ClaudeCodeProvider cannot return structured output" in str(
+                exc_info.value
+            )
+            assert "provider with API access" in str(exc_info.value)
         except ImportError:
             pytest.skip("pydantic not installed")
 

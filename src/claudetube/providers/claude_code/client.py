@@ -69,8 +69,12 @@ class ClaudeCodeProvider(Provider, VisionAnalyzer, Reasoner):
     ) -> str | dict:
         """Format images for host AI to analyze.
 
-        Returns a formatted string with image references that Claude Code
-        will render and analyze in the conversation.
+        When schema is provided (structured output requested), this provider
+        cannot fulfill the request because it only formats content for display -
+        it cannot get a response from Claude. In this case, raises an error.
+
+        For unstructured prompts, returns a formatted string with image
+        references that could be displayed in a conversation.
 
         Args:
             images: List of image file paths. Paths must be absolute and exist.
@@ -79,8 +83,23 @@ class ClaudeCodeProvider(Provider, VisionAnalyzer, Reasoner):
             **kwargs: Ignored (no provider-specific options).
 
         Returns:
-            Formatted string with image references and prompt.
+            Formatted string with image references and prompt (when no schema).
+
+        Raises:
+            NotImplementedError: When schema is provided, since this provider
+                cannot return structured data.
         """
+        if schema:
+            # ClaudeCodeProvider formats content for display but cannot get
+            # a response from Claude. For structured output (entity extraction,
+            # visual transcripts), a real API provider is required.
+            raise NotImplementedError(
+                "ClaudeCodeProvider cannot return structured output. "
+                "For entity extraction and visual transcripts, configure a "
+                "vision provider with API access (anthropic, openai, or google). "
+                "See documentation/guides/configuration.md for setup instructions."
+            )
+
         image_refs = []
         for img in images:
             abs_path = img.resolve()
@@ -90,15 +109,7 @@ class ClaudeCodeProvider(Provider, VisionAnalyzer, Reasoner):
                 image_refs.append(f"[Image not found: {abs_path}]")
 
         content = "\n".join(image_refs)
-
-        if schema:
-            schema_json = self._get_schema_json(schema)
-            content += (
-                f"\n\n{prompt}"
-                f"\n\nRespond with JSON matching this schema:\n```json\n{schema_json}\n```"
-            )
-        else:
-            content += f"\n\n{prompt}"
+        content += f"\n\n{prompt}"
 
         return content
 
@@ -110,7 +121,8 @@ class ClaudeCodeProvider(Provider, VisionAnalyzer, Reasoner):
     ) -> str | dict:
         """Format messages for host AI to process.
 
-        Returns a formatted prompt that the host Claude will respond to.
+        When schema is provided (structured output requested), this provider
+        cannot fulfill the request because it only formats content for display.
 
         Args:
             messages: List of message dicts with "role" and "content" keys.
@@ -118,8 +130,20 @@ class ClaudeCodeProvider(Provider, VisionAnalyzer, Reasoner):
             **kwargs: Ignored (no provider-specific options).
 
         Returns:
-            Formatted string with role-labeled messages.
+            Formatted string with role-labeled messages (when no schema).
+
+        Raises:
+            NotImplementedError: When schema is provided, since this provider
+                cannot return structured data.
         """
+        if schema:
+            raise NotImplementedError(
+                "ClaudeCodeProvider cannot return structured output. "
+                "For reasoning with structured responses, configure a "
+                "provider with API access (anthropic, openai, or google). "
+                "See documentation/guides/configuration.md for setup instructions."
+            )
+
         formatted_parts = []
         for msg in messages:
             role = msg.get("role", "user")
@@ -131,13 +155,7 @@ class ClaudeCodeProvider(Provider, VisionAnalyzer, Reasoner):
             else:
                 formatted_parts.append(content)
 
-        content = "\n\n".join(formatted_parts)
-
-        if schema:
-            schema_json = self._get_schema_json(schema)
-            content += f"\n\nRespond with JSON matching this schema:\n```json\n{schema_json}\n```"
-
-        return content
+        return "\n\n".join(formatted_parts)
 
     @staticmethod
     def _get_schema_json(schema: type) -> str:

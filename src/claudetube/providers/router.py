@@ -328,6 +328,82 @@ class ProviderRouter:
             )
         return provider
 
+    def get_vision_analyzer_for_structured_output(self) -> VisionAnalyzer:
+        """Get a VisionAnalyzer that supports structured output (JSON schemas).
+
+        For operations like entity extraction and visual transcripts that require
+        structured JSON responses, this method ensures the provider supports
+        the `schema` parameter in analyze_images().
+
+        Providers like claude-code cannot return structured output because they
+        format content for display rather than making API calls. This method
+        filters them out.
+
+        Returns:
+            A VisionAnalyzer that supports structured output.
+
+        Raises:
+            NoProviderError: If no vision provider with structured output is available.
+
+        Example:
+            >>> analyzer = router.get_vision_analyzer_for_structured_output()
+            >>> result = await analyzer.analyze_images(images, prompt, schema=MySchema)
+        """
+        from claudetube.providers.base import VisionAnalyzer
+
+        # Build list of candidates, filtering by structured output support
+        tried: set[str] = set()
+
+        # 1. Try preferred provider
+        preferred_name = self._get_preferred_provider_name(Capability.VISION)
+        if preferred_name is not None:
+            tried.add(preferred_name)
+            provider = self._try_load_provider(preferred_name)
+            if provider is not None and isinstance(provider, VisionAnalyzer):
+                if provider.info.supports_structured_output:
+                    logger.info(
+                        "Selected preferred provider '%s' for VISION with structured output",
+                        preferred_name,
+                    )
+                    return provider
+                logger.warning(
+                    "Preferred vision provider '%s' does not support structured output",
+                    preferred_name,
+                )
+
+        # 2. Try fallback chain, filtering by structured output
+        fallback_chain = self._get_fallback_chain(Capability.VISION)
+        if self._config.cost_preference == "cost":
+            fallback_chain = self._sort_by_cost(fallback_chain)
+
+        for fallback_name in fallback_chain:
+            if fallback_name in tried:
+                continue
+            tried.add(fallback_name)
+            provider = self._try_load_provider(fallback_name)
+            if provider is not None and isinstance(provider, VisionAnalyzer):
+                if provider.info.supports_structured_output:
+                    logger.info(
+                        "Selected fallback provider '%s' for VISION with structured output",
+                        fallback_name,
+                    )
+                    return provider
+                logger.warning(
+                    "Fallback vision provider '%s' does not support structured output",
+                    fallback_name,
+                )
+
+        # 3. claude-code is NOT a valid fallback for structured output
+        # (it cannot return JSON schemas, only formatted text)
+
+        raise NoProviderError(
+            Capability.VISION,
+            "No vision provider with structured output support is available. "
+            "Operations like entity extraction and visual transcripts require "
+            "a provider that can return JSON (anthropic, openai, or google). "
+            "Configure one in .claudetube/config.yaml or set the API key.",
+        )
+
     def get_video_analyzer(self) -> VideoAnalyzer | None:
         """Get a VideoAnalyzer provider if available.
 
@@ -395,6 +471,67 @@ class ProviderRouter:
                 f"Provider '{provider.info.name}' does not implement Reasoner protocol",
             )
         return provider
+
+    def get_reasoner_for_structured_output(self) -> Reasoner:
+        """Get a Reasoner that supports structured output (JSON schemas).
+
+        For operations that require structured JSON responses, this method
+        ensures the provider supports the `schema` parameter in reason().
+
+        Returns:
+            A Reasoner that supports structured output.
+
+        Raises:
+            NoProviderError: If no reasoning provider with structured output is available.
+
+        Example:
+            >>> reasoner = router.get_reasoner_for_structured_output()
+            >>> result = await reasoner.reason(messages, schema=MySchema)
+        """
+        from claudetube.providers.base import Reasoner
+
+        tried: set[str] = set()
+
+        # 1. Try preferred provider
+        preferred_name = self._get_preferred_provider_name(Capability.REASON)
+        if preferred_name is not None:
+            tried.add(preferred_name)
+            provider = self._try_load_provider(preferred_name)
+            if provider is not None and isinstance(provider, Reasoner):
+                if provider.info.supports_structured_output:
+                    logger.info(
+                        "Selected preferred provider '%s' for REASON with structured output",
+                        preferred_name,
+                    )
+                    return provider
+                logger.warning(
+                    "Preferred reasoning provider '%s' does not support structured output",
+                    preferred_name,
+                )
+
+        # 2. Try fallback chain
+        fallback_chain = self._get_fallback_chain(Capability.REASON)
+        if self._config.cost_preference == "cost":
+            fallback_chain = self._sort_by_cost(fallback_chain)
+
+        for fallback_name in fallback_chain:
+            if fallback_name in tried:
+                continue
+            tried.add(fallback_name)
+            provider = self._try_load_provider(fallback_name)
+            if provider is not None and isinstance(provider, Reasoner):
+                if provider.info.supports_structured_output:
+                    logger.info(
+                        "Selected fallback provider '%s' for REASON with structured output",
+                        fallback_name,
+                    )
+                    return provider
+
+        raise NoProviderError(
+            Capability.REASON,
+            "No reasoning provider with structured output support is available. "
+            "Configure a provider (anthropic, openai, or google) in .claudetube/config.yaml.",
+        )
 
     def get_embedder(self) -> Embedder:
         """Get a provider implementing the Embedder protocol.
