@@ -551,6 +551,11 @@ def sync_transcription(
             video_uuid,
             is_primary,
         )
+
+        # Auto-embed the full text (fire-and-forget)
+        if full_text:
+            embed_transcription(video_uuid, full_text, duration)
+
         return transcription_id
 
     except Exception:
@@ -760,6 +765,13 @@ def sync_scene(
             relevance_boost=relevance_boost,
         )
         logger.debug("Synced scene %d for video %s", scene_id, video_uuid)
+
+        # Auto-embed scene transcript (fire-and-forget)
+        if transcript_text:
+            embed_scene_transcript(
+                video_uuid, scene_id, transcript_text, start_time, end_time
+            )
+
         return scene_uuid
 
     except Exception:
@@ -804,6 +816,19 @@ def sync_scenes_bulk(
 
         uuids = repo.bulk_insert(video_uuid, scenes)
         logger.debug("Synced %d scenes for video %s", len(uuids), video_uuid)
+
+        # Auto-embed each scene's transcript (fire-and-forget)
+        for scene in scenes:
+            transcript_text = scene.get("transcript_text")
+            if transcript_text:
+                embed_scene_transcript(
+                    video_uuid,
+                    scene.get("scene_id", 0),
+                    transcript_text,
+                    scene.get("start_time"),
+                    scene.get("end_time"),
+                )
+
         return uuids
 
     except Exception:
@@ -935,6 +960,11 @@ def sync_visual_description(
             video_uuid,
             scene_id,
         )
+
+        # Auto-embed visual description (fire-and-forget)
+        # Note: We don't have start/end time here, but scene_id links to scenes table
+        embed_visual_description(video_uuid, scene_id, description)
+
         return visual_uuid
 
     except Exception:
@@ -1007,6 +1037,11 @@ def sync_technical_content(
             video_uuid,
             scene_id,
         )
+
+        # Auto-embed OCR text if non-empty (fire-and-forget)
+        if ocr_text:
+            embed_technical_content(video_uuid, scene_id, ocr_text)
+
         return tech_uuid
 
     except Exception:
@@ -1192,6 +1227,10 @@ def sync_qa(
             video_uuid,
             len(scene_ids) if scene_ids else 0,
         )
+
+        # Auto-embed Q&A (fire-and-forget)
+        embed_qa(video_uuid, question, answer)
+
         return qa_uuid
 
     except Exception:
@@ -1239,6 +1278,10 @@ def sync_observation(
             video_uuid,
             scene_id,
         )
+
+        # Auto-embed observation content (fire-and-forget)
+        embed_observation(video_uuid, scene_id, content)
+
         return obs_uuid
 
     except Exception:
@@ -1287,3 +1330,285 @@ def update_scene_relevance_boost(
     except Exception:
         logger.debug("Failed to update scene relevance boost in SQLite", exc_info=True)
         return False
+
+
+# ============================================================
+# Auto-Embedding Helpers
+# ============================================================
+
+
+def _embed_async_fire_and_forget(
+    video_uuid: str,
+    scene_id: int | None,
+    source: str,
+    text: str,
+    start_time: float | None = None,
+    end_time: float | None = None,
+) -> None:
+    """Fire-and-forget async embedding in a background thread.
+
+    This function spawns embedding in a background thread so it doesn't
+    block the main sync path. If embedding fails for any reason (no
+    embedder configured, API error, etc.), it's silently ignored.
+
+    The embedding is best-effort on top of best-effort DB sync.
+    When embeddings are successfully created, a pipeline step is recorded.
+
+    Args:
+        video_uuid: UUID of the video (videos.id).
+        scene_id: Scene index, or None for video-level.
+        source: Content source type (must be in VALID_SOURCES).
+        text: Text to embed.
+        start_time: Optional start timestamp.
+        end_time: Optional end timestamp.
+    """
+    import asyncio
+    import concurrent.futures
+
+    def _run_embed():
+        """Run embedding in a new event loop."""
+        try:
+            from claudetube.db.vec import embed_text
+
+            result = asyncio.run(
+                embed_text(
+                    video_uuid=video_uuid,
+                    scene_id=scene_id,
+                    source=source,
+                    text=text,
+                    start_time=start_time,
+                    end_time=end_time,
+                )
+            )
+            logger.debug(
+                "Auto-embedded %s for video %s scene %s",
+                source,
+                video_uuid,
+                scene_id,
+            )
+
+            # Record pipeline step if embedding succeeded
+            if result is not None:
+                _record_embed_pipeline_step(
+                    video_uuid=video_uuid,
+                    scene_id=scene_id,
+                    source=source,
+                )
+        except Exception:
+            # Embedding is best-effort, never fail
+            logger.debug("Auto-embed failed (ignored)", exc_info=True)
+
+    # Check if text is empty before spawning thread
+    if not text or not text.strip():
+        return
+
+    try:
+        # Use a thread pool to avoid blocking
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(_run_embed)
+    except Exception:
+        # Don't fail if thread pool fails
+        logger.debug("Failed to spawn embed thread (ignored)", exc_info=True)
+
+
+def _record_embed_pipeline_step(
+    video_uuid: str,
+    scene_id: int | None,
+    source: str,
+) -> None:
+    """Record a pipeline step for successful embedding.
+
+    Fire-and-forget - never raises.
+
+    Args:
+        video_uuid: UUID of the video.
+        scene_id: Scene index, or None for video-level.
+        source: Embedding source type.
+    """
+    import json
+
+    try:
+        db = _get_db()
+        if db is None:
+            return
+
+        from claudetube.db.repos.pipeline import PipelineRepository
+
+        repo = PipelineRepository(db)
+        config = json.dumps({"source": source})
+        repo.record_step(
+            video_uuid=video_uuid,
+            step_type="embed",
+            status="completed",
+            scene_id=scene_id,
+            config=config,
+        )
+        logger.debug(
+            "Recorded embed pipeline step for video %s scene %s source %s",
+            video_uuid,
+            scene_id,
+            source,
+        )
+    except Exception:
+        # Fire-and-forget
+        logger.debug("Failed to record embed pipeline step (ignored)", exc_info=True)
+
+
+def embed_transcription(
+    video_uuid: str,
+    full_text: str,
+    duration: float | None = None,
+) -> None:
+    """Auto-embed transcription full text after sync.
+
+    Fire-and-forget wrapper for transcription embedding.
+
+    Args:
+        video_uuid: UUID of the video.
+        full_text: Complete transcript text.
+        duration: Optional video duration for end_time.
+    """
+    _embed_async_fire_and_forget(
+        video_uuid=video_uuid,
+        scene_id=None,  # Video-level
+        source="transcription",
+        text=full_text,
+        start_time=0.0,
+        end_time=duration,
+    )
+
+
+def embed_scene_transcript(
+    video_uuid: str,
+    scene_id: int,
+    transcript_text: str,
+    start_time: float | None = None,
+    end_time: float | None = None,
+) -> None:
+    """Auto-embed scene transcript text after sync.
+
+    Fire-and-forget wrapper for scene transcript embedding.
+
+    Args:
+        video_uuid: UUID of the video.
+        scene_id: Scene index (0-based).
+        transcript_text: Transcript text for this scene.
+        start_time: Scene start time.
+        end_time: Scene end time.
+    """
+    _embed_async_fire_and_forget(
+        video_uuid=video_uuid,
+        scene_id=scene_id,
+        source="scene_transcript",
+        text=transcript_text,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+
+def embed_visual_description(
+    video_uuid: str,
+    scene_id: int,
+    description: str,
+    start_time: float | None = None,
+    end_time: float | None = None,
+) -> None:
+    """Auto-embed visual description after sync.
+
+    Fire-and-forget wrapper for visual description embedding.
+
+    Args:
+        video_uuid: UUID of the video.
+        scene_id: Scene index (0-based).
+        description: Visual description text.
+        start_time: Scene start time.
+        end_time: Scene end time.
+    """
+    _embed_async_fire_and_forget(
+        video_uuid=video_uuid,
+        scene_id=scene_id,
+        source="visual",
+        text=description,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+
+def embed_technical_content(
+    video_uuid: str,
+    scene_id: int,
+    ocr_text: str,
+    start_time: float | None = None,
+    end_time: float | None = None,
+) -> None:
+    """Auto-embed OCR text from technical content after sync.
+
+    Fire-and-forget wrapper for technical content embedding.
+
+    Args:
+        video_uuid: UUID of the video.
+        scene_id: Scene index (0-based).
+        ocr_text: Extracted OCR text.
+        start_time: Scene start time.
+        end_time: Scene end time.
+    """
+    _embed_async_fire_and_forget(
+        video_uuid=video_uuid,
+        scene_id=scene_id,
+        source="technical",
+        text=ocr_text,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+
+def embed_qa(
+    video_uuid: str,
+    question: str,
+    answer: str,
+) -> None:
+    """Auto-embed Q&A pair after sync.
+
+    Combines question and answer into a single text for embedding.
+    Fire-and-forget wrapper.
+
+    Args:
+        video_uuid: UUID of the video.
+        question: The question asked.
+        answer: The answer given.
+    """
+    combined = f"Q: {question}\nA: {answer}"
+    _embed_async_fire_and_forget(
+        video_uuid=video_uuid,
+        scene_id=None,  # Q&A is video-level
+        source="qa",
+        text=combined,
+    )
+
+
+def embed_observation(
+    video_uuid: str,
+    scene_id: int,
+    content: str,
+    start_time: float | None = None,
+    end_time: float | None = None,
+) -> None:
+    """Auto-embed observation content after sync.
+
+    Fire-and-forget wrapper for observation embedding.
+
+    Args:
+        video_uuid: UUID of the video.
+        scene_id: Scene index (0-based).
+        content: Observation content text.
+        start_time: Scene start time.
+        end_time: Scene end time.
+    """
+    _embed_async_fire_and_forget(
+        video_uuid=video_uuid,
+        scene_id=scene_id,
+        source="observation",
+        text=content,
+        start_time=start_time,
+        end_time=end_time,
+    )

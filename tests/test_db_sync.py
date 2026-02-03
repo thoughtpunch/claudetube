@@ -14,9 +14,16 @@ from claudetube.db.repos.transcriptions import TranscriptionRepository
 from claudetube.db.repos.videos import VideoRepository
 from claudetube.db.sync import (
     _cleanup_empty_parents,
+    _embed_async_fire_and_forget,
     _extract_channel_from_metadata,
     _extract_playlist_from_metadata,
     _get_db,
+    embed_observation,
+    embed_qa,
+    embed_scene_transcript,
+    embed_technical_content,
+    embed_transcription,
+    embed_visual_description,
     enrich_video,
     get_video_uuid,
     sync_audio_track,
@@ -509,3 +516,229 @@ class TestGetVideoUuid:
         with patch("claudetube.db.sync._get_db", return_value=None):
             result = get_video_uuid("vid123")
             assert result is None
+
+
+# ============================================================
+# Auto-Embedding Tests
+# ============================================================
+
+
+class TestAutoEmbedding:
+    """Tests for auto-embedding helper functions."""
+
+    def test_embed_transcription_calls_helper(self, in_memory_db):
+        """embed_transcription() calls the async helper correctly."""
+        from claudetube.db.sync import embed_transcription
+
+        with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
+            embed_transcription("video-uuid", "Hello world transcript", 120.5)
+            mock_embed.assert_called_once_with(
+                video_uuid="video-uuid",
+                scene_id=None,
+                source="transcription",
+                text="Hello world transcript",
+                start_time=0.0,
+                end_time=120.5,
+            )
+
+    def test_embed_scene_transcript_calls_helper(self, in_memory_db):
+        """embed_scene_transcript() calls the async helper correctly."""
+        from claudetube.db.sync import embed_scene_transcript
+
+        with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
+            embed_scene_transcript(
+                "video-uuid", 5, "Scene text", start_time=100.0, end_time=150.0
+            )
+            mock_embed.assert_called_once_with(
+                video_uuid="video-uuid",
+                scene_id=5,
+                source="scene_transcript",
+                text="Scene text",
+                start_time=100.0,
+                end_time=150.0,
+            )
+
+    def test_embed_visual_description_calls_helper(self, in_memory_db):
+        """embed_visual_description() calls the async helper correctly."""
+        from claudetube.db.sync import embed_visual_description
+
+        with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
+            embed_visual_description("video-uuid", 3, "Visual description text")
+            mock_embed.assert_called_once_with(
+                video_uuid="video-uuid",
+                scene_id=3,
+                source="visual",
+                text="Visual description text",
+                start_time=None,
+                end_time=None,
+            )
+
+    def test_embed_technical_content_calls_helper(self, in_memory_db):
+        """embed_technical_content() calls the async helper correctly."""
+        from claudetube.db.sync import embed_technical_content
+
+        with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
+            embed_technical_content("video-uuid", 2, "OCR text content")
+            mock_embed.assert_called_once_with(
+                video_uuid="video-uuid",
+                scene_id=2,
+                source="technical",
+                text="OCR text content",
+                start_time=None,
+                end_time=None,
+            )
+
+    def test_embed_qa_combines_question_answer(self, in_memory_db):
+        """embed_qa() combines question and answer before embedding."""
+        from claudetube.db.sync import embed_qa
+
+        with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
+            embed_qa("video-uuid", "What happens?", "Something happens.")
+            mock_embed.assert_called_once_with(
+                video_uuid="video-uuid",
+                scene_id=None,
+                source="qa",
+                text="Q: What happens?\nA: Something happens.",
+            )
+
+    def test_embed_observation_calls_helper(self, in_memory_db):
+        """embed_observation() calls the async helper correctly."""
+        from claudetube.db.sync import embed_observation
+
+        with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
+            embed_observation("video-uuid", 1, "Observation content")
+            mock_embed.assert_called_once_with(
+                video_uuid="video-uuid",
+                scene_id=1,
+                source="observation",
+                text="Observation content",
+                start_time=None,
+                end_time=None,
+            )
+
+    def test_embed_helper_skips_empty_text(self, in_memory_db):
+        """_embed_async_fire_and_forget() skips empty text."""
+        from claudetube.db.sync import _embed_async_fire_and_forget
+
+        # Should not raise, should skip silently
+        _embed_async_fire_and_forget("video-uuid", None, "transcription", "")
+        _embed_async_fire_and_forget("video-uuid", None, "transcription", "   ")
+        # No assertions needed - just verify no exceptions
+
+    def test_embed_helper_fire_and_forget_on_error(self, in_memory_db):
+        """_embed_async_fire_and_forget() does not raise on errors."""
+        from claudetube.db.sync import _embed_async_fire_and_forget
+
+        # Patch vec.embed_text to raise an error
+        with patch(
+            "claudetube.db.vec.embed_text",
+            side_effect=RuntimeError("Embedding failed"),
+        ):
+            # Should not raise
+            _embed_async_fire_and_forget(
+                "video-uuid", None, "transcription", "Some text"
+            )
+
+
+class TestSyncTranscriptionWithEmbedding:
+    """Tests that sync_transcription triggers auto-embedding."""
+
+    def test_sync_transcription_triggers_embed(self, in_memory_db):
+        """sync_transcription() triggers embed_transcription after successful sync."""
+        video_repo = VideoRepository(in_memory_db)
+        video_uuid = video_repo.insert("vid123", "youtube", "cache/vid123")
+
+        with patch("claudetube.db.sync.embed_transcription") as mock_embed:
+            transcript_id = sync_transcription(
+                video_uuid=video_uuid,
+                provider="whisper",
+                format_="srt",
+                file_path="audio.srt",
+                full_text="Hello world transcript",
+                duration=120.5,
+            )
+
+            assert transcript_id is not None
+            mock_embed.assert_called_once_with(video_uuid, "Hello world transcript", 120.5)
+
+    def test_sync_transcription_does_not_embed_if_no_full_text(self, in_memory_db):
+        """sync_transcription() does not trigger embed if full_text is None."""
+        video_repo = VideoRepository(in_memory_db)
+        video_uuid = video_repo.insert("vid123", "youtube", "cache/vid123")
+
+        with patch("claudetube.db.sync.embed_transcription") as mock_embed:
+            sync_transcription(
+                video_uuid=video_uuid,
+                provider="whisper",
+                format_="srt",
+                file_path="audio.srt",
+                full_text=None,
+            )
+
+            mock_embed.assert_not_called()
+
+
+class TestSyncSceneWithEmbedding:
+    """Tests that sync_scene triggers auto-embedding."""
+
+    def test_sync_scene_triggers_embed(self, in_memory_db):
+        """sync_scene() triggers embed_scene_transcript after successful sync."""
+        from claudetube.db.sync import sync_scene
+
+        video_repo = VideoRepository(in_memory_db)
+        video_uuid = video_repo.insert("vid123", "youtube", "cache/vid123")
+
+        with patch("claudetube.db.sync.embed_scene_transcript") as mock_embed:
+            scene_uuid = sync_scene(
+                video_uuid=video_uuid,
+                scene_id=0,
+                start_time=0.0,
+                end_time=60.0,
+                transcript_text="Scene transcript text",
+            )
+
+            assert scene_uuid is not None
+            mock_embed.assert_called_once_with(
+                video_uuid, 0, "Scene transcript text", 0.0, 60.0
+            )
+
+    def test_sync_scene_does_not_embed_if_no_transcript(self, in_memory_db):
+        """sync_scene() does not trigger embed if transcript_text is None."""
+        from claudetube.db.sync import sync_scene
+
+        video_repo = VideoRepository(in_memory_db)
+        video_uuid = video_repo.insert("vid123", "youtube", "cache/vid123")
+
+        with patch("claudetube.db.sync.embed_scene_transcript") as mock_embed:
+            sync_scene(
+                video_uuid=video_uuid,
+                scene_id=0,
+                start_time=0.0,
+                end_time=60.0,
+                transcript_text=None,
+            )
+
+            mock_embed.assert_not_called()
+
+
+class TestSyncQAWithEmbedding:
+    """Tests that sync_qa triggers auto-embedding."""
+
+    def test_sync_qa_triggers_embed(self, in_memory_db):
+        """sync_qa() triggers embed_qa after successful sync."""
+        from claudetube.db.sync import sync_qa
+
+        video_repo = VideoRepository(in_memory_db)
+        video_uuid = video_repo.insert("vid123", "youtube", "cache/vid123")
+
+        with patch("claudetube.db.sync.embed_qa") as mock_embed:
+            qa_uuid = sync_qa(
+                video_uuid=video_uuid,
+                question="What happens?",
+                answer="Something happens.",
+            )
+
+            assert qa_uuid is not None
+            mock_embed.assert_called_once_with(
+                video_uuid, "What happens?", "Something happens."
+            )
