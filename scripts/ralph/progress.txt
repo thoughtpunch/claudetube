@@ -22,3 +22,4 @@ Investigated the reported bug where MCP tool calls returned "Video not found" wh
 - Tested direct Python: `asyncio.run(get_transcript('aircAruvnKk', 'txt'))` → SUCCESS
 - Both return 18,505 char transcript correctly
 - 2026-02-03 17:04 | claudetube-58qv [P1] | JSON parse error on URLs with playlist params
+- 2026-02-03 17:09 | claudetube-r5zk [P2] | Fix 5 failing tests in entity_extraction and visual_transcript operations
