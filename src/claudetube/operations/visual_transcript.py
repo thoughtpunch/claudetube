@@ -358,37 +358,35 @@ def _should_skip_scene(scene: SceneBoundary) -> bool:
 
 
 def _get_default_vision_analyzer() -> VisionAnalyzer:
-    """Get the default vision analyzer via the ProviderRouter.
+    """Get the default vision analyzer for structured output via the ProviderRouter.
 
-    Uses the ProviderRouter to select the best available vision provider,
-    respecting user configuration preferences and fallback chains. This
-    supports all configured providers (Ollama, OpenAI, Anthropic,
-    claude-code, etc.) without hardcoding provider names.
+    Uses the ProviderRouter to select the best available vision provider that
+    supports structured output (JSON schemas). This is required for visual
+    transcript generation which uses Pydantic schemas.
+
+    Providers like claude-code cannot return structured output and are
+    automatically filtered out.
 
     Returns:
-        A VisionAnalyzer provider instance.
+        A VisionAnalyzer provider instance that supports structured output.
 
     Raises:
-        RuntimeError: If no vision provider is available.
+        RuntimeError: If no vision provider with structured output is available.
     """
-    from claudetube.providers.base import VisionAnalyzer as VisionAnalyzerProtocol
-    from claudetube.providers.capabilities import Capability
     from claudetube.providers.router import NoProviderError, ProviderRouter
 
     try:
         router = ProviderRouter()
-        provider = router.get_for_capability(Capability.VISION)
-        if isinstance(provider, VisionAnalyzerProtocol):
-            return provider
-    except NoProviderError:
-        pass
+        return router.get_vision_analyzer_for_structured_output()
+    except NoProviderError as e:
+        raise RuntimeError(str(e)) from e
     except Exception as e:
-        logger.debug(f"ProviderRouter failed for VISION: {e}")
-
-    raise RuntimeError(
-        "No vision provider available. Configure a vision provider "
-        "(e.g., anthropic, openai, ollama) or run within Claude Code."
-    )
+        logger.debug(f"ProviderRouter failed for VISION with structured output: {e}")
+        raise RuntimeError(
+            "No vision provider with structured output available. "
+            "Visual transcript generation requires a provider that can return JSON "
+            "(anthropic, openai, or google). Configure one in .claudetube/config.yaml."
+        ) from e
 
 
 def generate_visual_transcript(

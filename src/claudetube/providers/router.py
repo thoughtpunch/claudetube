@@ -519,13 +519,16 @@ class ProviderRouter:
                 continue
             tried.add(fallback_name)
             provider = self._try_load_provider(fallback_name)
-            if provider is not None and isinstance(provider, Reasoner):
-                if provider.info.supports_structured_output:
-                    logger.info(
-                        "Selected fallback provider '%s' for REASON with structured output",
-                        fallback_name,
-                    )
-                    return provider
+            if (
+                provider is not None
+                and isinstance(provider, Reasoner)
+                and provider.info.supports_structured_output
+            ):
+                logger.info(
+                    "Selected fallback provider '%s' for REASON with structured output",
+                    fallback_name,
+                )
+                return provider
 
         raise NoProviderError(
             Capability.REASON,

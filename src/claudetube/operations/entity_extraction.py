@@ -509,39 +509,46 @@ def _should_skip_entity_extraction(scene: SceneBoundary) -> bool:
 def _get_default_providers() -> tuple[
     VideoAnalyzer | None, VisionAnalyzer | None, Reasoner | None
 ]:
-    """Get default video, vision, and reasoner providers.
+    """Get default video, vision, and reasoner providers for entity extraction.
 
-    Tries google first (for VideoAnalyzer), then anthropic, then claude-code.
+    Entity extraction requires structured output (JSON schemas), so providers
+    that don't support structured output (like claude-code) are filtered out.
+
+    Uses the ProviderRouter to respect user configuration and fallback chains.
 
     Returns:
         Tuple of (video_analyzer, vision_analyzer, reasoner) - any may be None.
     """
-    from claudetube.providers import get_provider
-    from claudetube.providers.base import Reasoner as ReasonerProtocol
-    from claudetube.providers.base import VideoAnalyzer as VideoAnalyzerProtocol
-    from claudetube.providers.base import VisionAnalyzer as VisionAnalyzerProtocol
+    from claudetube.providers.router import NoProviderError, ProviderRouter
 
     video: VideoAnalyzer | None = None
     vision: VisionAnalyzer | None = None
     reasoner: Reasoner | None = None
 
-    for provider_name in ("google", "anthropic", "claude-code"):
+    try:
+        router = ProviderRouter()
+
+        # VideoAnalyzer is optional (only Gemini supports it)
+        video = router.get_video_analyzer()
+
+        # VisionAnalyzer must support structured output
         try:
-            provider = get_provider(provider_name)
-            if not provider.is_available():
-                continue
+            vision = router.get_vision_analyzer_for_structured_output()
+        except NoProviderError:
+            logger.warning(
+                "No vision provider with structured output available for entity extraction"
+            )
 
-            if video is None and isinstance(provider, VideoAnalyzerProtocol):
-                video = provider
-            if vision is None and isinstance(provider, VisionAnalyzerProtocol):
-                vision = provider
-            if reasoner is None and isinstance(provider, ReasonerProtocol):
-                reasoner = provider
+        # Reasoner must support structured output
+        try:
+            reasoner = router.get_reasoner_for_structured_output()
+        except NoProviderError:
+            logger.warning(
+                "No reasoning provider with structured output available for entity extraction"
+            )
 
-            if video is not None and vision is not None and reasoner is not None:
-                break
-        except (ImportError, ValueError):
-            continue
+    except Exception as e:
+        logger.warning(f"Failed to initialize providers: {e}")
 
     return video, vision, reasoner
 

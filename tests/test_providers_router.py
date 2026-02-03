@@ -1583,3 +1583,201 @@ class TestModuleExports:
         from claudetube.providers.router import NoProviderError
 
         assert NoProviderError is not None
+
+
+# =============================================================================
+# Structured output routing tests
+# =============================================================================
+
+
+def _make_mock_provider_with_structured(
+    name: str,
+    capabilities: frozenset[Capability],
+    supports_structured_output: bool = False,
+    available: bool = True,
+):
+    """Create a mock provider with structured output support flag."""
+    instance = type("MockProvider", (), {})()
+    instance.info = ProviderInfo(
+        name=name,
+        capabilities=capabilities,
+        supports_structured_output=supports_structured_output,
+    )
+    instance.is_available = MagicMock(return_value=available)
+
+    if Capability.VISION in capabilities:
+        instance.analyze_images = AsyncMock(return_value="vision result")
+    if Capability.REASON in capabilities:
+        instance.reason = AsyncMock(return_value="reasoning result")
+
+    return instance
+
+
+class TestGetVisionAnalyzerForStructuredOutput:
+    """Tests for ProviderRouter.get_vision_analyzer_for_structured_output."""
+
+    def test_returns_provider_with_structured_output(self):
+        """Returns a provider that supports structured output."""
+        config = _make_config(vision_provider="anthropic")
+        router = ProviderRouter(config=config)
+
+        mock_provider = _make_mock_provider_with_structured(
+            "anthropic",
+            frozenset({Capability.VISION, Capability.REASON}),
+            supports_structured_output=True,
+        )
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            return_value=mock_provider,
+        ):
+            result = router.get_vision_analyzer_for_structured_output()
+
+        assert hasattr(result, "analyze_images")
+        assert result.info.supports_structured_output is True
+
+    def test_skips_provider_without_structured_output(self):
+        """Skips claude-code when structured output is required."""
+        config = _make_config(
+            vision_provider="claude-code",
+            vision_fallbacks=["anthropic"],
+        )
+        router = ProviderRouter(config=config)
+
+        # claude-code doesn't support structured output
+        mock_claude = _make_mock_provider_with_structured(
+            "claude-code",
+            frozenset({Capability.VISION, Capability.REASON}),
+            supports_structured_output=False,
+        )
+
+        # anthropic does support structured output
+        mock_anthropic = _make_mock_provider_with_structured(
+            "anthropic",
+            frozenset({Capability.VISION, Capability.REASON}),
+            supports_structured_output=True,
+        )
+
+        def _mock_get_provider(name, **kwargs):
+            if name == "claude-code":
+                return mock_claude
+            if name == "anthropic":
+                return mock_anthropic
+            raise ImportError(f"{name} not installed")
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            side_effect=_mock_get_provider,
+        ):
+            result = router.get_vision_analyzer_for_structured_output()
+
+        assert result.info.name == "anthropic"
+
+    def test_raises_when_no_structured_output_provider(self):
+        """Raises NoProviderError when no provider supports structured output."""
+        config = _make_config(
+            vision_provider="claude-code",
+            vision_fallbacks=[],
+        )
+        router = ProviderRouter(config=config)
+
+        mock_provider = _make_mock_provider_with_structured(
+            "claude-code",
+            frozenset({Capability.VISION}),
+            supports_structured_output=False,
+        )
+
+        with (
+            patch(
+                "claudetube.providers.registry.get_provider",
+                return_value=mock_provider,
+            ),
+            pytest.raises(NoProviderError) as exc_info,
+        ):
+            router.get_vision_analyzer_for_structured_output()
+
+        assert "structured output" in str(exc_info.value).lower()
+
+
+class TestGetReasonerForStructuredOutput:
+    """Tests for ProviderRouter.get_reasoner_for_structured_output."""
+
+    def test_returns_provider_with_structured_output(self):
+        """Returns a reasoner that supports structured output."""
+        config = _make_config(reasoning_provider="anthropic")
+        router = ProviderRouter(config=config)
+
+        mock_provider = _make_mock_provider_with_structured(
+            "anthropic",
+            frozenset({Capability.VISION, Capability.REASON}),
+            supports_structured_output=True,
+        )
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            return_value=mock_provider,
+        ):
+            result = router.get_reasoner_for_structured_output()
+
+        assert hasattr(result, "reason")
+        assert result.info.supports_structured_output is True
+
+    def test_skips_provider_without_structured_output(self):
+        """Skips claude-code when structured output is required."""
+        config = _make_config(
+            reasoning_provider="claude-code",
+            reasoning_fallbacks=["anthropic"],
+        )
+        router = ProviderRouter(config=config)
+
+        mock_claude = _make_mock_provider_with_structured(
+            "claude-code",
+            frozenset({Capability.REASON}),
+            supports_structured_output=False,
+        )
+
+        mock_anthropic = _make_mock_provider_with_structured(
+            "anthropic",
+            frozenset({Capability.REASON}),
+            supports_structured_output=True,
+        )
+
+        def _mock_get_provider(name, **kwargs):
+            if name == "claude-code":
+                return mock_claude
+            if name == "anthropic":
+                return mock_anthropic
+            raise ImportError(f"{name} not installed")
+
+        with patch(
+            "claudetube.providers.registry.get_provider",
+            side_effect=_mock_get_provider,
+        ):
+            result = router.get_reasoner_for_structured_output()
+
+        assert result.info.name == "anthropic"
+
+    def test_raises_when_no_structured_output_provider(self):
+        """Raises NoProviderError when no provider supports structured output."""
+        config = _make_config(
+            reasoning_provider="claude-code",
+            reasoning_fallbacks=[],
+        )
+        router = ProviderRouter(config=config)
+
+        mock_provider = _make_mock_provider_with_structured(
+            "claude-code",
+            frozenset({Capability.REASON}),
+            supports_structured_output=False,
+        )
+
+        with (
+            patch(
+                "claudetube.providers.registry.get_provider",
+                return_value=mock_provider,
+            ),
+            pytest.raises(NoProviderError) as exc_info,
+        ):
+            router.get_reasoner_for_structured_output()
+
+        assert "structured output" in str(exc_info.value).lower()
