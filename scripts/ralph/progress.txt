@@ -217,3 +217,4 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 - 2026-02-02 21:41 | claudetube-7s4 [P4] | Add translation support to DeepgramProvider
 - 2026-02-03 07:57 | claudetube-nrf [P1] | Use yt-dlp Python API instead of subprocess
 - 2026-02-03 08:08 | claudetube-3ri [P1] | Add structured output parsing for yt-dlp subprocess
+- 2026-02-03 08:28 | claudetube-d6q [P1] | Create typed exception hierarchy for download errors
