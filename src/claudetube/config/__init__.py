@@ -18,6 +18,14 @@ from claudetube.config.quality import (
     QUALITY_TIERS,
     next_quality,
 )
+from claudetube.config.output_templates import (
+    NO_CHANNEL,
+    NO_PLAYLIST,
+    TEMPLATES,
+    OutputTemplates,
+    build_outtmpl_dict,
+    get_output_path,
+)
 
 __all__ = [
     "QUALITY_TIERS",
@@ -32,4 +40,11 @@ __all__ = [
     "get_config",
     "get_cache_dir",
     "clear_config_cache",
+    # Output templates
+    "NO_CHANNEL",
+    "NO_PLAYLIST",
+    "TEMPLATES",
+    "OutputTemplates",
+    "build_outtmpl_dict",
+    "get_output_path",
 ]
