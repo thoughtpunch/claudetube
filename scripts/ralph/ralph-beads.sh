@@ -216,19 +216,26 @@ Begin. Review thoroughly."
             | jq '[.[] | select(.issue_type == "epic" | not)] | length' 2>/dev/null || echo "0")
 
         if [ "$NON_EPIC_COUNT" -eq 0 ]; then
-            log "Orphan epic: $ORPHAN_EPIC (no children linked, no other tasks)"
-            verbose "Auto-closing orphan epic since all related work appears complete"
+            # Verify epic is still open before attempting to close (prevents infinite loop)
+            EPIC_STATUS=$(bd show "$ORPHAN_EPIC" --json 2>/dev/null | jq -r '.[0].status // "unknown"' 2>/dev/null || echo "unknown")
+            if [ "$EPIC_STATUS" != "open" ]; then
+                debug "Orphan epic $ORPHAN_EPIC already closed (status: $EPIC_STATUS), skipping"
+                ORPHAN_EPIC=""
+            else
+                log "Orphan epic: $ORPHAN_EPIC (no children linked, no other tasks)"
+                verbose "Auto-closing orphan epic since all related work appears complete"
 
-            # Get epic title for the close reason
-            EPIC_TITLE=$(bd show "$ORPHAN_EPIC" --json 2>/dev/null | jq -r '.[0].title // "Unknown"' 2>/dev/null || echo "Unknown")
+                # Get epic title for the close reason
+                EPIC_TITLE=$(bd show "$ORPHAN_EPIC" --json 2>/dev/null | jq -r '.[0].title // "Unknown"' 2>/dev/null || echo "Unknown")
 
-            bd close "$ORPHAN_EPIC" --reason "Auto-closed: Epic has no linked children and no other open tasks remain. Work appears complete." 2>/dev/null || true
-            log "Closed orphan epic: $ORPHAN_EPIC - $EPIC_TITLE"
+                bd close "$ORPHAN_EPIC" --reason "Auto-closed: Epic has no linked children and no other open tasks remain. Work appears complete." 2>/dev/null || true
+                log "Closed orphan epic: $ORPHAN_EPIC - $EPIC_TITLE"
 
-            bd sync 2>/dev/null || true
-            no_task_streak=0
-            sleep 2
-            continue
+                bd sync 2>/dev/null || true
+                no_task_streak=0
+                sleep 2
+                continue
+            fi
         fi
     fi
 
