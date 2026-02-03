@@ -194,7 +194,14 @@ class TestVisualTranscriptsProvider:
 
     @pytest.mark.asyncio
     async def test_provider_override(self, cache_dir):
+        import json
+
         from claudetube.mcp_server import generate_visual_transcripts
+
+        # Create mock video in cache
+        video_dir = cache_dir / "test123"
+        video_dir.mkdir()
+        (video_dir / "state.json").write_text(json.dumps({"video_id": "test123"}))
 
         mock_provider = MagicMock()
 
@@ -224,8 +231,15 @@ class TestTrackPeopleProvider:
 
     @pytest.mark.asyncio
     async def test_provider_override_with_vision(self, cache_dir):
+        import json
+
         from claudetube.mcp_server import track_people_tool
         from claudetube.providers.base import VisionAnalyzer
+
+        # Create mock video in cache
+        video_dir = cache_dir / "test123"
+        video_dir.mkdir()
+        (video_dir / "state.json").write_text(json.dumps({"video_id": "test123"}))
 
         mock_provider = MagicMock(spec=VisionAnalyzer)
 

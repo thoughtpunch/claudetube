@@ -87,11 +87,15 @@ class CacheManager:
         if video_id in _resolution_cache:
             return self.cache_base / _resolution_cache[video_id]
 
-        # 2. Try SQLite lookup
+        # 2. Try SQLite lookup (verify state.json exists to handle stale data)
         cache_path = self._resolve_via_sqlite(video_id)
         if cache_path:
-            _resolution_cache[video_id] = cache_path
-            return self.cache_base / cache_path
+            sqlite_dir = self.cache_base / cache_path
+            if (sqlite_dir / "state.json").exists():
+                _resolution_cache[video_id] = cache_path
+                return sqlite_dir
+            # SQLite has stale data - continue to other resolution methods
+            logger.debug("SQLite path %s has no state.json, continuing resolution", cache_path)
 
         # 3. Check flat legacy path
         flat_path = self.cache_base / video_id
@@ -183,6 +187,29 @@ class CacheManager:
         """Check if a video is cached."""
         return self.get_state_file(video_id).exists()
 
+    def require_cached(self, video_id: str) -> Path:
+        """Get cache directory for a video, raising if not found.
+
+        Use this in MCP tools to fail fast with a clear error message
+        instead of silently returning empty results.
+
+        Args:
+            video_id: Video ID to look up.
+
+        Returns:
+            Path to the video's cache directory.
+
+        Raises:
+            FileNotFoundError: If video is not in cache.
+        """
+        cache_dir = self.get_cache_dir(video_id)
+        if not (cache_dir / "state.json").exists():
+            raise FileNotFoundError(
+                f"Video '{video_id}' not found in cache. "
+                f"Run process_video('{video_id}') first to download and cache it."
+            )
+        return cache_dir
+
     def is_transcript_complete(self, video_id: str) -> bool:
         """Check if video has a completed transcript."""
         state = self.get_state(video_id)
@@ -227,21 +254,38 @@ class CacheManager:
     def list_cached_videos(self) -> list[dict]:
         """List all cached videos with basic metadata.
 
-        Uses SQL query for speed when available, falls back to filesystem
-        scanning if database is unavailable.
+        Combines SQL results with filesystem scan to ensure no videos are missed.
+        SQL provides fast access to indexed metadata, while filesystem scan
+        catches videos not yet in the database (e.g., newly processed videos
+        before dual-write completes, or legacy paths).
         """
-        # Try SQL first (faster for large caches)
+        seen_ids: set[str] = set()
+        videos: list[dict] = []
+
+        # Get SQL results (if available)
         try:
             from claudetube.db.queries import list_cached_videos_sql
 
             sql_result = list_cached_videos_sql()
-            if sql_result is not None:
-                return sql_result
+            if sql_result:
+                for video in sql_result:
+                    video_id = video.get("video_id")
+                    if video_id and video_id not in seen_ids:
+                        seen_ids.add(video_id)
+                        videos.append(video)
         except Exception:
             pass
 
-        # Fallback: scan filesystem
-        return self._list_cached_videos_filesystem()
+        # ALWAYS also scan filesystem to catch videos not in SQL
+        # (newly processed, legacy paths, or dual-write failures)
+        fs_videos = self._list_cached_videos_filesystem()
+        for video in fs_videos:
+            video_id = video.get("video_id")
+            if video_id and video_id not in seen_ids:
+                seen_ids.add(video_id)
+                videos.append(video)
+
+        return videos
 
     def _list_cached_videos_filesystem(self) -> list[dict]:
         """List cached videos by scanning the filesystem (fallback).

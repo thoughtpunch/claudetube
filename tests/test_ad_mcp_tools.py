@@ -84,7 +84,7 @@ class TestGetDescriptions:
         result = json.loads(await get_descriptions("nonexistent"))
 
         assert "error" in result
-        assert "not cached" in result["error"].lower()
+        assert "not found in cache" in result["error"].lower()
 
     @pytest.mark.asyncio
     async def test_returns_cached_vtt(self, cached_video_with_ad):
@@ -185,7 +185,7 @@ class TestDescribeMoment:
         result = json.loads(await describe_moment("nonexistent", timestamp=10.0))
 
         assert "error" in result
-        assert "not cached" in result["error"].lower()
+        assert "not found in cache" in result["error"].lower()
 
     @pytest.mark.asyncio
     @patch("claudetube.mcp_server.get_hq_frames_at")
@@ -289,7 +289,7 @@ class TestGetAccessibleTranscript:
         result = json.loads(await get_accessible_transcript("nonexistent"))
 
         assert "error" in result
-        assert "not cached" in result["error"].lower()
+        assert "not found in cache" in result["error"].lower()
 
     @pytest.mark.asyncio
     async def test_returns_error_when_no_transcript(self, cache_dir):
@@ -349,7 +349,7 @@ class TestHasAudioDescription:
         result = json.loads(await has_audio_description("nonexistent"))
 
         assert "error" in result
-        assert "not cached" in result["error"].lower()
+        assert "not found in cache" in result["error"].lower()
 
     @pytest.mark.asyncio
     async def test_detects_no_ad(self, cached_video):

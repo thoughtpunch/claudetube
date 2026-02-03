@@ -1519,7 +1519,7 @@ async def describe_moment(
 
     # Fail fast if video not cached
     try:
-        cache_dir = _require_cached_video(video_id)
+        _require_cached_video(video_id)
     except FileNotFoundError as e:
         return json.dumps({"error": str(e), "video_id": video_id})
 
@@ -1745,7 +1745,7 @@ async def has_audio_description(
 
     # Fail fast if video not cached
     try:
-        cache_dir = _require_cached_video(video_id)
+        _require_cached_video(video_id)
     except FileNotFoundError as e:
         result["error"] = str(e)
         return json.dumps(result, indent=2)
