@@ -3,6 +3,11 @@ Transcription operations.
 
 Provides TranscribeOperation class for provider-based transcription,
 plus backward-compatible function wrappers.
+
+Follows "Cheap First, Expensive Last" principle:
+1. Return cached transcript if available
+2. Try YouTube subtitles (FREE) before Whisper (expensive)
+3. Fall back to Whisper only when no subtitles available
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ from typing import TYPE_CHECKING
 from claudetube.cache.manager import CacheManager
 from claudetube.config.loader import get_cache_dir
 from claudetube.exceptions import TranscriptionError
-from claudetube.operations.download import download_audio
+from claudetube.operations.download import download_audio, fetch_subtitles
 from claudetube.tools.whisper import WhisperTool
 from claudetube.utils.logging import log_timed
 
@@ -236,16 +241,90 @@ async def transcribe_video(
             "message": "Returned cached transcript.",
         }
 
-    # Ensure we have audio
+    # Ensure we have a cache directory
     cache.ensure_cache_dir(video_id)
+    cache_dir = cache.get_cache_dir(video_id)
+
+    # Get URL for subtitle/audio fetching
+    state = cache.get_state(video_id)
+    url = state.url if state else None
+    if not url and "://" in video_id_or_url:
+        url = video_id_or_url
+
+    # CHEAP FIRST: Try YouTube subtitles before Whisper
+    # This is FREE and produces higher quality transcripts
+    if not force and url:
+        log_timed("Checking for YouTube subtitles (Cheap First)...", t0)
+        try:
+            sub_result = fetch_subtitles(url, cache_dir)
+            if sub_result:
+                srt_path.write_text(sub_result["srt"])
+                txt_path.write_text(sub_result["txt"])
+
+                # Update state
+                if state:
+                    state.transcript_complete = True
+                    state.transcript_source = sub_result["source"]
+                    cache.save_state(video_id, state)
+
+                log_timed(
+                    f"Using YouTube subtitles ({sub_result['source']}) - "
+                    f"FREE, higher quality than Whisper",
+                    t0,
+                )
+
+                # Fire-and-forget: sync to database
+                try:
+                    from claudetube.db.sync import (
+                        get_video_uuid,
+                        record_pipeline_step,
+                        sync_transcription,
+                    )
+
+                    video_uuid = get_video_uuid(video_id)
+                    if video_uuid:
+                        full_text = sub_result["txt"]
+                        word_count = len(full_text.split()) if full_text else None
+
+                        sync_transcription(
+                            video_uuid=video_uuid,
+                            provider="youtube_subtitles",
+                            format_="txt",
+                            file_path="audio.txt",
+                            full_text=full_text,
+                            word_count=word_count,
+                            duration=state.duration if state else None,
+                            file_size_bytes=int(txt_path.stat().st_size)
+                            if txt_path.exists()
+                            else None,
+                            is_primary=True,
+                        )
+
+                        record_pipeline_step(
+                            video_id,
+                            "transcribe",
+                            "completed",
+                            provider="youtube_subtitles",
+                        )
+                except Exception:
+                    pass  # Fire-and-forget
+
+                return {
+                    "success": True,
+                    "video_id": video_id,
+                    "transcript_srt": str(srt_path),
+                    "transcript_txt": str(txt_path),
+                    "source": sub_result["source"],
+                    "whisper_model": None,
+                    "message": f"Transcribed via YouTube subtitles ({sub_result['source']}).",
+                }
+        except Exception as e:
+            log_timed(f"YouTube subtitles not available: {e}", t0)
+
+    # EXPENSIVE LAST: Fall back to Whisper transcription
+    log_timed("No subtitles available, falling back to Whisper...", t0)
 
     if not audio_path.exists():
-        state = cache.get_state(video_id)
-        url = state.url if state else None
-
-        if not url and "://" in video_id_or_url:
-            url = video_id_or_url
-
         if not url:
             return {
                 "success": False,
@@ -278,8 +357,8 @@ async def transcribe_video(
         transcriber = get_provider("whisper-local", model_size=whisper_model)
 
     # Determine language: video's declared language > config default > "en"
+    # (state was already fetched above)
     language = None
-    state = cache.get_state(video_id)
     if state and state.language:
         language = state.language
     else:
