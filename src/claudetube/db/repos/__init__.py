@@ -26,6 +26,8 @@ Usage:
 """
 
 from claudetube.db.repos.audio_tracks import AudioTrackRepository
+from claudetube.db.repos.frames import FrameRepository
+from claudetube.db.repos.scenes import SceneRepository
 from claudetube.db.repos.transcriptions import TranscriptionRepository
 from claudetube.db.repos.videos import VideoRepository
 
@@ -33,4 +35,6 @@ __all__ = [
     "VideoRepository",
     "AudioTrackRepository",
     "TranscriptionRepository",
+    "SceneRepository",
+    "FrameRepository",
 ]

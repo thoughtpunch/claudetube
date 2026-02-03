@@ -9,6 +9,8 @@ from claudetube.db.connection import Database
 from claudetube.db.migrate import run_migrations
 from claudetube.db.repos import (
     AudioTrackRepository,
+    FrameRepository,
+    SceneRepository,
     TranscriptionRepository,
     VideoRepository,
 )
@@ -39,6 +41,18 @@ def audio_repo(db):
 def transcription_repo(db):
     """Create a TranscriptionRepository instance."""
     return TranscriptionRepository(db)
+
+
+@pytest.fixture
+def scene_repo(db):
+    """Create a SceneRepository instance."""
+    return SceneRepository(db)
+
+
+@pytest.fixture
+def frame_repo(db):
+    """Create a FrameRepository instance."""
+    return FrameRepository(db)
 
 
 # ============================================================
@@ -1142,3 +1156,1080 @@ class TestConstraintValidation:
                 ("short-uuid", "test", "youtube", "/cache"),
             )
             db.commit()
+
+
+# ============================================================
+# SceneRepository Tests
+# ============================================================
+
+
+class TestSceneRepositoryInsert:
+    """Tests for SceneRepository.insert()."""
+
+    def test_insert_scene(self, video_repo, scene_repo):
+        """Test inserting a scene."""
+        video_uuid = video_repo.insert(
+            video_id="scenevid",
+            domain="youtube",
+            cache_path="/cache/sv",
+        )
+
+        scene_uuid = scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=30.0,
+            title="Introduction",
+            transcript_text="Welcome to this video about Python.",
+            method="transcript",
+            relevance_boost=1.0,
+        )
+
+        assert scene_uuid is not None
+        assert len(scene_uuid) == 36
+
+    def test_insert_minimal_scene(self, video_repo, scene_repo):
+        """Test inserting a scene with only required fields."""
+        video_uuid = video_repo.insert(
+            video_id="minscene",
+            domain="youtube",
+            cache_path="/cache/ms",
+        )
+
+        scene_uuid = scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=10.0,
+        )
+
+        scene = scene_repo.get_by_uuid(scene_uuid)
+        assert scene is not None
+        assert scene["title"] is None
+        assert scene["transcript_text"] is None
+        assert scene["method"] is None
+        assert scene["relevance_boost"] == 1.0
+
+    def test_insert_invalid_start_time_raises(self, video_repo, scene_repo):
+        """Test that start_time >= end_time raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="badtimes",
+            domain="youtube",
+            cache_path="/cache/bt",
+        )
+
+        with pytest.raises(ValueError, match="start_time.*must be < end_time"):
+            scene_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=0,
+                start_time=30.0,
+                end_time=10.0,
+            )
+
+    def test_insert_equal_times_raises(self, video_repo, scene_repo):
+        """Test that start_time == end_time raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="eqtimes",
+            domain="youtube",
+            cache_path="/cache/et",
+        )
+
+        with pytest.raises(ValueError, match="start_time.*must be < end_time"):
+            scene_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=0,
+                start_time=10.0,
+                end_time=10.0,
+            )
+
+    def test_insert_negative_scene_id_raises(self, video_repo, scene_repo):
+        """Test that negative scene_id raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="negscene",
+            domain="youtube",
+            cache_path="/cache/ns",
+        )
+
+        with pytest.raises(ValueError, match="scene_id must be >= 0"):
+            scene_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=-1,
+                start_time=0.0,
+                end_time=10.0,
+            )
+
+    def test_insert_invalid_method_raises(self, video_repo, scene_repo):
+        """Test that invalid method raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="badmethod",
+            domain="youtube",
+            cache_path="/cache/bm",
+        )
+
+        with pytest.raises(ValueError, match="Invalid method"):
+            scene_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=0,
+                start_time=0.0,
+                end_time=10.0,
+                method="invalid_method",
+            )
+
+    def test_insert_all_valid_methods(self, video_repo, scene_repo):
+        """Test all valid methods can be inserted."""
+        video_uuid = video_repo.insert(
+            video_id="allmethods",
+            domain="youtube",
+            cache_path="/cache/am",
+        )
+
+        for i, method in enumerate(SceneRepository.VALID_METHODS):
+            scene_uuid = scene_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=i,
+                start_time=float(i * 10),
+                end_time=float(i * 10 + 9),
+                method=method,
+            )
+            assert scene_uuid is not None
+
+    def test_insert_duplicate_scene_id_raises(self, video_repo, scene_repo):
+        """Test that duplicate (video_uuid, scene_id) raises IntegrityError."""
+        video_uuid = video_repo.insert(
+            video_id="dupscene",
+            domain="youtube",
+            cache_path="/cache/ds",
+        )
+
+        scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=10.0,
+        )
+
+        with pytest.raises(sqlite3.IntegrityError):
+            scene_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=0,
+                start_time=10.0,
+                end_time=20.0,
+            )
+
+    def test_insert_negative_relevance_boost_raises(self, video_repo, scene_repo):
+        """Test that negative relevance_boost raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="negboost",
+            domain="youtube",
+            cache_path="/cache/nb",
+        )
+
+        with pytest.raises(ValueError, match="relevance_boost must be >= 0"):
+            scene_repo.insert(
+                video_uuid=video_uuid,
+                scene_id=0,
+                start_time=0.0,
+                end_time=10.0,
+                relevance_boost=-1.0,
+            )
+
+
+class TestSceneRepositoryBulkInsert:
+    """Tests for SceneRepository.bulk_insert()."""
+
+    def test_bulk_insert_scenes(self, video_repo, scene_repo):
+        """Test bulk inserting multiple scenes."""
+        video_uuid = video_repo.insert(
+            video_id="bulkscenes",
+            domain="youtube",
+            cache_path="/cache/bs",
+        )
+
+        scenes = [
+            {"scene_id": 0, "start_time": 0.0, "end_time": 30.0, "title": "Intro"},
+            {"scene_id": 1, "start_time": 30.0, "end_time": 60.0, "title": "Main"},
+            {"scene_id": 2, "start_time": 60.0, "end_time": 90.0, "title": "Outro"},
+        ]
+
+        uuids = scene_repo.bulk_insert(video_uuid, scenes)
+        assert len(uuids) == 3
+        assert all(len(u) == 36 for u in uuids)
+
+        all_scenes = scene_repo.get_by_video(video_uuid)
+        assert len(all_scenes) == 3
+        assert all_scenes[0]["title"] == "Intro"
+        assert all_scenes[1]["title"] == "Main"
+        assert all_scenes[2]["title"] == "Outro"
+
+    def test_bulk_insert_empty_list(self, video_repo, scene_repo):
+        """Test bulk insert with empty list returns empty list."""
+        video_uuid = video_repo.insert(
+            video_id="emptybulk",
+            domain="youtube",
+            cache_path="/cache/eb",
+        )
+
+        uuids = scene_repo.bulk_insert(video_uuid, [])
+        assert uuids == []
+
+    def test_bulk_insert_invalid_scene_raises(self, video_repo, scene_repo):
+        """Test bulk insert validates all scenes before inserting."""
+        video_uuid = video_repo.insert(
+            video_id="badbulk",
+            domain="youtube",
+            cache_path="/cache/bb",
+        )
+
+        scenes = [
+            {"scene_id": 0, "start_time": 0.0, "end_time": 30.0},
+            {"scene_id": 1, "start_time": 60.0, "end_time": 30.0},  # Invalid
+        ]
+
+        with pytest.raises(ValueError, match="start_time.*must be < end_time"):
+            scene_repo.bulk_insert(video_uuid, scenes)
+
+    def test_bulk_insert_missing_required_field_raises(self, video_repo, scene_repo):
+        """Test bulk insert with missing required field raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="missingfield",
+            domain="youtube",
+            cache_path="/cache/mf",
+        )
+
+        scenes = [
+            {"scene_id": 0, "start_time": 0.0},  # Missing end_time
+        ]
+
+        with pytest.raises(ValueError, match="end_time is required"):
+            scene_repo.bulk_insert(video_uuid, scenes)
+
+
+class TestSceneRepositoryGet:
+    """Tests for SceneRepository get methods."""
+
+    def test_get_by_uuid(self, video_repo, scene_repo):
+        """Test getting a scene by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="getuuid",
+            domain="youtube",
+            cache_path="/cache/gu",
+        )
+
+        scene_uuid = scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=30.0,
+            title="Test Scene",
+        )
+
+        scene = scene_repo.get_by_uuid(scene_uuid)
+        assert scene is not None
+        assert scene["title"] == "Test Scene"
+
+    def test_get_by_uuid_not_found(self, scene_repo):
+        """Test get_by_uuid returns None for non-existent scene."""
+        fake_uuid = str(uuid.uuid4())
+        scene = scene_repo.get_by_uuid(fake_uuid)
+        assert scene is None
+
+    def test_get_scene(self, video_repo, scene_repo):
+        """Test getting a scene by video_uuid and scene_id."""
+        video_uuid = video_repo.insert(
+            video_id="getscene",
+            domain="youtube",
+            cache_path="/cache/gs",
+        )
+
+        scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=30.0,
+        )
+        scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=1,
+            start_time=30.0,
+            end_time=60.0,
+            title="Second Scene",
+        )
+
+        scene = scene_repo.get_scene(video_uuid, 1)
+        assert scene is not None
+        assert scene["title"] == "Second Scene"
+
+    def test_get_scene_not_found(self, video_repo, scene_repo):
+        """Test get_scene returns None for non-existent scene_id."""
+        video_uuid = video_repo.insert(
+            video_id="nogetscene",
+            domain="youtube",
+            cache_path="/cache/ngs",
+        )
+
+        scene = scene_repo.get_scene(video_uuid, 99)
+        assert scene is None
+
+    def test_get_by_video(self, video_repo, scene_repo):
+        """Test getting all scenes for a video."""
+        video_uuid = video_repo.insert(
+            video_id="multiscenes",
+            domain="youtube",
+            cache_path="/cache/ms",
+        )
+
+        # Insert out of order to verify ordering
+        scene_repo.insert(video_uuid=video_uuid, scene_id=2, start_time=60.0, end_time=90.0)
+        scene_repo.insert(video_uuid=video_uuid, scene_id=0, start_time=0.0, end_time=30.0)
+        scene_repo.insert(video_uuid=video_uuid, scene_id=1, start_time=30.0, end_time=60.0)
+
+        scenes = scene_repo.get_by_video(video_uuid)
+        assert len(scenes) == 3
+        # Should be ordered by scene_id
+        assert scenes[0]["scene_id"] == 0
+        assert scenes[1]["scene_id"] == 1
+        assert scenes[2]["scene_id"] == 2
+
+    def test_get_by_video_empty(self, video_repo, scene_repo):
+        """Test get_by_video returns empty list when no scenes."""
+        video_uuid = video_repo.insert(
+            video_id="noscenes",
+            domain="youtube",
+            cache_path="/cache/ns",
+        )
+
+        scenes = scene_repo.get_by_video(video_uuid)
+        assert scenes == []
+
+
+class TestSceneRepositoryRelevanceBoost:
+    """Tests for SceneRepository.update_relevance_boost()."""
+
+    def test_update_relevance_boost(self, video_repo, scene_repo):
+        """Test updating relevance boost for a scene."""
+        video_uuid = video_repo.insert(
+            video_id="boostvid",
+            domain="youtube",
+            cache_path="/cache/bv",
+        )
+
+        scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=30.0,
+        )
+
+        result = scene_repo.update_relevance_boost(video_uuid, 0, 2.5)
+        assert result is True
+
+        scene = scene_repo.get_scene(video_uuid, 0)
+        assert scene["relevance_boost"] == 2.5
+
+    def test_update_relevance_boost_not_found(self, video_repo, scene_repo):
+        """Test update_relevance_boost returns False for non-existent scene."""
+        video_uuid = video_repo.insert(
+            video_id="noboost",
+            domain="youtube",
+            cache_path="/cache/nbo",
+        )
+
+        result = scene_repo.update_relevance_boost(video_uuid, 99, 1.5)
+        assert result is False
+
+    def test_update_relevance_boost_negative_raises(self, video_repo, scene_repo):
+        """Test that negative boost raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="negboost",
+            domain="youtube",
+            cache_path="/cache/negb",
+        )
+
+        scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=30.0,
+        )
+
+        with pytest.raises(ValueError, match="relevance_boost must be >= 0"):
+            scene_repo.update_relevance_boost(video_uuid, 0, -1.0)
+
+
+class TestSceneRepositoryFTS:
+    """Tests for SceneRepository full-text search."""
+
+    def test_search_fts(self, video_repo, scene_repo):
+        """Test FTS search on scene transcript_text."""
+        video_uuid = video_repo.insert(
+            video_id="ftsvid",
+            domain="youtube",
+            cache_path="/cache/fts",
+            title="FTS Test Video",
+        )
+
+        scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=30.0,
+            transcript_text="Today we are going to learn about machine learning.",
+        )
+
+        results = scene_repo.search_fts("machine learning")
+        assert len(results) == 1
+        assert results[0]["video_natural_id"] == "ftsvid"
+        assert results[0]["video_title"] == "FTS Test Video"
+
+    def test_search_fts_multiple_scenes(self, video_repo, scene_repo):
+        """Test FTS search across multiple scenes."""
+        video_uuid = video_repo.insert(
+            video_id="multifts",
+            domain="youtube",
+            cache_path="/cache/mfts",
+        )
+
+        scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=30.0,
+            transcript_text="Introduction to Python programming.",
+        )
+        scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=1,
+            start_time=30.0,
+            end_time=60.0,
+            transcript_text="JavaScript for web development.",
+        )
+        scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=2,
+            start_time=60.0,
+            end_time=90.0,
+            transcript_text="Advanced Python decorators.",
+        )
+
+        results = scene_repo.search_fts("Python")
+        assert len(results) == 2
+        scene_ids = {r["scene_id"] for r in results}
+        assert scene_ids == {0, 2}
+
+    def test_search_fts_no_results(self, video_repo, scene_repo):
+        """Test FTS search returns empty list when no matches."""
+        video_uuid = video_repo.insert(
+            video_id="nomatchfts",
+            domain="youtube",
+            cache_path="/cache/nmfts",
+        )
+
+        scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=30.0,
+            transcript_text="Cooking recipes for beginners.",
+        )
+
+        results = scene_repo.search_fts("quantum physics")
+        assert results == []
+
+
+class TestSceneRepositoryDelete:
+    """Tests for SceneRepository delete methods."""
+
+    def test_delete_by_uuid(self, video_repo, scene_repo):
+        """Test deleting a scene by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="delscene",
+            domain="youtube",
+            cache_path="/cache/ds",
+        )
+
+        scene_uuid = scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=30.0,
+        )
+
+        result = scene_repo.delete(scene_uuid)
+        assert result is True
+
+        scene = scene_repo.get_by_uuid(scene_uuid)
+        assert scene is None
+
+    def test_delete_nonexistent(self, scene_repo):
+        """Test deleting non-existent scene returns False."""
+        fake_uuid = str(uuid.uuid4())
+        result = scene_repo.delete(fake_uuid)
+        assert result is False
+
+    def test_delete_by_video(self, video_repo, scene_repo):
+        """Test deleting all scenes for a video."""
+        video_uuid = video_repo.insert(
+            video_id="delallscenes",
+            domain="youtube",
+            cache_path="/cache/das",
+        )
+
+        scene_repo.insert(video_uuid=video_uuid, scene_id=0, start_time=0.0, end_time=30.0)
+        scene_repo.insert(video_uuid=video_uuid, scene_id=1, start_time=30.0, end_time=60.0)
+        scene_repo.insert(video_uuid=video_uuid, scene_id=2, start_time=60.0, end_time=90.0)
+
+        count = scene_repo.delete_by_video(video_uuid)
+        assert count == 3
+
+        scenes = scene_repo.get_by_video(video_uuid)
+        assert scenes == []
+
+    def test_cascade_delete_on_video_delete(self, video_repo, scene_repo):
+        """Test that deleting a video cascades to scenes."""
+        video_uuid = video_repo.insert(
+            video_id="cascadescene",
+            domain="youtube",
+            cache_path="/cache/cs",
+        )
+
+        scene_uuid = scene_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=0,
+            start_time=0.0,
+            end_time=30.0,
+        )
+
+        video_repo.delete("cascadescene")
+
+        scene = scene_repo.get_by_uuid(scene_uuid)
+        assert scene is None
+
+
+class TestSceneRepositoryCount:
+    """Tests for SceneRepository.count_by_video()."""
+
+    def test_count_by_video(self, video_repo, scene_repo):
+        """Test counting scenes for a video."""
+        video_uuid = video_repo.insert(
+            video_id="countvid",
+            domain="youtube",
+            cache_path="/cache/cv",
+        )
+
+        scene_repo.insert(video_uuid=video_uuid, scene_id=0, start_time=0.0, end_time=30.0)
+        scene_repo.insert(video_uuid=video_uuid, scene_id=1, start_time=30.0, end_time=60.0)
+
+        count = scene_repo.count_by_video(video_uuid)
+        assert count == 2
+
+    def test_count_by_video_empty(self, video_repo, scene_repo):
+        """Test count returns 0 for video with no scenes."""
+        video_uuid = video_repo.insert(
+            video_id="emptycnt",
+            domain="youtube",
+            cache_path="/cache/ec",
+        )
+
+        count = scene_repo.count_by_video(video_uuid)
+        assert count == 0
+
+
+# ============================================================
+# FrameRepository Tests
+# ============================================================
+
+
+class TestFrameRepositoryInsert:
+    """Tests for FrameRepository.insert()."""
+
+    def test_insert_frame(self, video_repo, frame_repo):
+        """Test inserting a frame."""
+        video_uuid = video_repo.insert(
+            video_id="framevid",
+            domain="youtube",
+            cache_path="/cache/fv",
+        )
+
+        frame_uuid = frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=30.5,
+            extraction_type="drill",
+            file_path="drill/frame_30.5.jpg",
+            scene_id=0,
+            quality_tier="low",
+            is_thumbnail=False,
+            width=480,
+            height=270,
+            file_size_bytes=25000,
+        )
+
+        assert frame_uuid is not None
+        assert len(frame_uuid) == 36
+
+    def test_insert_minimal_frame(self, video_repo, frame_repo):
+        """Test inserting a frame with only required fields."""
+        video_uuid = video_repo.insert(
+            video_id="minframe",
+            domain="youtube",
+            cache_path="/cache/mf",
+        )
+
+        frame_uuid = frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=0.0,
+            extraction_type="keyframe",
+            file_path="keyframes/frame_0.jpg",
+        )
+
+        frame = frame_repo.get_by_uuid(frame_uuid)
+        assert frame is not None
+        assert frame["scene_id"] is None
+        assert frame["quality_tier"] is None
+        assert frame["is_thumbnail"] == 0
+
+    def test_insert_invalid_extraction_type_raises(self, video_repo, frame_repo):
+        """Test that invalid extraction_type raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="badexttype",
+            domain="youtube",
+            cache_path="/cache/bet",
+        )
+
+        with pytest.raises(ValueError, match="Invalid extraction_type"):
+            frame_repo.insert(
+                video_uuid=video_uuid,
+                timestamp=0.0,
+                extraction_type="invalid",
+                file_path="frame.jpg",
+            )
+
+    def test_insert_all_valid_extraction_types(self, video_repo, frame_repo):
+        """Test all valid extraction types can be inserted."""
+        video_uuid = video_repo.insert(
+            video_id="alltypes",
+            domain="youtube",
+            cache_path="/cache/at",
+        )
+
+        for i, ext_type in enumerate(FrameRepository.VALID_EXTRACTION_TYPES):
+            frame_uuid = frame_repo.insert(
+                video_uuid=video_uuid,
+                timestamp=float(i * 10),
+                extraction_type=ext_type,
+                file_path=f"frame_{ext_type}.jpg",
+            )
+            assert frame_uuid is not None
+
+    def test_insert_invalid_quality_tier_raises(self, video_repo, frame_repo):
+        """Test that invalid quality_tier raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="badquality",
+            domain="youtube",
+            cache_path="/cache/bq",
+        )
+
+        with pytest.raises(ValueError, match="Invalid quality_tier"):
+            frame_repo.insert(
+                video_uuid=video_uuid,
+                timestamp=0.0,
+                extraction_type="drill",
+                file_path="frame.jpg",
+                quality_tier="ultra",  # Invalid
+            )
+
+    def test_insert_all_valid_quality_tiers(self, video_repo, frame_repo):
+        """Test all valid quality tiers can be inserted."""
+        video_uuid = video_repo.insert(
+            video_id="allquality",
+            domain="youtube",
+            cache_path="/cache/aq",
+        )
+
+        for i, tier in enumerate(FrameRepository.VALID_QUALITY_TIERS):
+            frame_uuid = frame_repo.insert(
+                video_uuid=video_uuid,
+                timestamp=float(i * 10),
+                extraction_type="drill",
+                file_path=f"frame_{tier}.jpg",
+                quality_tier=tier,
+            )
+            assert frame_uuid is not None
+
+    def test_insert_negative_timestamp_raises(self, video_repo, frame_repo):
+        """Test that negative timestamp raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="negts",
+            domain="youtube",
+            cache_path="/cache/nts",
+        )
+
+        with pytest.raises(ValueError, match="timestamp must be >= 0"):
+            frame_repo.insert(
+                video_uuid=video_uuid,
+                timestamp=-5.0,
+                extraction_type="drill",
+                file_path="frame.jpg",
+            )
+
+    def test_insert_negative_scene_id_raises(self, video_repo, frame_repo):
+        """Test that negative scene_id raises ValueError."""
+        video_uuid = video_repo.insert(
+            video_id="negsceneid",
+            domain="youtube",
+            cache_path="/cache/nsi",
+        )
+
+        with pytest.raises(ValueError, match="scene_id must be >= 0 or None"):
+            frame_repo.insert(
+                video_uuid=video_uuid,
+                timestamp=0.0,
+                extraction_type="keyframe",
+                file_path="frame.jpg",
+                scene_id=-1,
+            )
+
+
+class TestFrameRepositoryGet:
+    """Tests for FrameRepository get methods."""
+
+    def test_get_by_uuid(self, video_repo, frame_repo):
+        """Test getting a frame by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="getuuidframe",
+            domain="youtube",
+            cache_path="/cache/guf",
+        )
+
+        frame_uuid = frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=15.0,
+            extraction_type="hq",
+            file_path="hq/frame_15.jpg",
+            width=1280,
+        )
+
+        frame = frame_repo.get_by_uuid(frame_uuid)
+        assert frame is not None
+        assert frame["timestamp"] == 15.0
+        assert frame["extraction_type"] == "hq"
+        assert frame["width"] == 1280
+
+    def test_get_by_uuid_not_found(self, frame_repo):
+        """Test get_by_uuid returns None for non-existent frame."""
+        fake_uuid = str(uuid.uuid4())
+        frame = frame_repo.get_by_uuid(fake_uuid)
+        assert frame is None
+
+    def test_get_by_video(self, video_repo, frame_repo):
+        """Test getting all frames for a video."""
+        video_uuid = video_repo.insert(
+            video_id="allframes",
+            domain="youtube",
+            cache_path="/cache/af",
+        )
+
+        # Insert out of order to verify ordering
+        frame_repo.insert(video_uuid=video_uuid, timestamp=30.0, extraction_type="drill", file_path="f30.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="f10.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=20.0, extraction_type="drill", file_path="f20.jpg")
+
+        frames = frame_repo.get_by_video(video_uuid)
+        assert len(frames) == 3
+        # Should be ordered by timestamp
+        assert frames[0]["timestamp"] == 10.0
+        assert frames[1]["timestamp"] == 20.0
+        assert frames[2]["timestamp"] == 30.0
+
+    def test_get_by_video_empty(self, video_repo, frame_repo):
+        """Test get_by_video returns empty list when no frames."""
+        video_uuid = video_repo.insert(
+            video_id="noframes",
+            domain="youtube",
+            cache_path="/cache/nf",
+        )
+
+        frames = frame_repo.get_by_video(video_uuid)
+        assert frames == []
+
+    def test_get_by_scene(self, video_repo, frame_repo):
+        """Test getting all frames for a specific scene."""
+        video_uuid = video_repo.insert(
+            video_id="sceneframes",
+            domain="youtube",
+            cache_path="/cache/sf",
+        )
+
+        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="keyframe", file_path="k0.jpg", scene_id=0)
+        frame_repo.insert(video_uuid=video_uuid, timestamp=35.0, extraction_type="keyframe", file_path="k1.jpg", scene_id=1)
+        frame_repo.insert(video_uuid=video_uuid, timestamp=45.0, extraction_type="keyframe", file_path="k1b.jpg", scene_id=1)
+
+        frames = frame_repo.get_by_scene(video_uuid, 1)
+        assert len(frames) == 2
+        assert all(f["scene_id"] == 1 for f in frames)
+
+    def test_get_by_type(self, video_repo, frame_repo):
+        """Test getting all frames of a specific type."""
+        video_uuid = video_repo.insert(
+            video_id="typeframes",
+            domain="youtube",
+            cache_path="/cache/tf",
+        )
+
+        frame_repo.insert(video_uuid=video_uuid, timestamp=0.0, extraction_type="drill", file_path="d1.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="d2.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="hq", file_path="hq1.jpg")
+
+        drill_frames = frame_repo.get_by_type(video_uuid, "drill")
+        assert len(drill_frames) == 2
+        assert all(f["extraction_type"] == "drill" for f in drill_frames)
+
+        hq_frames = frame_repo.get_by_type(video_uuid, "hq")
+        assert len(hq_frames) == 1
+
+
+class TestFrameRepositoryThumbnail:
+    """Tests for FrameRepository thumbnail methods."""
+
+    def test_get_thumbnail(self, video_repo, frame_repo):
+        """Test getting the thumbnail frame."""
+        video_uuid = video_repo.insert(
+            video_id="thumbvid",
+            domain="youtube",
+            cache_path="/cache/tv",
+        )
+
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=0.0,
+            extraction_type="drill",
+            file_path="normal.jpg",
+            is_thumbnail=False,
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=15.0,
+            extraction_type="thumbnail",
+            file_path="thumb.jpg",
+            is_thumbnail=True,
+        )
+
+        thumb = frame_repo.get_thumbnail(video_uuid)
+        assert thumb is not None
+        assert thumb["is_thumbnail"] == 1
+        assert thumb["file_path"] == "thumb.jpg"
+
+    def test_get_thumbnail_none(self, video_repo, frame_repo):
+        """Test get_thumbnail returns None when no thumbnail exists."""
+        video_uuid = video_repo.insert(
+            video_id="nothumb",
+            domain="youtube",
+            cache_path="/cache/nt",
+        )
+
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=0.0,
+            extraction_type="drill",
+            file_path="normal.jpg",
+            is_thumbnail=False,
+        )
+
+        thumb = frame_repo.get_thumbnail(video_uuid)
+        assert thumb is None
+
+    def test_set_thumbnail(self, video_repo, frame_repo):
+        """Test set_thumbnail() designates a frame as thumbnail."""
+        video_uuid = video_repo.insert(
+            video_id="setthumb",
+            domain="youtube",
+            cache_path="/cache/st",
+        )
+
+        first_uuid = frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=0.0,
+            extraction_type="drill",
+            file_path="first.jpg",
+            is_thumbnail=True,
+        )
+        second_uuid = frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=15.0,
+            extraction_type="drill",
+            file_path="second.jpg",
+            is_thumbnail=False,
+        )
+
+        result = frame_repo.set_thumbnail(second_uuid)
+        assert result is True
+
+        # Second should now be thumbnail
+        thumb = frame_repo.get_thumbnail(video_uuid)
+        assert thumb["id"] == second_uuid
+
+        # First should no longer be thumbnail
+        first = frame_repo.get_by_uuid(first_uuid)
+        assert first["is_thumbnail"] == 0
+
+    def test_set_thumbnail_nonexistent_returns_false(self, frame_repo):
+        """Test set_thumbnail returns False for non-existent frame."""
+        fake_uuid = str(uuid.uuid4())
+        result = frame_repo.set_thumbnail(fake_uuid)
+        assert result is False
+
+
+class TestFrameRepositoryKeyframes:
+    """Tests for FrameRepository.get_keyframes()."""
+
+    def test_get_keyframes(self, video_repo, frame_repo):
+        """Test getting all keyframes for a video."""
+        video_uuid = video_repo.insert(
+            video_id="keyframevid",
+            domain="youtube",
+            cache_path="/cache/kfv",
+        )
+
+        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="keyframe", file_path="kf1.jpg", scene_id=0)
+        frame_repo.insert(video_uuid=video_uuid, timestamp=35.0, extraction_type="keyframe", file_path="kf2.jpg", scene_id=1)
+        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="d1.jpg")
+
+        keyframes = frame_repo.get_keyframes(video_uuid)
+        assert len(keyframes) == 2
+        assert all(f["extraction_type"] == "keyframe" for f in keyframes)
+
+    def test_get_keyframes_by_scene(self, video_repo, frame_repo):
+        """Test getting keyframes filtered by scene."""
+        video_uuid = video_repo.insert(
+            video_id="kfscene",
+            domain="youtube",
+            cache_path="/cache/kfs",
+        )
+
+        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="keyframe", file_path="kf0.jpg", scene_id=0)
+        frame_repo.insert(video_uuid=video_uuid, timestamp=35.0, extraction_type="keyframe", file_path="kf1a.jpg", scene_id=1)
+        frame_repo.insert(video_uuid=video_uuid, timestamp=40.0, extraction_type="keyframe", file_path="kf1b.jpg", scene_id=1)
+
+        keyframes = frame_repo.get_keyframes(video_uuid, scene_id=1)
+        assert len(keyframes) == 2
+        assert all(f["scene_id"] == 1 for f in keyframes)
+
+
+class TestFrameRepositoryCountByType:
+    """Tests for FrameRepository.count_by_type()."""
+
+    def test_count_by_type(self, video_repo, frame_repo):
+        """Test counting frames by extraction type."""
+        video_uuid = video_repo.insert(
+            video_id="counttypes",
+            domain="youtube",
+            cache_path="/cache/ct",
+        )
+
+        frame_repo.insert(video_uuid=video_uuid, timestamp=0.0, extraction_type="drill", file_path="d1.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="d2.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=20.0, extraction_type="drill", file_path="d3.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="hq", file_path="hq1.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=15.0, extraction_type="keyframe", file_path="kf1.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=25.0, extraction_type="keyframe", file_path="kf2.jpg")
+
+        counts = frame_repo.count_by_type(video_uuid)
+        assert counts == {"drill": 3, "hq": 1, "keyframe": 2}
+
+    def test_count_by_type_empty(self, video_repo, frame_repo):
+        """Test count_by_type returns empty dict for video with no frames."""
+        video_uuid = video_repo.insert(
+            video_id="emptycount",
+            domain="youtube",
+            cache_path="/cache/ec",
+        )
+
+        counts = frame_repo.count_by_type(video_uuid)
+        assert counts == {}
+
+
+class TestFrameRepositoryDelete:
+    """Tests for FrameRepository delete methods."""
+
+    def test_delete_by_uuid(self, video_repo, frame_repo):
+        """Test deleting a frame by UUID."""
+        video_uuid = video_repo.insert(
+            video_id="delframe",
+            domain="youtube",
+            cache_path="/cache/df",
+        )
+
+        frame_uuid = frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=0.0,
+            extraction_type="drill",
+            file_path="frame.jpg",
+        )
+
+        result = frame_repo.delete(frame_uuid)
+        assert result is True
+
+        frame = frame_repo.get_by_uuid(frame_uuid)
+        assert frame is None
+
+    def test_delete_nonexistent(self, frame_repo):
+        """Test deleting non-existent frame returns False."""
+        fake_uuid = str(uuid.uuid4())
+        result = frame_repo.delete(fake_uuid)
+        assert result is False
+
+    def test_delete_by_video(self, video_repo, frame_repo):
+        """Test deleting all frames for a video."""
+        video_uuid = video_repo.insert(
+            video_id="delallframes",
+            domain="youtube",
+            cache_path="/cache/daf",
+        )
+
+        frame_repo.insert(video_uuid=video_uuid, timestamp=0.0, extraction_type="drill", file_path="f1.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="f2.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=20.0, extraction_type="hq", file_path="f3.jpg")
+
+        count = frame_repo.delete_by_video(video_uuid)
+        assert count == 3
+
+        frames = frame_repo.get_by_video(video_uuid)
+        assert frames == []
+
+    def test_delete_by_type(self, video_repo, frame_repo):
+        """Test deleting all frames of a specific type."""
+        video_uuid = video_repo.insert(
+            video_id="deltypeframes",
+            domain="youtube",
+            cache_path="/cache/dtf",
+        )
+
+        frame_repo.insert(video_uuid=video_uuid, timestamp=0.0, extraction_type="drill", file_path="d1.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="d2.jpg")
+        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="hq", file_path="hq1.jpg")
+
+        count = frame_repo.delete_by_type(video_uuid, "drill")
+        assert count == 2
+
+        remaining = frame_repo.get_by_video(video_uuid)
+        assert len(remaining) == 1
+        assert remaining[0]["extraction_type"] == "hq"
+
+    def test_cascade_delete_on_video_delete(self, video_repo, frame_repo):
+        """Test that deleting a video cascades to frames."""
+        video_uuid = video_repo.insert(
+            video_id="cascadeframe",
+            domain="youtube",
+            cache_path="/cache/cf",
+        )
+
+        frame_uuid = frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=0.0,
+            extraction_type="drill",
+            file_path="frame.jpg",
+        )
+
+        video_repo.delete("cascadeframe")
+
+        frame = frame_repo.get_by_uuid(frame_uuid)
+        assert frame is None
