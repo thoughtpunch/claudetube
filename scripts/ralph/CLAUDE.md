@@ -46,7 +46,8 @@ src/claudetube/
 7. **Add completion comment** (see format below)
 8. **Close**: `bd close <task-id> --reason "Done"`
 9. **Sync**: `bd sync`
-10. **STOP** — Just stop. Do NOT output any signal. The loop handles the next task.
+10. **Commit progress file**: `git add scripts/ralph/progress.txt && git commit -m "ralph: update progress.txt" && git push`
+11. **STOP** — Just stop. Do NOT output any signal. The loop handles the next task.
 
 ---
 
@@ -61,10 +62,11 @@ src/claudetube/
 [ ] 4. bd comments add ...     # Add completion comment
 [ ] 5. bd close <id>           # Close the task
 [ ] 6. bd sync                 # Sync beads to git
-[ ] 7. git push                # Push to remote (if permitted)
+[ ] 7. git add scripts/ralph/progress.txt && git commit -m "ralph: update progress.txt"
+[ ] 8. git push                # Push to remote (if permitted)
 ```
 
-**Work is not done until synced.**
+**Work is not done until synced and progress.txt is committed.**
 
 ---
 

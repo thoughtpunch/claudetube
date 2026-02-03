@@ -100,3 +100,118 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 - 2026-02-02 16:49 | claudetube-il9 [P3] | Add deno as recommended prerequisite and verify in install.sh
 - 2026-02-02 16:54 | claudetube-e65 [P4] | SABR protocol documentation and troubleshooting guide
 - 2026-02-02 16:58 | claudetube-4ds [P4] | Add PO token auto-refresh and health checks
+- 2026-02-02 17:38 | claudetube-2a6.1 [P1] | Create VideoPath Pydantic model + domain sanitization
+- 2026-02-02 17:42 | claudetube-2a6.2 [P1] | Create URL query parameter extraction + timestamp parsing
+- 2026-02-02 17:45 | claudetube-2a6.3 [P1] | Add channel/playlist named captures to provider patterns
+- 2026-02-02 17:50 | claudetube-2a6.4 [P1] | Integrate VideoPath into VideoURL + VideoState
+- 2026-02-02 18:00 | claudetube-wu0.1 [P1] | Create DB connection + migration infrastructure
+- 2026-02-02 18:08 | claudetube-wu0.2 [P1] | Create initial schema DDL (001_initial.sql)
+- 2026-02-02 18:14 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:15 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:15 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:16 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:16 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:16 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:16 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:16 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:16 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:17 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:17 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:17 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:17 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:17 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:17 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:17 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:18 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:18 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:18 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:18 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:18 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:18 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:19 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:19 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:19 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:19 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:19 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:19 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:20 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:20 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:20 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:20 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:20 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:20 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:21 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:21 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:21 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:21 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:21 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:21 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:22 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:22 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:22 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:22 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:22 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:22 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:23 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:23 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:23 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:23 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:23 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:23 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:24 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:24 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:24 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:24 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:24 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:24 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:25 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:25 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:25 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:25 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:25 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:25 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:26 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:26 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:26 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:26 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:26 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:26 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:27 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:27 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:27 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:27 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:27 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:27 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:28 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:28 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:28 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:28 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:28 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:29 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:29 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:29 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:29 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:29 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:29 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:29 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:30 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:30 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:30 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:30 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 18:30 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 19:23 | claudetube-wu0.3 [P1] | Create sqlite-vec integration module
+- 2026-02-02 19:30 | claudetube-wu0.4 [P1] | Create core repositories: videos, audio_tracks, transcriptions
+- 2026-02-02 19:36 | claudetube-wu0.5 [P1] | Create scene + frame repositories
+- 2026-02-02 19:42 | claudetube-wu0.6 [P1] | Create analysis repositories: visual, technical, audio desc, narrative, code evolution
+- 2026-02-02 19:48 | claudetube-wu0.7 [P1] | Create entity, Q&A, observation repositories
+- 2026-02-02 20:01 | claudetube-1id.1 [P1] | Create db/sync.py with progressive enrichment
+- 2026-02-02 20:08 | claudetube-1id.2 [P1] | Add dual-write to storage, processor, and transcriber
+- 2026-02-02 20:20 | claudetube-1id.3 [P1] | Add dual-write to scene, frame, and analysis paths
+- 2026-02-02 20:34 | claudetube-1id.5 [P1] | Add auto-embedding in sqlite-vec at write time
+- 2026-02-02 20:44 | claudetube-kve.1 [P1] | Create auto-import module for existing JSON caches
+- 2026-02-02 20:53 | claudetube-kve.2 [P1] | Replace file-scanning reads with SQL/FTS queries
+- 2026-02-02 21:03 | claudetube-kve.3 [P1] | Unified FTS5 + sqlite-vec search across all content
+- 2026-02-02 21:16 | claudetube-ba1.1 [P1] | Activate hierarchical paths in CacheManager + processor
+- 2026-02-02 21:27 | claudetube-ba1.2 [P1] | Implement progressive directory enrichment (move on metadata improve)
+- 2026-02-02 21:34 | claudetube-ba1.3 [P1] | Create migration CLI for flat-to-hierarchical conversion
+- 2026-02-02 21:41 | claudetube-7s4 [P4] | Add translation support to DeepgramProvider
