@@ -87,6 +87,25 @@ def _resolve_cache_dir(video_id: str) -> "Path":
     return cache.get_cache_dir(video_id)
 
 
+def _require_cached_video(video_id: str) -> "Path":
+    """Get cache directory for a video, raising FileNotFoundError if not cached.
+
+    Use this in MCP tools to fail fast with a clear error instead of
+    silently returning empty results.
+
+    Args:
+        video_id: Natural key (e.g., YouTube video ID).
+
+    Returns:
+        Path to the video's cache directory.
+
+    Raises:
+        FileNotFoundError: If video is not in cache (state.json doesn't exist).
+    """
+    cache = CacheManager(get_cache_dir())
+    return cache.require_cached(video_id)
+
+
 @mcp.tool()
 async def process_video_tool(
     url: str,
@@ -179,7 +198,12 @@ async def get_frames(
         quality: Quality tier (lowest/low/medium/high/highest).
     """
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = _resolve_cache_dir(video_id)
+
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     frames = await asyncio.to_thread(
         get_frames_at,
@@ -193,7 +217,7 @@ async def get_frames(
 
     # Record frame examination for progressive learning
     enrichment = None
-    if frames and cache_dir.exists():
+    if frames:
         enrichment = await asyncio.to_thread(
             record_frame_examination,
             video_id,
@@ -239,7 +263,12 @@ async def get_hq_frames(
         width: Frame width in pixels.
     """
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = _resolve_cache_dir(video_id)
+
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     frames = await asyncio.to_thread(
         get_hq_frames_at,
@@ -253,7 +282,7 @@ async def get_hq_frames(
 
     # Record frame examination for progressive learning
     enrichment = None
-    if frames and cache_dir.exists():
+    if frames:
         enrichment = await asyncio.to_thread(
             record_frame_examination,
             video_id,
@@ -416,10 +445,12 @@ async def get_transcript(
         format: Transcript format — "txt" for plain text or "srt" for subtitles.
     """
     video_id = extract_video_id(video_id)
-    video_dir = _resolve_cache_dir(video_id)
 
-    if not video_dir.exists():
-        return json.dumps({"error": f"No cached video found for '{video_id}'"})
+    # Fail fast if video not cached
+    try:
+        video_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     if format == "srt":
         transcript_path = video_dir / "audio.srt"
@@ -432,7 +463,10 @@ async def get_transcript(
         if fallback.exists():
             transcript_path = fallback
         else:
-            return json.dumps({"error": "No transcript file found"})
+            return json.dumps({
+                "error": "No transcript file found. Run process_video or transcribe_video first.",
+                "video_id": video_id,
+            })
 
     text = transcript_path.read_text()
     return json.dumps(
@@ -460,21 +494,14 @@ def _get_scenes_sync(video_id: str, force: bool = False, enrich: bool = False) -
     Returns:
         Dict with scene data or error
     """
-    cache_dir = _resolve_cache_dir(video_id)
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return {"error": str(e), "video_id": video_id}
 
-    if not cache_dir.exists():
-        return {
-            "error": "Video not cached. Run process_video first.",
-            "video_id": video_id,
-        }
-
-    # Check state.json exists
+    # Check state.json exists (require_cached already does this, but load it)
     state_file = cache_dir / "state.json"
-    if not state_file.exists():
-        return {
-            "error": "Video not processed. Run process_video first.",
-            "video_id": video_id,
-        }
 
     # Fast path: return cached scenes
     if not force and has_scenes(cache_dir):
@@ -635,6 +662,14 @@ async def generate_visual_transcripts(
     """
     from claudetube.operations.visual_transcript import generate_visual_transcript
 
+    video_id = extract_video_id(video_id)
+
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
+
     vision_analyzer = None
     if provider:
         from claudetube.providers import get_provider
@@ -647,7 +682,6 @@ async def generate_visual_transcripts(
         except (RuntimeError, ImportError):
             pass  # Fall back to default in generate_visual_transcript
 
-    video_id = extract_video_id(video_id)
     result = await asyncio.to_thread(
         generate_visual_transcript,
         video_id,
@@ -693,6 +727,14 @@ async def extract_entities_tool(
     """
     from claudetube.operations.entity_extraction import extract_entities_for_video
 
+    video_id = extract_video_id(video_id)
+
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
+
     vision_analyzer = None
     reasoner = None
     if provider:
@@ -713,7 +755,6 @@ async def extract_entities_tool(
         except (RuntimeError, ImportError):
             pass  # Fall back to default in extract_entities_for_video
 
-    video_id = extract_video_id(video_id)
     result = await asyncio.to_thread(
         extract_entities_for_video,
         video_id,
@@ -753,6 +794,14 @@ async def track_people_tool(
     """
     from claudetube.operations.person_tracking import track_people
 
+    video_id = extract_video_id(video_id)
+
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
+
     video_analyzer = None
     vision_analyzer = None
     if provider:
@@ -772,7 +821,6 @@ async def track_people_tool(
         except (RuntimeError, ImportError):
             pass
 
-    video_id = extract_video_id(video_id)
     result = await asyncio.to_thread(
         track_people,
         video_id,
@@ -842,12 +890,11 @@ async def find_moments_tool(
     """
     video_id = extract_video_id(video_id)
 
-    # Resolve cache path using CacheManager (supports both flat and nested paths)
-    video_cache_dir = _resolve_cache_dir(video_id)
-    if not video_cache_dir.exists():
-        return json.dumps(
-            {"error": f"Video {video_id} not found in cache. Run process_video() first."}
-        )
+    # Fail fast if video not cached
+    try:
+        video_cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     try:
         moments = await asyncio.to_thread(
@@ -901,6 +948,12 @@ async def analyze_deep_tool(
 
     video_id = extract_video_id(video_id)
 
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
+
     result = await asyncio.to_thread(
         analyze_video,
         video_id,
@@ -937,7 +990,12 @@ async def analyze_focus_tool(
     from claudetube.operations.analysis_depth import AnalysisDepth, analyze_video
 
     video_id = extract_video_id(video_id)
-    cache_dir = _resolve_cache_dir(video_id)
+
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     # Find scenes in time range
     scenes_data = load_scenes_data(cache_dir)
@@ -1002,6 +1060,12 @@ async def get_analysis_status_tool(
 
     video_id = extract_video_id(video_id)
 
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
+
     result = await asyncio.to_thread(
         get_analysis_status,
         video_id,
@@ -1032,10 +1096,12 @@ async def record_qa_tool(
         answer: The answer that was given.
     """
     video_id = extract_video_id(video_id)
-    cache_dir = _resolve_cache_dir(video_id)
 
-    if not cache_dir.exists():
-        return json.dumps({"error": f"Video '{video_id}' not found in cache"})
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     result = await asyncio.to_thread(
         record_qa_interaction,
@@ -1064,10 +1130,12 @@ async def search_qa_history_tool(
         query: The question to search for (keyword matching).
     """
     video_id = extract_video_id(video_id)
-    cache_dir = _resolve_cache_dir(video_id)
 
-    if not cache_dir.exists():
-        return json.dumps({"error": f"Video '{video_id}' not found in cache"})
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     results = await asyncio.to_thread(
         search_cached_qa,
@@ -1103,10 +1171,12 @@ async def get_scene_context_tool(
         scene_id: Scene index (0-based).
     """
     video_id = extract_video_id(video_id)
-    cache_dir = _resolve_cache_dir(video_id)
 
-    if not cache_dir.exists():
-        return json.dumps({"error": f"Video '{video_id}' not found in cache"})
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     context = await asyncio.to_thread(
         get_scene_context,
@@ -1140,10 +1210,12 @@ async def get_enrichment_stats_tool(
         video_id: Video ID.
     """
     video_id = extract_video_id(video_id)
-    cache_dir = _resolve_cache_dir(video_id)
 
-    if not cache_dir.exists():
-        return json.dumps({"error": f"Video '{video_id}' not found in cache"})
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     stats = await asyncio.to_thread(
         get_enrichment_stats,
@@ -1219,10 +1291,12 @@ async def index_video_to_graph_tool(
         force: Re-index even if already present (default: False).
     """
     video_id = extract_video_id(video_id)
-    cache_dir = _resolve_cache_dir(video_id)
 
-    if not cache_dir.exists():
-        return json.dumps({"error": f"No cached video found for '{video_id}'"})
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     result = await asyncio.to_thread(
         index_video_to_graph,
@@ -1306,15 +1380,12 @@ async def get_descriptions(
     )
 
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = _resolve_cache_dir(video_id)
 
-    if not cache_dir.exists():
-        return json.dumps(
-            {
-                "error": "Video not cached. Run process_video first.",
-                "video_id": video_id,
-            }
-        )
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     cache = CacheManager(get_cache_dir())
 
@@ -1445,15 +1516,12 @@ async def describe_moment(
         context: Optional context about what the viewer is interested in.
     """
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = _resolve_cache_dir(video_id)
 
-    if not cache_dir.exists():
-        return json.dumps(
-            {
-                "error": "Video not cached. Run process_video first.",
-                "video_id": video_id,
-            }
-        )
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     # Extract HQ frames around the timestamp
     frames = await asyncio.to_thread(
@@ -1549,15 +1617,12 @@ async def get_accessible_transcript(
     from claudetube.operations.audio_description import get_scene_descriptions
 
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = _resolve_cache_dir(video_id)
 
-    if not cache_dir.exists():
-        return json.dumps(
-            {
-                "error": "Video not cached. Run process_video first.",
-                "video_id": video_id,
-            }
-        )
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     # Load transcript
     if format == "srt":
@@ -1668,7 +1733,6 @@ async def has_audio_description(
         video_id_or_url: Video ID or URL.
     """
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = _resolve_cache_dir(video_id)
     cache = CacheManager(get_cache_dir())
 
     result: dict = {
@@ -1679,8 +1743,11 @@ async def has_audio_description(
         "ad_complete": False,
     }
 
-    if not cache_dir.exists():
-        result["error"] = "Video not cached. Run process_video first."
+    # Fail fast if video not cached
+    try:
+        cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        result["error"] = str(e)
         return json.dumps(result, indent=2)
 
     # 1. Check cached AD files
@@ -1762,12 +1829,11 @@ async def watch_video_tool(
     """
     video_id = extract_video_id(video_id)
 
-    # Resolve cache path using CacheManager (supports both flat and nested paths)
-    video_cache_dir = _resolve_cache_dir(video_id)
-    if not video_cache_dir.exists():
-        return json.dumps(
-            {"error": "Video not cached. Run process_video first.", "video_id": video_id}
-        )
+    # Fail fast if video not cached
+    try:
+        video_cache_dir = _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     result = await asyncio.to_thread(
         watch_video,
@@ -1887,6 +1953,12 @@ async def detect_narrative_structure_tool(
 
     video_id = extract_video_id(video_id)
 
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
+
     result = await asyncio.to_thread(
         detect_narrative_structure,
         video_id,
@@ -1912,6 +1984,12 @@ async def get_narrative_structure_tool(
     from claudetube.operations.narrative_structure import get_narrative_structure
 
     video_id = extract_video_id(video_id)
+
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     result = await asyncio.to_thread(
         get_narrative_structure,
@@ -1940,6 +2018,12 @@ async def detect_changes_tool(
 
     video_id = extract_video_id(video_id)
 
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
+
     result = await asyncio.to_thread(
         detect_scene_changes,
         video_id,
@@ -1966,6 +2050,12 @@ async def get_changes_tool(
 
     video_id = extract_video_id(video_id)
 
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
+
     result = await asyncio.to_thread(
         get_scene_changes,
         video_id,
@@ -1990,6 +2080,12 @@ async def get_major_transitions_tool(
     from claudetube.operations.change_detection import get_major_transitions
 
     video_id = extract_video_id(video_id)
+
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     result = await asyncio.to_thread(
         get_major_transitions,
@@ -2021,6 +2117,12 @@ async def track_code_evolution_tool(
 
     video_id = extract_video_id(video_id)
 
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
+
     result = await asyncio.to_thread(
         track_code_evolution,
         video_id,
@@ -2046,6 +2148,12 @@ async def get_code_evolution_tool(
     from claudetube.operations.code_evolution import get_code_evolution
 
     video_id = extract_video_id(video_id)
+
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     result = await asyncio.to_thread(
         get_code_evolution,
@@ -2073,6 +2181,12 @@ async def query_code_evolution_tool(
     from claudetube.operations.code_evolution import query_code_evolution
 
     video_id = extract_video_id(video_id)
+
+    # Fail fast if video not cached
+    try:
+        _require_cached_video(video_id)
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e), "video_id": video_id})
 
     result = await asyncio.to_thread(
         query_code_evolution,
