@@ -907,6 +907,7 @@ class TestGetDefaultProviders:
         """
         instance = type("MockProvider", (), {})()
         instance.is_available = MagicMock(return_value=available)
+        instance.info = {"name": "MockProvider"}
         if has_video:
             instance.analyze_video = AsyncMock()
         if has_vision:
@@ -917,37 +918,62 @@ class TestGetDefaultProviders:
 
     def test_returns_all_from_single_provider(self):
         """Single provider with all capabilities satisfies all roles."""
-        mock_provider = self._make_provider_mock(has_video=True)
+        mock_video = self._make_provider_mock(has_video=True)
+        mock_vision = self._make_provider_mock(has_vision=True)
+        mock_reasoner = self._make_provider_mock(has_reasoner=True)
+
+        mock_router = MagicMock()
+        mock_router.get_video_analyzer.return_value = mock_video
+        mock_router.get_vision_analyzer_for_structured_output.return_value = mock_vision
+        mock_router.get_reasoner_for_structured_output.return_value = mock_reasoner
 
         with patch(
-            "claudetube.providers.registry.get_provider",
-            return_value=mock_provider,
+            "claudetube.providers.router.ProviderRouter",
+            return_value=mock_router,
         ):
             video, vision, reasoner = _get_default_providers()
-            assert video is mock_provider
-            assert vision is mock_provider
-            assert reasoner is mock_provider
+            assert video is mock_video
+            assert vision is mock_vision
+            assert reasoner is mock_reasoner
 
     def test_returns_vision_and_reasoner_without_video(self):
         """Provider without VideoAnalyzer returns None for video."""
-        mock_provider = self._make_provider_mock(has_video=False)
+        mock_vision = self._make_provider_mock(has_vision=True)
+        mock_reasoner = self._make_provider_mock(has_reasoner=True)
+
+        mock_router = MagicMock()
+        # get_video_analyzer returns None when no video provider available
+        mock_router.get_video_analyzer.return_value = None
+        mock_router.get_vision_analyzer_for_structured_output.return_value = mock_vision
+        mock_router.get_reasoner_for_structured_output.return_value = mock_reasoner
 
         with patch(
-            "claudetube.providers.registry.get_provider",
-            return_value=mock_provider,
+            "claudetube.providers.router.ProviderRouter",
+            return_value=mock_router,
         ):
             video, vision, reasoner = _get_default_providers()
             assert video is None
-            assert vision is mock_provider
-            assert reasoner is mock_provider
+            assert vision is mock_vision
+            assert reasoner is mock_reasoner
 
     def test_returns_none_when_unavailable(self):
-        """Unavailable provider returns None for all."""
-        mock_provider = self._make_provider_mock(available=False)
+        """Unavailable providers return None for all."""
+        from claudetube.providers.capabilities import Capability
+        from claudetube.providers.router import NoProviderError
+
+        mock_router = MagicMock()
+        # get_video_analyzer returns None (doesn't raise)
+        mock_router.get_video_analyzer.return_value = None
+        mock_router.get_vision_analyzer_for_structured_output.side_effect = NoProviderError(
+            Capability.VISION
+        )
+        mock_router.get_reasoner_for_structured_output.side_effect = NoProviderError(
+            Capability.REASON
+        )
 
         with patch(
-            "claudetube.providers.registry.get_provider",
-            return_value=mock_provider,
+            "claudetube.providers.router.ProviderRouter",
+            return_value=mock_router,
         ):
             video, vision, reasoner = _get_default_providers()
             assert video is None
