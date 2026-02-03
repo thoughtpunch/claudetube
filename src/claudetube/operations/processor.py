@@ -92,6 +92,19 @@ def process_video(
         state = load_state(cache_dir / "state.json")
         if state and state.transcript_complete:
             log_timed(f"Cache hit for {video_id}", t0)
+
+            # Update playlist_id from URL if state doesn't have one
+            # This handles the case where video was cached without playlist context
+            # and is now accessed via a playlist URL
+            state_updated = False
+            if url_playlist_id and not state.playlist_id:
+                state.playlist_id = url_playlist_id
+                state_updated = True
+
+            if state_updated:
+                save_state(state, cache_dir / "state.json")
+                log_timed(f"Updated state with playlist_id: {url_playlist_id}", t0)
+
             thumb = cache_dir / "thumbnail.jpg"
             srt = cache_dir / "audio.srt"
             txt = cache_dir / "audio.txt"
