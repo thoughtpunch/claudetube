@@ -54,3 +54,15 @@ class SubtitleError(ClaudetubeError):
     """Error fetching or parsing subtitles."""
 
     pass
+
+
+class DatabaseError(ClaudetubeError):
+    """Error with database operations (connection, migration, query)."""
+
+    pass
+
+
+class MigrationError(DatabaseError):
+    """Error during database schema migration."""
+
+    pass
