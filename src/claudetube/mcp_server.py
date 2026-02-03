@@ -68,6 +68,25 @@ TRANSCRIPT_INLINE_CAP = 50_000
 mcp = FastMCP("claudetube")
 
 
+def _resolve_cache_dir(video_id: str) -> "Path":
+    """Resolve a video_id to its cache directory using the resolution chain.
+
+    Resolution chain:
+    1. Session cache (fast in-memory lookup)
+    2. SQLite lookup (O(1) via idx_videos_video_id)
+    3. Flat path check (cache_base / video_id / state.json)
+    4. Glob scan (expensive, only when SQLite has no record)
+
+    Args:
+        video_id: Natural key (e.g., YouTube video ID).
+
+    Returns:
+        Path to the video's cache directory.
+    """
+    cache = CacheManager(get_cache_dir())
+    return cache.get_cache_dir(video_id)
+
+
 @mcp.tool()
 async def process_video_tool(
     url: str,
@@ -157,7 +176,7 @@ async def get_frames(
         quality: Quality tier (lowest/low/medium/high/highest).
     """
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     frames = await asyncio.to_thread(
         get_frames_at,
@@ -217,7 +236,7 @@ async def get_hq_frames(
         width: Frame width in pixels.
     """
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     frames = await asyncio.to_thread(
         get_hq_frames_at,
@@ -411,7 +430,7 @@ async def get_transcript(
         format: Transcript format — "txt" for plain text or "srt" for subtitles.
     """
     video_id = extract_video_id(video_id)
-    video_dir = get_cache_dir() / video_id
+    video_dir = _resolve_cache_dir(video_id)
 
     if not video_dir.exists():
         return json.dumps({"error": f"No cached video found for '{video_id}'"})
@@ -455,7 +474,7 @@ def _get_scenes_sync(video_id: str, force: bool = False, enrich: bool = False) -
     Returns:
         Dict with scene data or error
     """
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     if not cache_dir.exists():
         return {
@@ -923,7 +942,7 @@ async def analyze_focus_tool(
     from claudetube.operations.analysis_depth import AnalysisDepth, analyze_video
 
     video_id = extract_video_id(video_id)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     # Find scenes in time range
     scenes_data = load_scenes_data(cache_dir)
@@ -1018,7 +1037,7 @@ async def record_qa_tool(
         answer: The answer that was given.
     """
     video_id = extract_video_id(video_id)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     if not cache_dir.exists():
         return json.dumps({"error": f"Video '{video_id}' not found in cache"})
@@ -1050,7 +1069,7 @@ async def search_qa_history_tool(
         query: The question to search for (keyword matching).
     """
     video_id = extract_video_id(video_id)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     if not cache_dir.exists():
         return json.dumps({"error": f"Video '{video_id}' not found in cache"})
@@ -1089,7 +1108,7 @@ async def get_scene_context_tool(
         scene_id: Scene index (0-based).
     """
     video_id = extract_video_id(video_id)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     if not cache_dir.exists():
         return json.dumps({"error": f"Video '{video_id}' not found in cache"})
@@ -1126,7 +1145,7 @@ async def get_enrichment_stats_tool(
         video_id: Video ID.
     """
     video_id = extract_video_id(video_id)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     if not cache_dir.exists():
         return json.dumps({"error": f"Video '{video_id}' not found in cache"})
@@ -1205,7 +1224,7 @@ async def index_video_to_graph_tool(
         force: Re-index even if already present (default: False).
     """
     video_id = extract_video_id(video_id)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     if not cache_dir.exists():
         return json.dumps({"error": f"No cached video found for '{video_id}'"})
@@ -1292,7 +1311,7 @@ async def get_descriptions(
     )
 
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     if not cache_dir.exists():
         return json.dumps(
@@ -1431,7 +1450,7 @@ async def describe_moment(
         context: Optional context about what the viewer is interested in.
     """
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     if not cache_dir.exists():
         return json.dumps(
@@ -1535,7 +1554,7 @@ async def get_accessible_transcript(
     from claudetube.operations.audio_description import get_scene_descriptions
 
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
 
     if not cache_dir.exists():
         return json.dumps(
@@ -1654,7 +1673,7 @@ async def has_audio_description(
         video_id_or_url: Video ID or URL.
     """
     video_id = extract_video_id(video_id_or_url)
-    cache_dir = get_cache_dir() / video_id
+    cache_dir = _resolve_cache_dir(video_id)
     cache = CacheManager(get_cache_dir())
 
     result: dict = {

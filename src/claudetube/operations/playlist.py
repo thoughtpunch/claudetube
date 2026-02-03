@@ -241,3 +241,49 @@ def list_cached_playlists(cache_base: Path | None = None) -> list[dict]:
             continue
 
     return playlists
+
+
+def build_video_path_for_playlist(
+    video_id: str,
+    video_url: str,
+    playlist_data: dict,
+) -> VideoPath:
+    """Build a VideoPath for a video within a playlist.
+
+    This function constructs the hierarchical path for a video that belongs
+    to a playlist, populating the playlist component from playlist metadata.
+
+    Args:
+        video_id: The video's natural key (e.g., YouTube video ID).
+        video_url: The video URL.
+        playlist_data: Playlist metadata dict from extract_playlist_metadata.
+
+    Returns:
+        VideoPath with domain/channel/playlist/video_id populated.
+    """
+    from claudetube.models.video_path import VideoPath, _sanitize_path_component
+
+    # Start with URL-based path
+    base_path = VideoPath.from_url(video_url)
+
+    # Get playlist info
+    playlist_id = playlist_data.get("playlist_id")
+    channel_id = playlist_data.get("channel_id")
+
+    # Sanitize for filesystem safety
+    if playlist_id:
+        playlist_id = _sanitize_path_component(playlist_id)
+    if channel_id:
+        channel_id = _sanitize_path_component(channel_id)
+
+    # Build enriched path with playlist context
+    return VideoPath(
+        domain=base_path.domain,
+        channel=channel_id or base_path.channel,
+        playlist=playlist_id or base_path.playlist,
+        video_id=video_id,
+    )
+
+
+if TYPE_CHECKING:
+    from claudetube.models.video_path import VideoPath

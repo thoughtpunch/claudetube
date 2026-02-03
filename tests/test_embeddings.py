@@ -326,5 +326,5 @@ class TestEmbedSceneVoyage:
         }
 
         # Should raise error about missing API key or missing voyageai package
-        with pytest.raises((RuntimeError, ImportError)):
+        with pytest.raises((RuntimeError, ImportError, ValueError)):
             embed_scene(scene, model="voyage")

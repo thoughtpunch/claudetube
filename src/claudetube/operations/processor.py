@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from claudetube.cache.manager import CacheManager
+from claudetube.cache.storage import load_state, save_state
 from claudetube.config.loader import get_cache_dir
 from claudetube.models.local_file import LocalFile, LocalFileError
 from claudetube.models.state import VideoState
@@ -33,6 +34,7 @@ def process_video(
     whisper_model: str = "tiny",
     extract_frames: bool = False,
     frame_interval: int = 30,
+    playlist_id: str | None = None,
 ) -> VideoResult:
     """Process a video - transcript first, frames optional.
 
@@ -42,44 +44,73 @@ def process_video(
         whisper_model: tiny|base|small|medium|large
         extract_frames: Whether to extract frames (default: False for speed)
         frame_interval: Seconds between frames if extracting
+        playlist_id: Optional playlist ID to use in hierarchical path
 
     Returns:
         VideoResult with transcript and optional frames
     """
+    from claudetube.models.video_path import VideoPath
+
     t0 = time.time()
     log_timed("Starting video processing", t0)
 
-    cache = CacheManager(output_base or get_cache_dir())
+    cache_base = output_base or get_cache_dir()
+    cache = CacheManager(cache_base)
 
     # Extract context from URL (video_id, playlist_id, etc.)
     url_context = extract_url_context(url)
     video_id = url_context["video_id"]
-    playlist_id = url_context["playlist_id"]
+    # Use explicit playlist_id if provided, otherwise extract from URL
+    url_playlist_id = playlist_id or url_context.get("playlist_id")
 
-    cache_dir = cache.get_cache_dir(video_id)
+    # Construct VideoPath for hierarchical caching
+    # At this stage, we may not have channel info (comes from yt-dlp metadata later)
+    video_path = VideoPath.from_url(url)
 
-    # Check cache
-    if cache.is_transcript_complete(video_id):
-        log_timed(f"Cache hit for {video_id}", t0)
-        state = cache.get_state(video_id)
-        thumb = cache.get_thumbnail_path(video_id)
-        srt, txt = cache.get_transcript_paths(video_id)
-
-        return VideoResult(
-            success=True,
-            video_id=video_id,
-            output_dir=cache_dir,
-            transcript_srt=srt if srt.exists() else None,
-            transcript_txt=txt if txt.exists() else None,
-            thumbnail=thumb if thumb.exists() else None,
-            frames=sorted(cache_dir.glob("frames/*.jpg")) if extract_frames else [],
-            metadata=state.to_dict() if state else {},
+    # Override playlist if explicitly provided
+    if url_playlist_id and not video_path.playlist:
+        video_path = VideoPath(
+            domain=video_path.domain,
+            channel=video_path.channel,
+            playlist=url_playlist_id,
+            video_id=video_path.video_id,
         )
 
-    cache.ensure_cache_dir(video_id)
-    audio_path = cache.get_audio_path(video_id)
-    srt_path, txt_path = cache.get_transcript_paths(video_id)
-    thumbnail_path = cache.get_thumbnail_path(video_id)
+    # Get cache directory - uses hierarchical path for new videos
+    # First check if video already exists (SQLite -> flat -> glob resolution)
+    existing_cache_dir = cache.get_cache_dir(video_id)
+    if existing_cache_dir.exists() and (existing_cache_dir / "state.json").exists():
+        # Video already cached, use existing location
+        cache_dir = existing_cache_dir
+    else:
+        # New video - use hierarchical path
+        cache_dir = cache.get_cache_dir_for_path(video_path)
+
+    # Check cache - video may be at existing location
+    if cache_dir.exists() and (cache_dir / "state.json").exists():
+        state = load_state(cache_dir / "state.json")
+        if state and state.transcript_complete:
+            log_timed(f"Cache hit for {video_id}", t0)
+            thumb = cache_dir / "thumbnail.jpg"
+            srt = cache_dir / "audio.srt"
+            txt = cache_dir / "audio.txt"
+
+            return VideoResult(
+                success=True,
+                video_id=video_id,
+                output_dir=cache_dir,
+                transcript_srt=srt if srt.exists() else None,
+                transcript_txt=txt if txt.exists() else None,
+                thumbnail=thumb if thumb.exists() else None,
+                frames=sorted(cache_dir.glob("frames/*.jpg")) if extract_frames else [],
+                metadata=state.to_dict() if state else {},
+            )
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    audio_path = cache_dir / "audio.mp3"
+    srt_path = cache_dir / "audio.srt"
+    txt_path = cache_dir / "audio.txt"
+    thumbnail_path = cache_dir / "thumbnail.jpg"
 
     # STEP 1: Fetch metadata
     log_timed("Fetching video metadata...", t0)
@@ -107,14 +138,33 @@ def process_video(
         )
 
     state = VideoState.from_metadata(video_id, url, meta)
-    state.playlist_id = playlist_id
-    cache.save_state(video_id, state)
+    state.playlist_id = url_playlist_id
+    # Store hierarchical path info in state for database sync
+    state.domain = video_path.domain
+    state.channel_id = meta.get("channel_id") or meta.get("uploader_id") or video_path.channel
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    save_state(state, cache_dir / "state.json")
     log_timed(f"Metadata: '{state.title}' ({state.duration_string})", t0)
 
-    # Note: enrich_video() is NOT called here intentionally.
-    # enrich_video() may move the cache directory for hierarchical organization,
-    # which would invalidate the path variables (srt_path, audio_path, etc.).
-    # Progressive enrichment should be run separately AFTER initial processing.
+    # Sync video to SQLite with hierarchical cache_path
+    try:
+        from claudetube.db.sync import sync_video
+
+        # Build cache_path relative to cache_base
+        cache_path_rel = str(cache_dir.relative_to(cache_base))
+        sync_video(state, cache_path_rel)
+    except Exception:
+        pass  # Fire-and-forget
+
+    # Update audio and transcript paths to use the hierarchical cache_dir
+    audio_path = cache_dir / "audio.mp3"
+    srt_path = cache_dir / "audio.srt"
+    txt_path = cache_dir / "audio.txt"
+    thumbnail_path = cache_dir / "thumbnail.jpg"
+
+    # Note: enrich_video() can be called AFTER initial processing completes
+    # to move cache directories when better metadata is available.
+    # Progressive enrichment is handled by db/sync.py:enrich_video().
 
     # Record download step completed
     safe_update_pipeline_step(download_step_id, "completed")
@@ -125,7 +175,7 @@ def process_video(
         thumb = download_thumbnail(url, cache_dir)
         if thumb:
             state.has_thumbnail = True
-            cache.save_state(video_id, state)
+            save_state(state, cache_dir / "state.json")
             log_timed("Thumbnail saved", t0)
 
             # Dual-write: sync thumbnail to SQLite (fire-and-forget)
@@ -158,7 +208,7 @@ def process_video(
         txt_path.write_text(sub_result["txt"])
         state.transcript_complete = True
         state.transcript_source = sub_result["source"]
-        cache.save_state(video_id, state)
+        save_state(state, cache_dir / "state.json")
         log_timed(
             f"DONE via subtitles ({sub_result['source']}) in {time.time() - t0:.1f}s",
             t0,
@@ -327,25 +377,25 @@ def process_video(
     # STEP 5: Optional frames
     frames = []
     if extract_frames:
-        video_path = cache_dir / "video.mp4"
-        if not video_path.exists():
+        video_file_path = cache_dir / "video.mp4"
+        if not video_file_path.exists():
             log_timed("Downloading video for frames...", t0)
             from claudetube.operations.download import download_video_segment
 
             download_video_segment(
                 url=url,
-                output_path=video_path,
+                output_path=video_file_path,
                 start_time=0,
                 end_time=state.duration or 3600,
                 quality_sort="+size,+br",
                 concurrent_fragments=1,
             )
-        if video_path.exists():
+        if video_file_path.exists():
             ffmpeg = FFmpegTool()
             frames = ffmpeg.extract_frames_interval(
-                video_path, cache_dir / "frames", frame_interval
+                video_file_path, cache_dir / "frames", frame_interval
             )
-            video_path.unlink()
+            video_file_path.unlink()
             log_timed("Cleaned up video file", t0)
 
     # Update state
@@ -355,7 +405,7 @@ def process_video(
     if frames:
         state.frames_count = len(frames)
         state.frame_interval = frame_interval
-    cache.save_state(video_id, state)
+    save_state(state, cache_dir / "state.json")
 
     log_timed(f"DONE in {time.time() - t0:.1f}s", t0)
 

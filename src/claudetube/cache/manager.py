@@ -5,6 +5,7 @@ Cache manager for video processing.
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 from claudetube.cache import memory as memory_cache
@@ -22,6 +23,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from claudetube.models.state import VideoState
+    from claudetube.models.video_path import VideoPath
+
+logger = logging.getLogger(__name__)
+
+# Session-level cache for video_id -> cache_path resolution
+_resolution_cache: dict[str, str] = {}
 
 
 class CacheManager:
@@ -30,9 +37,143 @@ class CacheManager:
     def __init__(self, cache_base: Path | None = None):
         self.cache_base = cache_base or get_cache_dir()
 
-    def get_cache_dir(self, video_id: str) -> Path:
-        """Get cache directory for a video."""
-        return self.cache_base / video_id
+    def get_cache_dir(self, video_id_or_path: str | VideoPath) -> Path:
+        """Get cache directory for a video.
+
+        Accepts either:
+        - VideoPath: returns cache_base / video_path.relative_path() (hierarchical)
+        - str (bare video_id): resolves via SQLite -> flat path -> glob fallback
+
+        Resolution chain for bare video_id:
+        1. Session cache (fast in-memory lookup)
+        2. SQLite lookup (O(1) via idx_videos_video_id)
+        3. Flat path check (cache_base / video_id / state.json)
+        4. Glob scan (expensive, only when SQLite has no record)
+
+        Args:
+            video_id_or_path: Either a VideoPath object or a bare video_id string.
+
+        Returns:
+            Path to the video's cache directory.
+        """
+
+        from claudetube.models.video_path import VideoPath
+
+        # Handle VideoPath directly (hierarchical path)
+        if isinstance(video_id_or_path, VideoPath):
+            return self.cache_base / video_id_or_path.relative_path()
+
+        # Handle bare video_id string
+        video_id = video_id_or_path
+        return self._resolve_video_id(video_id)
+
+    def _resolve_video_id(self, video_id: str) -> Path:
+        """Resolve a bare video_id to its cache directory path.
+
+        Resolution chain:
+        1. Session cache (fast)
+        2. SQLite lookup (fast, O(1))
+        3. Flat path check (fast)
+        4. Glob scan (slow, last resort)
+
+        Args:
+            video_id: Natural key (e.g., YouTube video ID).
+
+        Returns:
+            Path to the video's cache directory.
+        """
+
+        # 1. Check session cache
+        if video_id in _resolution_cache:
+            return self.cache_base / _resolution_cache[video_id]
+
+        # 2. Try SQLite lookup
+        cache_path = self._resolve_via_sqlite(video_id)
+        if cache_path:
+            _resolution_cache[video_id] = cache_path
+            return self.cache_base / cache_path
+
+        # 3. Check flat legacy path
+        flat_path = self.cache_base / video_id
+        if (flat_path / "state.json").exists():
+            _resolution_cache[video_id] = video_id
+            return flat_path
+
+        # 4. Glob scan (expensive, last resort for legacy hierarchical paths)
+        glob_path = self._resolve_via_glob(video_id)
+        if glob_path:
+            _resolution_cache[video_id] = glob_path
+            return self.cache_base / glob_path
+
+        # No existing cache found - return flat path for new videos
+        # (caller will create it, hierarchical path requires VideoPath)
+        return flat_path
+
+    def _resolve_via_sqlite(self, video_id: str) -> str | None:
+        """Resolve video_id to cache_path via SQLite.
+
+        Args:
+            video_id: Natural key (e.g., YouTube video ID).
+
+        Returns:
+            Relative cache_path string, or None if not found.
+        """
+        try:
+            from claudetube.db import get_database
+            from claudetube.db.repos.videos import VideoRepository
+
+            db = get_database()
+            if db is None:
+                return None
+
+            repo = VideoRepository(db)
+            cache_path = repo.resolve_path(video_id)
+            if cache_path:
+                logger.debug("Resolved %s via SQLite: %s", video_id, cache_path)
+            return cache_path
+        except Exception:
+            logger.debug("SQLite resolution failed for %s", video_id, exc_info=True)
+            return None
+
+    def _resolve_via_glob(self, video_id: str) -> str | None:
+        """Resolve video_id to cache_path via glob scan.
+
+        Searches for **/**/**/{video_id}/state.json in the cache hierarchy.
+        This is expensive but handles legacy hierarchical paths not in SQLite.
+
+        Args:
+            video_id: Natural key (e.g., YouTube video ID).
+
+        Returns:
+            Relative cache_path string, or None if not found.
+        """
+        try:
+            # Search for domain/channel/playlist/video_id/state.json
+            pattern = f"**/{video_id}/state.json"
+            matches = list(self.cache_base.glob(pattern))
+            if matches:
+                # Use the first match, relative to cache_base
+                cache_dir = matches[0].parent
+                rel_path = cache_dir.relative_to(self.cache_base)
+                logger.debug("Resolved %s via glob: %s", video_id, rel_path)
+                return str(rel_path)
+        except Exception:
+            logger.debug("Glob resolution failed for %s", video_id, exc_info=True)
+        return None
+
+    def get_cache_dir_for_path(self, video_path: VideoPath) -> Path:
+        """Get cache directory for a VideoPath (hierarchical).
+
+        This is the preferred method for new videos. Use this when you have
+        a VideoPath object constructed from URL parsing or yt-dlp metadata.
+
+        Args:
+            video_path: VideoPath object with domain/channel/playlist/video_id.
+
+        Returns:
+            Path to the hierarchical cache directory.
+        """
+        return self.cache_base / video_path.relative_path()
 
     def get_state_file(self, video_id: str) -> Path:
         """Get path to state.json for a video."""
@@ -103,24 +244,55 @@ class CacheManager:
         return self._list_cached_videos_filesystem()
 
     def _list_cached_videos_filesystem(self) -> list[dict]:
-        """List cached videos by scanning the filesystem (fallback)."""
+        """List cached videos by scanning the filesystem (fallback).
+
+        Scans both flat paths (cache_base/video_id/) and hierarchical paths
+        (cache_base/domain/channel/playlist/video_id/).
+        """
         videos = []
+        seen_ids: set[str] = set()
+
         if not self.cache_base.exists():
             return videos
 
+        # Scan flat paths first (cache_base/*/state.json)
         for state_file in sorted(self.cache_base.glob("*/state.json")):
             try:
                 state = json.loads(state_file.read_text())
-                videos.append(
-                    {
-                        "video_id": state.get("video_id", state_file.parent.name),
-                        "title": state.get("title"),
-                        "duration_string": state.get("duration_string"),
-                        "transcript_complete": state.get("transcript_complete", False),
-                        "transcript_source": state.get("transcript_source"),
-                        "cache_dir": str(state_file.parent),
-                    }
-                )
+                video_id = state.get("video_id", state_file.parent.name)
+                if video_id not in seen_ids:
+                    seen_ids.add(video_id)
+                    videos.append(
+                        {
+                            "video_id": video_id,
+                            "title": state.get("title"),
+                            "duration_string": state.get("duration_string"),
+                            "transcript_complete": state.get("transcript_complete", False),
+                            "transcript_source": state.get("transcript_source"),
+                            "cache_dir": str(state_file.parent),
+                        }
+                    )
+            except (json.JSONDecodeError, OSError):
+                continue
+
+        # Scan hierarchical paths (cache_base/domain/channel/playlist/video_id/state.json)
+        # Pattern: 4 levels deep - domain/channel_or_no_channel/playlist_or_no_playlist/video_id
+        for state_file in sorted(self.cache_base.glob("*/*/*/*/state.json")):
+            try:
+                state = json.loads(state_file.read_text())
+                video_id = state.get("video_id", state_file.parent.name)
+                if video_id not in seen_ids:
+                    seen_ids.add(video_id)
+                    videos.append(
+                        {
+                            "video_id": video_id,
+                            "title": state.get("title"),
+                            "duration_string": state.get("duration_string"),
+                            "transcript_complete": state.get("transcript_complete", False),
+                            "transcript_source": state.get("transcript_source"),
+                            "cache_dir": str(state_file.parent),
+                        }
+                    )
             except (json.JSONDecodeError, OSError):
                 continue
 
