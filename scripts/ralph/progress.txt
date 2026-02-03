@@ -215,3 +215,5 @@ Playlist cache: `~/.claude/video_cache/playlists/{playlist_id}/`
 - 2026-02-02 21:27 | claudetube-ba1.2 [P1] | Implement progressive directory enrichment (move on metadata improve)
 - 2026-02-02 21:34 | claudetube-ba1.3 [P1] | Create migration CLI for flat-to-hierarchical conversion
 - 2026-02-02 21:41 | claudetube-7s4 [P4] | Add translation support to DeepgramProvider
+- 2026-02-03 07:57 | claudetube-nrf [P1] | Use yt-dlp Python API instead of subprocess
+- 2026-02-03 08:08 | claudetube-3ri [P1] | Add structured output parsing for yt-dlp subprocess
