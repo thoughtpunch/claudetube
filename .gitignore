@@ -60,3 +60,6 @@ Thumbs.db
 .bv/
 ralph.log
 .beads/.bv.lock
+
+# Local claudetube config (contains API keys, cookies settings)
+.claudetube/config.yaml
