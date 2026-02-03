@@ -111,6 +111,7 @@ async def process_video_tool(
     url: str,
     whisper_model: str = "tiny",
     copy: bool = False,
+    force: bool = False,
 ) -> str:
     """Process a video from URL or local file path.
 
@@ -125,7 +126,24 @@ async def process_video_tool(
              or file URIs (file:///path/to/video.mp4).
         whisper_model: Whisper model size (tiny/base/small/medium/large).
         copy: For local files only - if True, copy the file to cache instead of symlink.
+        force: Re-download and re-process even if cached (default: False).
     """
+    # If force=True, clear the cache first
+    if force:
+        cache = CacheManager(get_cache_dir())
+        # Extract video_id to clear cache
+        if is_local_file(url):
+            from claudetube.models.local_file import LocalFile
+
+            try:
+                local_file = LocalFile.parse(url)
+                cache.clear(local_file.video_id)
+            except Exception:
+                pass  # If parsing fails, we'll let process_local_video handle it
+        else:
+            video_id = extract_video_id(url)
+            cache.clear(video_id)
+
     # Detect if input is a local file or URL
     if is_local_file(url):
         result = await asyncio.to_thread(
