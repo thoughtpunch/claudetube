@@ -32,6 +32,8 @@ from claudetube.db.repos.entities import EntityRepository
 from claudetube.db.repos.frames import FrameRepository
 from claudetube.db.repos.narrative import NarrativeRepository
 from claudetube.db.repos.observations import ObservationRepository
+from claudetube.db.repos.pipeline import PipelineRepository
+from claudetube.db.repos.playlists import PlaylistRepository
 from claudetube.db.repos.qa import QARepository
 from claudetube.db.repos.scenes import SceneRepository
 from claudetube.db.repos.technical_content import TechnicalContentRepository
@@ -47,6 +49,8 @@ __all__ = [
     "FrameRepository",
     "NarrativeRepository",
     "ObservationRepository",
+    "PipelineRepository",
+    "PlaylistRepository",
     "QARepository",
     "SceneRepository",
     "TechnicalContentRepository",

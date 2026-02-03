@@ -4343,3 +4343,580 @@ class TestObservationRepositoryCount:
 
         count1 = observation_repo.count_by_scene(video_uuid, 1)
         assert count1 == 1
+
+
+# ============================================================
+# PlaylistRepository Tests
+# ============================================================
+
+
+@pytest.fixture
+def playlist_repo(db):
+    """Create a PlaylistRepository instance."""
+    from claudetube.db.repos import PlaylistRepository
+    return PlaylistRepository(db)
+
+
+class TestPlaylistRepositoryInsert:
+    """Tests for PlaylistRepository.insert()."""
+
+    def test_insert_playlist(self, playlist_repo):
+        """Test inserting a new playlist."""
+        uuid_ = playlist_repo.insert(
+            playlist_id="PLtest123",
+            domain="youtube",
+            title="Test Playlist",
+        )
+        assert uuid_ is not None
+        assert len(uuid_) == 36
+
+    def test_insert_playlist_with_all_fields(self, playlist_repo):
+        """Test inserting playlist with all fields."""
+        uuid_ = playlist_repo.insert(
+            playlist_id="PLfull",
+            domain="youtube",
+            channel="testchannel",
+            title="Full Playlist",
+            description="A test playlist",
+            url="https://youtube.com/playlist?list=PLfull",
+            video_count=10,
+            playlist_type="course",
+        )
+
+        playlist = playlist_repo.get_by_uuid(uuid_)
+        assert playlist["playlist_id"] == "PLfull"
+        assert playlist["title"] == "Full Playlist"
+        assert playlist["video_count"] == 10
+        assert playlist["playlist_type"] == "course"
+
+    def test_insert_playlist_invalid_type_raises(self, playlist_repo):
+        """Test invalid playlist_type raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid playlist_type"):
+            playlist_repo.insert("PLbad", "youtube", playlist_type="invalid")
+
+    def test_insert_playlist_all_valid_types(self, playlist_repo):
+        """Test all valid playlist types can be inserted."""
+        types = ["course", "series", "conference", "collection"]
+        for i, ptype in enumerate(types):
+            uuid_ = playlist_repo.insert(f"PL{i}", "youtube", playlist_type=ptype)
+            assert uuid_ is not None
+
+    def test_insert_duplicate_playlist_id_fails(self, playlist_repo):
+        """Test inserting duplicate playlist_id raises IntegrityError."""
+        playlist_repo.insert("PLdup", "youtube")
+        with pytest.raises(sqlite3.IntegrityError):
+            playlist_repo.insert("PLdup", "youtube")
+
+
+class TestPlaylistRepositoryUpsert:
+    """Tests for PlaylistRepository.upsert()."""
+
+    def test_upsert_creates_new(self, playlist_repo):
+        """Test upsert creates new playlist when none exists."""
+        uuid_ = playlist_repo.upsert("PLnew", "youtube", title="New Playlist")
+        playlist = playlist_repo.get_by_playlist_id("PLnew")
+        assert playlist is not None
+        assert playlist["title"] == "New Playlist"
+
+    def test_upsert_enriches_null_fields(self, playlist_repo):
+        """Test upsert fills NULL fields without overwriting."""
+        playlist_repo.insert("PLenrich", "youtube")
+
+        uuid_ = playlist_repo.upsert(
+            "PLenrich",
+            "youtube",
+            title="Enriched Title",
+            video_count=5,
+        )
+
+        playlist = playlist_repo.get_by_playlist_id("PLenrich")
+        assert playlist["title"] == "Enriched Title"
+        assert playlist["video_count"] == 5
+
+    def test_upsert_preserves_existing(self, playlist_repo):
+        """Test upsert doesn't overwrite existing non-NULL values."""
+        playlist_repo.insert("PLpreserve", "youtube", title="Original Title")
+
+        playlist_repo.upsert("PLpreserve", "youtube", title="New Title")
+
+        playlist = playlist_repo.get_by_playlist_id("PLpreserve")
+        assert playlist["title"] == "Original Title"
+
+
+class TestPlaylistRepositoryGet:
+    """Tests for PlaylistRepository query methods."""
+
+    def test_get_by_playlist_id(self, playlist_repo):
+        """Test getting playlist by natural key."""
+        playlist_repo.insert("PLget", "youtube", title="Get Test")
+        playlist = playlist_repo.get_by_playlist_id("PLget")
+        assert playlist is not None
+        assert playlist["title"] == "Get Test"
+
+    def test_get_by_playlist_id_not_found(self, playlist_repo):
+        """Test get_by_playlist_id returns None for non-existent."""
+        playlist = playlist_repo.get_by_playlist_id("nonexistent")
+        assert playlist is None
+
+    def test_get_by_uuid(self, playlist_repo):
+        """Test getting playlist by UUID."""
+        uuid_ = playlist_repo.insert("PLuuid", "youtube", title="UUID Test")
+        playlist = playlist_repo.get_by_uuid(uuid_)
+        assert playlist is not None
+        assert playlist["title"] == "UUID Test"
+
+    def test_list_all(self, playlist_repo):
+        """Test listing all playlists."""
+        playlist_repo.insert("PLlist1", "youtube", title="List 1")
+        playlist_repo.insert("PLlist2", "youtube", title="List 2")
+
+        playlists = playlist_repo.list_all()
+        assert len(playlists) >= 2
+
+
+class TestPlaylistRepositoryVideos:
+    """Tests for PlaylistRepository video membership methods."""
+
+    def test_add_video(self, video_repo, playlist_repo):
+        """Test adding a video to a playlist."""
+        video_uuid = video_repo.insert("vid1", "youtube", "/cache/v1")
+        playlist_uuid = playlist_repo.insert("PLvids", "youtube")
+
+        pv_uuid = playlist_repo.add_video(playlist_uuid, video_uuid, position=0)
+        assert pv_uuid is not None
+        assert len(pv_uuid) == 36
+
+    def test_add_video_duplicate_returns_existing(self, video_repo, playlist_repo):
+        """Test adding same video twice returns existing UUID."""
+        video_uuid = video_repo.insert("vid2", "youtube", "/cache/v2")
+        playlist_uuid = playlist_repo.insert("PLdup2", "youtube")
+
+        uuid1 = playlist_repo.add_video(playlist_uuid, video_uuid, 0)
+        uuid2 = playlist_repo.add_video(playlist_uuid, video_uuid, 1)
+        assert uuid1 == uuid2
+
+    def test_add_video_negative_position_raises(self, playlist_repo):
+        """Test negative position raises ValueError."""
+        with pytest.raises(ValueError, match="position must be >= 0"):
+            playlist_repo.add_video("fake", "fake", -1)
+
+    def test_get_videos(self, video_repo, playlist_repo):
+        """Test getting videos in a playlist ordered by position."""
+        v1 = video_repo.insert("getvid1", "youtube", "/c/gv1", title="Video 1")
+        v2 = video_repo.insert("getvid2", "youtube", "/c/gv2", title="Video 2")
+        v3 = video_repo.insert("getvid3", "youtube", "/c/gv3", title="Video 3")
+
+        playlist_uuid = playlist_repo.insert("PLgetvids", "youtube")
+        playlist_repo.add_video(playlist_uuid, v2, 1)
+        playlist_repo.add_video(playlist_uuid, v1, 0)
+        playlist_repo.add_video(playlist_uuid, v3, 2)
+
+        videos = playlist_repo.get_videos(playlist_uuid)
+        assert len(videos) == 3
+        assert videos[0]["title"] == "Video 1"
+        assert videos[1]["title"] == "Video 2"
+        assert videos[2]["title"] == "Video 3"
+
+    def test_get_playlists_for_video(self, video_repo, playlist_repo):
+        """Test getting playlists containing a video."""
+        video_uuid = video_repo.insert("sharedvid", "youtube", "/c/sv")
+        pl1 = playlist_repo.insert("PLfor1", "youtube", title="Playlist A")
+        pl2 = playlist_repo.insert("PLfor2", "youtube", title="Playlist B")
+
+        playlist_repo.add_video(pl1, video_uuid, 0)
+        playlist_repo.add_video(pl2, video_uuid, 0)
+
+        playlists = playlist_repo.get_playlists_for_video(video_uuid)
+        assert len(playlists) == 2
+
+    def test_remove_video(self, video_repo, playlist_repo):
+        """Test removing a video from a playlist."""
+        video_uuid = video_repo.insert("rmvid", "youtube", "/c/rm")
+        playlist_uuid = playlist_repo.insert("PLrm", "youtube")
+        playlist_repo.add_video(playlist_uuid, video_uuid, 0)
+
+        result = playlist_repo.remove_video(playlist_uuid, video_uuid)
+        assert result is True
+
+        videos = playlist_repo.get_videos(playlist_uuid)
+        assert len(videos) == 0
+
+    def test_update_video_position(self, video_repo, playlist_repo):
+        """Test updating a video's position in a playlist."""
+        video_uuid = video_repo.insert("posvid", "youtube", "/c/pos")
+        playlist_uuid = playlist_repo.insert("PLpos", "youtube")
+        playlist_repo.add_video(playlist_uuid, video_uuid, 0)
+
+        result = playlist_repo.update_video_position(playlist_uuid, video_uuid, 5)
+        assert result is True
+
+        videos = playlist_repo.get_videos(playlist_uuid)
+        assert videos[0]["position"] == 5
+
+    def test_count_videos(self, video_repo, playlist_repo):
+        """Test counting videos in a playlist."""
+        v1 = video_repo.insert("cntvid1", "youtube", "/c/cv1")
+        v2 = video_repo.insert("cntvid2", "youtube", "/c/cv2")
+        playlist_uuid = playlist_repo.insert("PLcnt", "youtube")
+
+        playlist_repo.add_video(playlist_uuid, v1, 0)
+        playlist_repo.add_video(playlist_uuid, v2, 1)
+
+        count = playlist_repo.count_videos(playlist_uuid)
+        assert count == 2
+
+
+class TestPlaylistRepositoryDelete:
+    """Tests for PlaylistRepository delete methods."""
+
+    def test_delete(self, playlist_repo):
+        """Test deleting a playlist by UUID."""
+        uuid_ = playlist_repo.insert("PLdel", "youtube")
+        result = playlist_repo.delete(uuid_)
+        assert result is True
+
+        playlist = playlist_repo.get_by_uuid(uuid_)
+        assert playlist is None
+
+    def test_delete_not_found(self, playlist_repo):
+        """Test delete returns False for non-existent."""
+        fake_uuid = str(uuid.uuid4())
+        result = playlist_repo.delete(fake_uuid)
+        assert result is False
+
+    def test_delete_by_playlist_id(self, playlist_repo):
+        """Test deleting a playlist by natural key."""
+        playlist_repo.insert("PLdelnat", "youtube")
+        result = playlist_repo.delete_by_playlist_id("PLdelnat")
+        assert result is True
+
+
+# ============================================================
+# PipelineRepository Tests
+# ============================================================
+
+
+@pytest.fixture
+def pipeline_repo(db):
+    """Create a PipelineRepository instance."""
+    from claudetube.db.repos import PipelineRepository
+    return PipelineRepository(db)
+
+
+class TestPipelineRepositoryRecordStep:
+    """Tests for PipelineRepository.record_step()."""
+
+    def test_record_step(self, video_repo, pipeline_repo):
+        """Test recording a pipeline step."""
+        video_uuid = video_repo.insert("pipevid", "youtube", "/c/pipe")
+
+        step_uuid = pipeline_repo.record_step(
+            video_uuid=video_uuid,
+            step_type="download",
+            status="completed",
+        )
+        assert step_uuid is not None
+        assert len(step_uuid) == 36
+
+    def test_record_step_with_all_fields(self, video_repo, pipeline_repo):
+        """Test recording step with all fields."""
+        video_uuid = video_repo.insert("fullpipe", "youtube", "/c/fp")
+
+        step_uuid = pipeline_repo.record_step(
+            video_uuid=video_uuid,
+            step_type="transcribe",
+            status="completed",
+            provider="whisper",
+            model="small",
+            scene_id=None,
+            config='{"language": "en"}',
+        )
+
+        step = pipeline_repo.get_by_uuid(step_uuid)
+        assert step["step_type"] == "transcribe"
+        assert step["provider"] == "whisper"
+        assert step["model"] == "small"
+
+    def test_record_step_per_scene(self, video_repo, scene_repo, pipeline_repo):
+        """Test recording per-scene pipeline step."""
+        video_uuid = video_repo.insert("scenepipe", "youtube", "/c/sp")
+        scene_repo.insert(video_uuid, 0, 0.0, 30.0)
+
+        step_uuid = pipeline_repo.record_step(
+            video_uuid=video_uuid,
+            step_type="visual_analyze",
+            status="completed",
+            scene_id=0,
+        )
+
+        step = pipeline_repo.get_by_uuid(step_uuid)
+        assert step["scene_id"] == 0
+
+    def test_record_step_invalid_type_raises(self, pipeline_repo):
+        """Test invalid step_type raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid step_type"):
+            pipeline_repo.record_step("fake", "invalid_type", "completed")
+
+    def test_record_step_invalid_status_raises(self, pipeline_repo):
+        """Test invalid status raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid status"):
+            pipeline_repo.record_step("fake", "download", "invalid_status")
+
+    def test_record_step_negative_scene_raises(self, pipeline_repo):
+        """Test negative scene_id raises ValueError."""
+        with pytest.raises(ValueError, match="scene_id must be >= 0"):
+            pipeline_repo.record_step("fake", "download", "pending", scene_id=-1)
+
+    def test_record_step_all_valid_types(self, video_repo, pipeline_repo):
+        """Test all valid step types can be recorded."""
+        video_uuid = video_repo.insert("alltypes", "youtube", "/c/at")
+        types = [
+            "download", "audio_extract", "transcribe", "scene_detect",
+            "keyframe_extract", "visual_analyze", "entity_extract",
+            "deep_analyze", "focus_analyze", "narrative_detect",
+            "change_detect", "code_track", "people_track",
+            "ad_generate", "knowledge_index", "embed",
+        ]
+        for stype in types:
+            step_uuid = pipeline_repo.record_step(video_uuid, stype, "pending")
+            assert step_uuid is not None
+
+    def test_record_step_all_valid_statuses(self, video_repo, pipeline_repo):
+        """Test all valid statuses can be recorded."""
+        video_uuid = video_repo.insert("allstatus", "youtube", "/c/as")
+        statuses = ["pending", "running", "completed", "failed", "skipped"]
+        for i, status in enumerate(statuses):
+            step_uuid = pipeline_repo.record_step(video_uuid, "download", status)
+            step = pipeline_repo.get_by_uuid(step_uuid)
+            assert step["status"] == status
+
+
+class TestPipelineRepositoryUpdateStep:
+    """Tests for PipelineRepository.update_step()."""
+
+    def test_update_step(self, video_repo, pipeline_repo):
+        """Test updating a step status."""
+        video_uuid = video_repo.insert("updpipe", "youtube", "/c/up")
+        step_uuid = pipeline_repo.record_step(video_uuid, "download", "running")
+
+        result = pipeline_repo.update_step(step_uuid, "completed")
+        assert result is True
+
+        step = pipeline_repo.get_by_uuid(step_uuid)
+        assert step["status"] == "completed"
+        assert step["completed_at"] is not None
+
+    def test_update_step_with_error(self, video_repo, pipeline_repo):
+        """Test updating step to failed with error message."""
+        video_uuid = video_repo.insert("errpipe", "youtube", "/c/ep")
+        step_uuid = pipeline_repo.record_step(video_uuid, "download", "running")
+
+        result = pipeline_repo.update_step(
+            step_uuid,
+            "failed",
+            error_message="Network timeout",
+        )
+        assert result is True
+
+        step = pipeline_repo.get_by_uuid(step_uuid)
+        assert step["status"] == "failed"
+        assert step["error_message"] == "Network timeout"
+
+    def test_update_step_not_found(self, pipeline_repo):
+        """Test update returns False for non-existent."""
+        fake_uuid = str(uuid.uuid4())
+        result = pipeline_repo.update_step(fake_uuid, "completed")
+        assert result is False
+
+    def test_update_step_invalid_status_raises(self, video_repo, pipeline_repo):
+        """Test invalid status raises ValueError."""
+        video_uuid = video_repo.insert("badstat", "youtube", "/c/bs")
+        step_uuid = pipeline_repo.record_step(video_uuid, "download", "pending")
+
+        with pytest.raises(ValueError, match="Invalid status"):
+            pipeline_repo.update_step(step_uuid, "invalid")
+
+
+class TestPipelineRepositoryQueries:
+    """Tests for PipelineRepository query methods."""
+
+    def test_get_steps(self, video_repo, pipeline_repo):
+        """Test getting all steps for a video."""
+        video_uuid = video_repo.insert("getsteps", "youtube", "/c/gs")
+        pipeline_repo.record_step(video_uuid, "download", "completed")
+        pipeline_repo.record_step(video_uuid, "audio_extract", "completed")
+        pipeline_repo.record_step(video_uuid, "transcribe", "running")
+
+        steps = pipeline_repo.get_steps(video_uuid)
+        assert len(steps) == 3
+
+    def test_get_step(self, video_repo, pipeline_repo):
+        """Test getting step by type returns a matching step."""
+        video_uuid = video_repo.insert("getstep", "youtube", "/c/gst")
+        pipeline_repo.record_step(video_uuid, "download", "completed")
+
+        step = pipeline_repo.get_step(video_uuid, "download")
+        assert step is not None
+        assert step["step_type"] == "download"
+        assert step["status"] == "completed"
+
+    def test_get_step_not_found(self, video_repo, pipeline_repo):
+        """Test get_step returns None for non-existent step type."""
+        video_uuid = video_repo.insert("nostep", "youtube", "/c/ns")
+        pipeline_repo.record_step(video_uuid, "download", "completed")
+
+        # Different step type should return None
+        step = pipeline_repo.get_step(video_uuid, "transcribe")
+        assert step is None
+
+    def test_get_step_with_scene(self, video_repo, scene_repo, pipeline_repo):
+        """Test getting step for specific scene."""
+        video_uuid = video_repo.insert("scenestep", "youtube", "/c/ss")
+        scene_repo.insert(video_uuid, 0, 0.0, 30.0)
+        scene_repo.insert(video_uuid, 1, 30.0, 60.0)
+
+        pipeline_repo.record_step(video_uuid, "visual_analyze", "completed", scene_id=0)
+        pipeline_repo.record_step(video_uuid, "visual_analyze", "running", scene_id=1)
+
+        step0 = pipeline_repo.get_step(video_uuid, "visual_analyze", scene_id=0)
+        step1 = pipeline_repo.get_step(video_uuid, "visual_analyze", scene_id=1)
+
+        assert step0["status"] == "completed"
+        assert step1["status"] == "running"
+
+    def test_get_failed(self, video_repo, pipeline_repo):
+        """Test getting failed steps."""
+        video_uuid = video_repo.insert("failsteps", "youtube", "/c/fs")
+        pipeline_repo.record_step(video_uuid, "download", "completed")
+        pipeline_repo.record_step(video_uuid, "transcribe", "failed", error_message="Error 1")
+        pipeline_repo.record_step(video_uuid, "scene_detect", "failed", error_message="Error 2")
+
+        failed = pipeline_repo.get_failed(video_uuid)
+        assert len(failed) == 2
+
+    def test_get_failed_all(self, video_repo, pipeline_repo):
+        """Test getting all failed steps across videos."""
+        v1 = video_repo.insert("fail1", "youtube", "/c/f1")
+        v2 = video_repo.insert("fail2", "youtube", "/c/f2")
+        pipeline_repo.record_step(v1, "download", "failed")
+        pipeline_repo.record_step(v2, "download", "failed")
+
+        failed = pipeline_repo.get_failed()
+        assert len(failed) >= 2
+
+
+class TestPipelineRepositoryScenes:
+    """Tests for PipelineRepository scene-related methods."""
+
+    def test_get_incomplete_scenes(self, video_repo, scene_repo, pipeline_repo):
+        """Test getting scenes without completed step."""
+        video_uuid = video_repo.insert("incomp", "youtube", "/c/ic")
+        scene_repo.insert(video_uuid, 0, 0.0, 30.0)
+        scene_repo.insert(video_uuid, 1, 30.0, 60.0)
+        scene_repo.insert(video_uuid, 2, 60.0, 90.0)
+
+        # Complete scene 0 only
+        pipeline_repo.record_step(
+            video_uuid, "visual_analyze", "completed", scene_id=0
+        )
+
+        incomplete = pipeline_repo.get_incomplete_scenes(video_uuid, "visual_analyze")
+        assert 0 not in incomplete
+        assert 1 in incomplete
+        assert 2 in incomplete
+
+    def test_is_step_complete(self, video_repo, pipeline_repo):
+        """Test checking if step is complete."""
+        video_uuid = video_repo.insert("iscomp", "youtube", "/c/isc")
+        pipeline_repo.record_step(video_uuid, "download", "completed")
+        pipeline_repo.record_step(video_uuid, "transcribe", "running")
+
+        assert pipeline_repo.is_step_complete(video_uuid, "download") is True
+        assert pipeline_repo.is_step_complete(video_uuid, "transcribe") is False
+        assert pipeline_repo.is_step_complete(video_uuid, "scene_detect") is False
+
+    def test_is_step_complete_per_scene(self, video_repo, scene_repo, pipeline_repo):
+        """Test checking if per-scene step is complete."""
+        video_uuid = video_repo.insert("iscompscn", "youtube", "/c/ics")
+        scene_repo.insert(video_uuid, 0, 0.0, 30.0)
+        scene_repo.insert(video_uuid, 1, 30.0, 60.0)
+
+        pipeline_repo.record_step(
+            video_uuid, "visual_analyze", "completed", scene_id=0
+        )
+
+        assert pipeline_repo.is_step_complete(
+            video_uuid, "visual_analyze", scene_id=0
+        ) is True
+        assert pipeline_repo.is_step_complete(
+            video_uuid, "visual_analyze", scene_id=1
+        ) is False
+
+
+class TestPipelineRepositoryStatus:
+    """Tests for PipelineRepository status query methods."""
+
+    def test_get_running(self, video_repo, pipeline_repo):
+        """Test getting running steps."""
+        video_uuid = video_repo.insert("running", "youtube", "/c/run")
+        pipeline_repo.record_step(video_uuid, "download", "completed")
+        pipeline_repo.record_step(video_uuid, "transcribe", "running")
+
+        running = pipeline_repo.get_running(video_uuid)
+        assert len(running) == 1
+        assert running[0]["step_type"] == "transcribe"
+
+    def test_get_pending(self, video_repo, pipeline_repo):
+        """Test getting pending steps."""
+        video_uuid = video_repo.insert("pending", "youtube", "/c/pend")
+        pipeline_repo.record_step(video_uuid, "download", "pending")
+        pipeline_repo.record_step(video_uuid, "transcribe", "pending")
+
+        pending = pipeline_repo.get_pending(video_uuid)
+        assert len(pending) == 2
+
+    def test_count_by_status(self, video_repo, pipeline_repo):
+        """Test counting steps by status."""
+        video_uuid = video_repo.insert("cntstat", "youtube", "/c/cs")
+        pipeline_repo.record_step(video_uuid, "download", "completed")
+        pipeline_repo.record_step(video_uuid, "audio_extract", "completed")
+        pipeline_repo.record_step(video_uuid, "transcribe", "failed")
+        pipeline_repo.record_step(video_uuid, "scene_detect", "running")
+
+        counts = pipeline_repo.count_by_status(video_uuid)
+        assert counts.get("completed") == 2
+        assert counts.get("failed") == 1
+        assert counts.get("running") == 1
+
+
+class TestPipelineRepositoryDelete:
+    """Tests for PipelineRepository delete methods."""
+
+    def test_delete_step(self, video_repo, pipeline_repo):
+        """Test deleting a step."""
+        video_uuid = video_repo.insert("delstep", "youtube", "/c/ds")
+        step_uuid = pipeline_repo.record_step(video_uuid, "download", "pending")
+
+        result = pipeline_repo.delete_step(step_uuid)
+        assert result is True
+
+        step = pipeline_repo.get_by_uuid(step_uuid)
+        assert step is None
+
+    def test_delete_step_not_found(self, pipeline_repo):
+        """Test delete returns False for non-existent."""
+        fake_uuid = str(uuid.uuid4())
+        result = pipeline_repo.delete_step(fake_uuid)
+        assert result is False
+
+    def test_delete_steps(self, video_repo, pipeline_repo):
+        """Test deleting all steps for a video."""
+        video_uuid = video_repo.insert("delall", "youtube", "/c/da")
+        pipeline_repo.record_step(video_uuid, "download", "completed")
+        pipeline_repo.record_step(video_uuid, "transcribe", "completed")
+
+        count = pipeline_repo.delete_steps(video_uuid)
+        assert count == 2
+
+        steps = pipeline_repo.get_steps(video_uuid)
+        assert len(steps) == 0
