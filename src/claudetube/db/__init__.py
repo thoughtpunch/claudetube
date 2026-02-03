@@ -36,7 +36,8 @@ def get_database(db_path: str | Path | None = None) -> Database:
     """Get the singleton Database instance, creating it if needed.
 
     On first call, creates the database, enables WAL mode and foreign keys,
-    and runs any pending migrations.
+    and runs any pending migrations. If this is a fresh database (no existing
+    videos), it auto-imports from the JSON cache.
 
     Args:
         db_path: Path to the SQLite database file. If None, auto-discovers
@@ -58,11 +59,46 @@ def get_database(db_path: str | Path | None = None) -> Database:
         if db_path is None:
             db_path = _default_db_path()
 
+        # Check if database file exists before creating
+        db_path = Path(db_path)
+        is_new_db = not db_path.exists()
+
         db = Database(db_path)
         run_migrations(db)
+
+        # Auto-import from JSON cache on first creation
+        if is_new_db:
+            _auto_import_from_cache(db, db_path)
+
         _db_instance = db
         logger.info("Database initialized at %s", db_path)
         return db
+
+
+def _auto_import_from_cache(db: Database, db_path: Path) -> None:
+    """Auto-import existing JSON caches into the fresh database.
+
+    Called only on first database creation to populate SQLite from
+    existing video caches. This ensures the full video library is
+    queryable immediately without re-processing.
+
+    Args:
+        db: Fresh Database instance.
+        db_path: Path to the database file (used to infer cache_base).
+    """
+    try:
+        # Infer cache_base from db_path (db is typically in cache dir)
+        cache_base = db_path.parent
+
+        # Import from cache
+        from claudetube.db.importer import auto_import
+
+        imported = auto_import(cache_base, db)
+        if imported > 0:
+            logger.info("Auto-imported %d videos from JSON cache", imported)
+    except Exception:
+        # Don't fail database init if import fails
+        logger.warning("Auto-import from JSON cache failed", exc_info=True)
 
 
 def close_database() -> None:
