@@ -107,13 +107,8 @@ def process_video(
                 metadata=state.to_dict() if state else {},
             )
 
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    audio_path = cache_dir / "audio.mp3"
-    srt_path = cache_dir / "audio.srt"
-    txt_path = cache_dir / "audio.txt"
-    thumbnail_path = cache_dir / "thumbnail.jpg"
-
-    # STEP 1: Fetch metadata
+    # STEP 1: Fetch metadata BEFORE creating directories
+    # This allows us to use channel_id from metadata in the cache path
     log_timed("Fetching video metadata...", t0)
 
     # Record download pipeline step as running
@@ -145,13 +140,32 @@ def process_video(
             error_info=error_info,
         )
 
+    # Now that we have metadata, rebuild video_path WITH channel_id
+    # This ensures the cache directory is created at the correct hierarchical path
+    enriched_video_path = VideoPath.from_url(url, metadata=meta)
+
+    # Preserve explicit playlist_id if provided
+    if url_playlist_id and not enriched_video_path.playlist:
+        enriched_video_path = VideoPath(
+            domain=enriched_video_path.domain,
+            channel=enriched_video_path.channel,
+            playlist=url_playlist_id,
+            video_id=enriched_video_path.video_id,
+        )
+
+    # Use enriched path for cache directory (unless already exists at old path)
+    if not (cache_dir.exists() and (cache_dir / "state.json").exists()):
+        # No content at initial path - use the enriched path
+        cache_dir = cache.get_cache_dir_for_path(enriched_video_path)
+
     state = VideoState.from_metadata(video_id, url, meta)
-    state.playlist_id = url_playlist_id
+    state.playlist_id = url_playlist_id or enriched_video_path.playlist
     # Store hierarchical path info in state for database sync
-    state.domain = video_path.domain
-    state.channel_id = (
+    state.domain = enriched_video_path.domain
+    state.channel_id = enriched_video_path.channel or (
         meta.get("channel_id") or meta.get("uploader_id") or video_path.channel
     )
+
     cache_dir.mkdir(parents=True, exist_ok=True)
     save_state(state, cache_dir / "state.json")
     log_timed(f"Metadata: '{state.title}' ({state.duration_string})", t0)
@@ -166,11 +180,11 @@ def process_video(
     except Exception:
         pass  # Fire-and-forget
 
-    # Progressive enrichment: check if yt-dlp metadata provides better path info
-    # than what we extracted from URL alone. If so, move the cache directory.
+    # Progressive enrichment is now less critical since we start with enriched path,
+    # but keep it for edge cases where URL parsing found info yt-dlp didn't
     cache_dir = _try_progressive_enrichment(
         video_id=video_id,
-        video_path=video_path,
+        video_path=enriched_video_path,  # Use enriched path for comparison
         meta=meta,
         cache_dir=cache_dir,
         cache_base=cache_base,
