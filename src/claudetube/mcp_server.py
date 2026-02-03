@@ -448,6 +448,64 @@ async def list_playlists() -> str:
     return json.dumps({"count": len(playlists), "playlists": playlists}, indent=2)
 
 
+def _find_youtube_subtitle(video_dir: Path, video_id: str) -> Path | None:
+    """Find raw YouTube subtitle file in cache directory.
+
+    YouTube subtitles are downloaded with names like:
+    - {video_id}.en.srt (uploaded subtitles)
+    - {video_id}.en-auto.srt (auto-generated)
+
+    Args:
+        video_dir: Cache directory for the video.
+        video_id: Video ID to match in filename.
+
+    Returns:
+        Path to subtitle file, or None if not found.
+    """
+    # Look for subtitle files matching video_id
+    patterns = [
+        f"{video_id}.*.srt",  # e.g., video_id.en.srt, video_id.en-auto.srt
+        f"{video_id}.srt",    # Plain SRT
+    ]
+    for pattern in patterns:
+        matches = list(video_dir.glob(pattern))
+        if matches:
+            # Prefer non-auto subtitles (uploaded are higher quality)
+            for match in matches:
+                if ".auto." not in match.name and "-auto" not in match.name:
+                    return match
+            # Fall back to auto-generated
+            return matches[0]
+    return None
+
+
+def _parse_srt_to_txt(srt_content: str) -> str:
+    """Parse SRT content to plain text (strip timing, clean HTML).
+
+    Args:
+        srt_content: Raw SRT file content.
+
+    Returns:
+        Plain text transcript.
+    """
+    import re
+
+    # Clean HTML tags from auto-generated subs
+    cleaned = re.sub(r"<[^>]+>", "", srt_content)
+
+    txt_lines = []
+    for line in cleaned.splitlines():
+        line = line.strip()
+        # Skip empty lines, sequence numbers, timestamps
+        if not line or re.match(r"^\d+$", line) or "-->" in line:
+            continue
+        # Avoid duplicating repeated lines
+        if line not in txt_lines[-1:]:
+            txt_lines.append(line)
+
+    return "\n".join(txt_lines)
+
+
 @mcp.tool()
 async def get_transcript(
     video_id: str,
@@ -481,6 +539,40 @@ async def get_transcript(
         if fallback.exists():
             transcript_path = fallback
         else:
+            # FALLBACK: Look for raw YouTube subtitle files
+            # These exist when video was partially processed (metadata + subs downloaded
+            # but transcription post-processing never ran)
+            youtube_sub = _find_youtube_subtitle(video_dir, video_id)
+            if youtube_sub:
+                logger.info(f"Found YouTube subtitle: {youtube_sub.name}")
+                srt_content = youtube_sub.read_text(errors="replace")
+
+                if format == "srt":
+                    # Return raw SRT content
+                    return json.dumps(
+                        {
+                            "video_id": video_id,
+                            "format": "srt",
+                            "length": len(srt_content),
+                            "transcript": srt_content,
+                            "source": "youtube_subtitle",
+                        },
+                        indent=2,
+                    )
+                else:
+                    # Convert SRT to plain text
+                    txt_content = _parse_srt_to_txt(srt_content)
+                    return json.dumps(
+                        {
+                            "video_id": video_id,
+                            "format": "txt",
+                            "length": len(txt_content),
+                            "transcript": txt_content,
+                            "source": "youtube_subtitle",
+                        },
+                        indent=2,
+                    )
+
             return json.dumps({
                 "error": "No transcript file found. Run process_video or transcribe_video first.",
                 "video_id": video_id,
