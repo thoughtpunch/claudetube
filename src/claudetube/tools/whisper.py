@@ -8,7 +8,12 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from claudetube.config.defaults import MIN_TRANSCRIPT_COVERAGE, WHISPER_BATCH_SIZE
+from claudetube.config.defaults import (
+    MIN_TRANSCRIPT_COVERAGE,
+    SRT_MAX_SEGMENT_DURATION,
+    SRT_TARGET_SEGMENT_DURATION,
+    WHISPER_BATCH_SIZE,
+)
 from claudetube.exceptions import TranscriptionError
 from claudetube.tools.base import VideoTool
 from claudetube.utils.formatting import format_srt_time
@@ -62,22 +67,89 @@ class WhisperTool(VideoTool):
 
         return self._model
 
+    def _split_long_segment(self, seg) -> list[dict]:
+        """Split a long segment into shorter chunks using word timestamps.
+
+        Args:
+            seg: Whisper segment with words attribute
+
+        Returns:
+            List of dicts with 'start', 'end', 'text' keys
+        """
+        # If no word-level timestamps, return as-is
+        if not hasattr(seg, "words") or not seg.words:
+            return [{"start": seg.start, "end": seg.end, "text": seg.text.strip()}]
+
+        duration = seg.end - seg.start
+        if duration <= SRT_MAX_SEGMENT_DURATION:
+            return [{"start": seg.start, "end": seg.end, "text": seg.text.strip()}]
+
+        # Split using word timestamps
+        chunks = []
+        current_words = []
+        chunk_start = None
+
+        for word in seg.words:
+            word_text = word.word.strip() if hasattr(word, "word") else str(word)
+            word_start = word.start if hasattr(word, "start") else seg.start
+            word_end = word.end if hasattr(word, "end") else seg.end
+
+            if chunk_start is None:
+                chunk_start = word_start
+
+            current_words.append(word_text)
+            chunk_duration = word_end - chunk_start
+
+            # Split when we hit target duration (at word boundary)
+            if chunk_duration >= SRT_TARGET_SEGMENT_DURATION and current_words:
+                chunk_text = " ".join(current_words).strip()
+                if chunk_text:
+                    chunks.append({
+                        "start": chunk_start,
+                        "end": word_end,
+                        "text": chunk_text,
+                    })
+                current_words = []
+                chunk_start = None
+
+        # Don't forget the last chunk
+        if current_words:
+            last_word = seg.words[-1]
+            chunk_text = " ".join(current_words).strip()
+            if chunk_text:
+                chunks.append({
+                    "start": chunk_start or seg.start,
+                    "end": last_word.end if hasattr(last_word, "end") else seg.end,
+                    "text": chunk_text,
+                })
+
+        return chunks if chunks else [{"start": seg.start, "end": seg.end, "text": seg.text.strip()}]
+
     def _collect_segments(self, segments) -> dict:
-        """Collect transcription segments into SRT and TXT format."""
+        """Collect transcription segments into SRT and TXT format.
+
+        Splits segments longer than SRT_MAX_SEGMENT_DURATION using word timestamps.
+        """
         srt_lines = []
         txt_lines = []
         last_end = 0.0
+        segment_num = 0
 
-        for i, seg in enumerate(segments, 1):
-            start = format_srt_time(seg.start)
-            end = format_srt_time(seg.end)
-            text = seg.text.strip()
-            last_end = seg.end
+        for seg in segments:
+            # Split long segments using word timestamps
+            chunks = self._split_long_segment(seg)
 
-            srt_lines.append(f"{i}\n{start} --> {end}\n{text}\n")
-            txt_lines.append(text)
+            for chunk in chunks:
+                segment_num += 1
+                start = format_srt_time(chunk["start"])
+                end = format_srt_time(chunk["end"])
+                text = chunk["text"]
+                last_end = chunk["end"]
 
-            logger.debug(f"[{start}] {text[:60]}{'...' if len(text) > 60 else ''}")
+                srt_lines.append(f"{segment_num}\n{start} --> {end}\n{text}\n")
+                txt_lines.append(text)
+
+                logger.debug(f"[{start}] {text[:60]}{'...' if len(text) > 60 else ''}")
 
         return {
             "srt": "\n".join(srt_lines),
@@ -138,6 +210,7 @@ class WhisperTool(VideoTool):
             str(audio_path),
             language=language,
             batch_size=WHISPER_BATCH_SIZE,
+            word_timestamps=True,  # Enable word-level timestamps for segment splitting
         )
 
         result = self._collect_segments(segments)
@@ -167,6 +240,7 @@ class WhisperTool(VideoTool):
         segments, info = model.transcribe(
             str(audio_path),
             language=language,
+            word_timestamps=True,  # Enable word-level timestamps for segment splitting
         )
 
         return self._collect_segments(segments)

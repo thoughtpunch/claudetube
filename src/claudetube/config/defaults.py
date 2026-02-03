@@ -25,3 +25,9 @@ WHISPER_BATCH_SIZE = 16
 # Minimum coverage ratio to accept batched transcription
 # (fallback to non-batched if coverage is too low)
 MIN_TRANSCRIPT_COVERAGE = 0.25
+
+# SRT segment duration limits (seconds)
+# Segments longer than MAX will be split using word timestamps
+# Target duration when splitting long segments
+SRT_MAX_SEGMENT_DURATION = 7.0
+SRT_TARGET_SEGMENT_DURATION = 5.0
