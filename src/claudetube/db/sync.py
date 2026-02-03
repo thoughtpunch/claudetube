@@ -1012,3 +1012,278 @@ def sync_technical_content(
     except Exception:
         logger.debug("Failed to sync technical content to SQLite", exc_info=True)
         return None
+
+
+def sync_entity(
+    name: str,
+    entity_type: str,
+) -> str | None:
+    """Sync an entity record to SQLite.
+
+    Creates a new entity record or returns the existing one. Uses INSERT OR IGNORE
+    to handle the UNIQUE(name, entity_type) constraint gracefully.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        name: Entity name (e.g., "Python", "Alice", "machine learning").
+        entity_type: One of: object, concept, person, technology, organization.
+
+    Returns:
+        The UUID for the entity (existing or newly created), or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        from claudetube.db.repos.entities import EntityRepository
+
+        repo = EntityRepository(db)
+        entity_uuid = repo.insert_entity(name, entity_type)
+        logger.debug("Synced entity %s (%s)", name, entity_type)
+        return entity_uuid
+
+    except Exception:
+        logger.debug("Failed to sync entity to SQLite", exc_info=True)
+        return None
+
+
+def sync_entity_appearance(
+    entity_uuid: str,
+    video_uuid: str,
+    scene_id: int,
+    timestamp: float,
+    *,
+    score: float | None = None,
+) -> str | None:
+    """Sync an entity appearance record to SQLite.
+
+    Records where an entity appears (video, scene, timestamp). Uses INSERT OR IGNORE
+    to handle the UNIQUE(entity_id, video_id, scene_id) constraint gracefully.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        entity_uuid: UUID of the entity.
+        video_uuid: UUID of the video.
+        scene_id: Scene index (0-based).
+        timestamp: Timestamp in seconds.
+        score: Optional confidence score (0-1).
+
+    Returns:
+        The UUID for the appearance, or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        from claudetube.db.repos.entities import EntityRepository
+
+        repo = EntityRepository(db)
+        appearance_uuid = repo.insert_appearance(
+            entity_uuid=entity_uuid,
+            video_uuid=video_uuid,
+            scene_id=scene_id,
+            timestamp=timestamp,
+            score=score,
+        )
+        logger.debug(
+            "Synced entity appearance for entity %s at scene %d",
+            entity_uuid,
+            scene_id,
+        )
+        return appearance_uuid
+
+    except Exception:
+        logger.debug("Failed to sync entity appearance to SQLite", exc_info=True)
+        return None
+
+
+def sync_entity_video_summary(
+    entity_uuid: str,
+    video_uuid: str,
+    frequency: int = 1,
+    *,
+    avg_score: float | None = None,
+) -> str | None:
+    """Sync an entity-video summary record to SQLite.
+
+    Records or updates aggregated stats for an entity in a video. Uses INSERT OR REPLACE
+    to upsert the summary record.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        entity_uuid: UUID of the entity.
+        video_uuid: UUID of the video.
+        frequency: Number of appearances (default: 1).
+        avg_score: Optional average confidence score (0-1).
+
+    Returns:
+        The UUID for the summary record, or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        from claudetube.db.repos.entities import EntityRepository
+
+        repo = EntityRepository(db)
+        summary_uuid = repo.insert_video_summary(
+            entity_uuid=entity_uuid,
+            video_uuid=video_uuid,
+            frequency=frequency,
+            avg_score=avg_score,
+        )
+        logger.debug(
+            "Synced entity video summary for entity %s in video %s",
+            entity_uuid,
+            video_uuid,
+        )
+        return summary_uuid
+
+    except Exception:
+        logger.debug("Failed to sync entity video summary to SQLite", exc_info=True)
+        return None
+
+
+def sync_qa(
+    video_uuid: str,
+    question: str,
+    answer: str,
+    *,
+    scene_ids: list[int] | None = None,
+) -> str | None:
+    """Sync a Q&A record to SQLite.
+
+    Creates a new Q&A record for the given video with optional scene associations.
+    The question and answer are indexed by FTS5 for cross-video search.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_uuid: UUID of the video this Q&A is about.
+        question: The question asked.
+        answer: The answer given.
+        scene_ids: Optional list of scene IDs this Q&A relates to.
+
+    Returns:
+        The UUID for the Q&A record, or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        from claudetube.db.repos.qa import QARepository
+
+        repo = QARepository(db)
+        qa_uuid = repo.insert(
+            video_uuid=video_uuid,
+            question=question,
+            answer=answer,
+            scene_ids=scene_ids,
+        )
+        logger.debug(
+            "Synced Q&A for video %s with %d scenes",
+            video_uuid,
+            len(scene_ids) if scene_ids else 0,
+        )
+        return qa_uuid
+
+    except Exception:
+        logger.debug("Failed to sync Q&A to SQLite", exc_info=True)
+        return None
+
+
+def sync_observation(
+    video_uuid: str,
+    scene_id: int,
+    obs_type: str,
+    content: str,
+) -> str | None:
+    """Sync an observation record to SQLite.
+
+    Creates a new observation record for the given video scene.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_uuid: UUID of the video this observation is about.
+        scene_id: Scene index this observation relates to (0-based).
+        obs_type: Type of observation (e.g., "visual", "technical", "note").
+        content: The observation content.
+
+    Returns:
+        The UUID for the observation, or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        from claudetube.db.repos.observations import ObservationRepository
+
+        repo = ObservationRepository(db)
+        obs_uuid = repo.insert(
+            video_uuid=video_uuid,
+            scene_id=scene_id,
+            obs_type=obs_type,
+            content=content,
+        )
+        logger.debug(
+            "Synced observation for video %s scene %d",
+            video_uuid,
+            scene_id,
+        )
+        return obs_uuid
+
+    except Exception:
+        logger.debug("Failed to sync observation to SQLite", exc_info=True)
+        return None
+
+
+def update_scene_relevance_boost(
+    video_uuid: str,
+    scene_id: int,
+    boost: float,
+) -> bool:
+    """Update the relevance boost for a scene in SQLite.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_uuid: UUID of the parent video.
+        scene_id: The scene identifier.
+        boost: New relevance boost value (must be >= 0).
+
+    Returns:
+        True if the scene was updated, False if not found or sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return False
+
+        from claudetube.db.repos.scenes import SceneRepository
+
+        repo = SceneRepository(db)
+        result = repo.update_relevance_boost(
+            video_uuid=video_uuid,
+            scene_id=scene_id,
+            boost=boost,
+        )
+        logger.debug(
+            "Updated relevance boost for video %s scene %d to %.2f",
+            video_uuid,
+            scene_id,
+            boost,
+        )
+        return result
+
+    except Exception:
+        logger.debug("Failed to update scene relevance boost in SQLite", exc_info=True)
+        return False

@@ -225,7 +225,7 @@ def load_concepts(cache_dir: Path) -> dict[str, TrackedConcept] | None:
 def save_objects(
     cache_dir: Path, objects: dict[str, TrackedObject], video_id: str
 ) -> None:
-    """Save objects to entities/objects.json."""
+    """Save objects to entities/objects.json and sync to SQLite."""
     path = get_objects_json_path(cache_dir)
     data = {
         "video_id": video_id,
@@ -234,11 +234,44 @@ def save_objects(
     }
     path.write_text(json.dumps(data, indent=2))
 
+    # Dual-write: sync entities to SQLite (fire-and-forget)
+    try:
+        from claudetube.db.sync import (
+            get_video_uuid,
+            sync_entity,
+            sync_entity_appearance,
+            sync_entity_video_summary,
+        )
+
+        video_uuid = get_video_uuid(video_id)
+        if video_uuid:
+            for name, obj in objects.items():
+                # Insert entity (uses INSERT OR IGNORE for dedup)
+                entity_uuid = sync_entity(name, "object")
+                if entity_uuid:
+                    # Insert appearances for each scene
+                    for appearance in obj.appearances:
+                        sync_entity_appearance(
+                            entity_uuid=entity_uuid,
+                            video_uuid=video_uuid,
+                            scene_id=appearance.scene_id,
+                            timestamp=appearance.timestamp,
+                        )
+                    # Insert video summary
+                    sync_entity_video_summary(
+                        entity_uuid=entity_uuid,
+                        video_uuid=video_uuid,
+                        frequency=obj.frequency,
+                    )
+    except Exception:
+        # Fire-and-forget: don't disrupt JSON writes
+        pass
+
 
 def save_concepts(
     cache_dir: Path, concepts: dict[str, TrackedConcept], video_id: str
 ) -> None:
-    """Save concepts to entities/concepts.json."""
+    """Save concepts to entities/concepts.json and sync to SQLite."""
     path = get_concepts_json_path(cache_dir)
     data = {
         "video_id": video_id,
@@ -246,6 +279,41 @@ def save_concepts(
         "concepts": {term: concept.to_dict() for term, concept in concepts.items()},
     }
     path.write_text(json.dumps(data, indent=2))
+
+    # Dual-write: sync entities to SQLite (fire-and-forget)
+    try:
+        from claudetube.db.sync import (
+            get_video_uuid,
+            sync_entity,
+            sync_entity_appearance,
+            sync_entity_video_summary,
+        )
+
+        video_uuid = get_video_uuid(video_id)
+        if video_uuid:
+            for term, concept in concepts.items():
+                # Insert entity (uses INSERT OR IGNORE for dedup)
+                entity_uuid = sync_entity(term, "concept")
+                if entity_uuid:
+                    # Insert appearances for each mention
+                    for mention in concept.mentions:
+                        sync_entity_appearance(
+                            entity_uuid=entity_uuid,
+                            video_uuid=video_uuid,
+                            scene_id=mention.scene_id,
+                            timestamp=mention.timestamp,
+                            score=mention.score,
+                        )
+                    # Insert video summary with avg_score
+                    sync_entity_video_summary(
+                        entity_uuid=entity_uuid,
+                        video_uuid=video_uuid,
+                        frequency=concept.frequency,
+                        avg_score=concept.avg_score if concept.avg_score > 0 else None,
+                    )
+    except Exception:
+        # Fire-and-forget: don't disrupt JSON writes
+        pass
 
 
 def track_objects_from_scenes(scenes: list[dict]) -> dict[str, TrackedObject]:
@@ -492,6 +560,18 @@ def track_entities(
     save_objects(cache_dir, objects, video_id)
     save_concepts(cache_dir, concepts, video_id)
     logger.info(f"Saved entities to {get_entities_dir(cache_dir)}")
+
+    # Record pipeline step (fire-and-forget)
+    try:
+        from claudetube.db.sync import record_pipeline_step
+
+        record_pipeline_step(
+            video_id,
+            step_type="entity_extract",
+            status="completed",
+        )
+    except Exception:
+        pass
 
     return {
         "video_id": video_id,

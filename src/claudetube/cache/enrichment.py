@@ -164,12 +164,15 @@ def get_relevance_boosts(cache_dir: Path) -> dict[str, float]:
         return {}
 
 
-def save_relevance_boosts(cache_dir: Path, boosts: dict[str, float]) -> None:
-    """Save relevance boost values.
+def save_relevance_boosts(
+    cache_dir: Path, boosts: dict[str, float], video_id: str | None = None
+) -> None:
+    """Save relevance boost values and sync to SQLite.
 
     Args:
         cache_dir: Video cache directory.
         boosts: Dict mapping scene_id (as string) to boost multiplier.
+        video_id: Optional video ID for SQLite sync.
     """
     scenes_dir = cache_dir / "scenes"
     scenes_dir.mkdir(parents=True, exist_ok=True)
@@ -177,11 +180,30 @@ def save_relevance_boosts(cache_dir: Path, boosts: dict[str, float]) -> None:
     boosts_file = scenes_dir / "relevance_boosts.json"
     boosts_file.write_text(json.dumps(boosts, indent=2))
 
+    # Dual-write: sync relevance boosts to SQLite (fire-and-forget)
+    if video_id:
+        try:
+            from claudetube.db.sync import get_video_uuid, update_scene_relevance_boost
+
+            video_uuid = get_video_uuid(video_id)
+            if video_uuid:
+                for scene_id_str, boost in boosts.items():
+                    try:
+                        scene_id = int(scene_id_str)
+                        update_scene_relevance_boost(video_uuid, scene_id, boost)
+                    except (ValueError, TypeError):
+                        # Invalid scene_id format
+                        pass
+        except Exception:
+            # Fire-and-forget: don't disrupt JSON writes
+            pass
+
 
 def boost_scene_relevance(
     cache_dir: Path,
     scene_id: int,
     boost: float = 0.1,
+    video_id: str | None = None,
 ) -> float:
     """Boost relevance score for a scene.
 
@@ -193,6 +215,7 @@ def boost_scene_relevance(
         cache_dir: Video cache directory.
         scene_id: Scene index (0-based).
         boost: Amount to add to the multiplier (default: 0.1).
+        video_id: Optional video ID for SQLite sync.
 
     Returns:
         New boost value for the scene.
@@ -204,7 +227,7 @@ def boost_scene_relevance(
     new_value = current + boost
     boosts[key] = new_value
 
-    save_relevance_boosts(cache_dir, boosts)
+    save_relevance_boosts(cache_dir, boosts, video_id=video_id)
     return new_value
 
 
@@ -264,8 +287,8 @@ def record_frame_examination(
         content=f"Examined {quality} frames at {start_time:.1f}s for {duration:.1f}s",
     )
 
-    # Boost relevance
-    new_boost = boost_scene_relevance(cache_dir, scene_id, boost=0.1)
+    # Boost relevance (pass video_id for SQLite sync)
+    new_boost = boost_scene_relevance(cache_dir, scene_id, boost=0.1, video_id=video_id)
 
     return {
         "scene_id": scene_id,
@@ -306,9 +329,9 @@ def record_qa_interaction(
     memory = VideoMemory(video_id, cache_dir)
     memory.record_qa(question, answer, relevant_scene_ids)
 
-    # Boost relevance for all relevant scenes
+    # Boost relevance for all relevant scenes (pass video_id for SQLite sync)
     for scene_id in relevant_scene_ids:
-        boost_scene_relevance(cache_dir, scene_id, boost=0.05)
+        boost_scene_relevance(cache_dir, scene_id, boost=0.05, video_id=video_id)
 
     return {
         "question": question,

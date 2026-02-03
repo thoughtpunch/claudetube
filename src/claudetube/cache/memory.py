@@ -140,12 +140,16 @@ class VideoMemory:
         return []
 
     def _save_observations(self) -> None:
-        """Save observations to disk."""
+        """Save observations to disk and sync to SQLite."""
         self.observations_file.write_text(json.dumps(self._observations, indent=2))
+
+        # Note: Individual observation sync is handled in record_observation()
 
     def _save_qa(self) -> None:
         """Save Q&A history to disk."""
         self.qa_file.write_text(json.dumps(self._qa_history, indent=2))
+
+        # Note: Individual Q&A sync is handled in record_qa()
 
     def record_observation(self, scene_id: int, obs_type: str, content: str) -> None:
         """Record something the agent noticed about a scene.
@@ -168,6 +172,22 @@ class VideoMemory:
         )
         self._save_observations()
 
+        # Dual-write: sync observation to SQLite (fire-and-forget)
+        try:
+            from claudetube.db.sync import get_video_uuid, sync_observation
+
+            video_uuid = get_video_uuid(self.video_id)
+            if video_uuid:
+                sync_observation(
+                    video_uuid=video_uuid,
+                    scene_id=scene_id,
+                    obs_type=obs_type,
+                    content=content,
+                )
+        except Exception:
+            # Fire-and-forget: don't disrupt JSON writes
+            pass
+
     def record_qa(self, question: str, answer: str, scenes: list[int]) -> None:
         """Cache a Q&A pair for future reference.
 
@@ -185,6 +205,22 @@ class VideoMemory:
             }
         )
         self._save_qa()
+
+        # Dual-write: sync Q&A to SQLite (fire-and-forget)
+        try:
+            from claudetube.db.sync import get_video_uuid, sync_qa
+
+            video_uuid = get_video_uuid(self.video_id)
+            if video_uuid:
+                sync_qa(
+                    video_uuid=video_uuid,
+                    question=question,
+                    answer=answer,
+                    scene_ids=scenes if scenes else None,
+                )
+        except Exception:
+            # Fire-and-forget: don't disrupt JSON writes
+            pass
 
     def get_observations(self, scene_id: int) -> list[dict]:
         """Get all observations for a specific scene.

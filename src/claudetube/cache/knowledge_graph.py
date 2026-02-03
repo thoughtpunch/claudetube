@@ -198,7 +198,7 @@ class VideoKnowledgeGraph:
             logger.warning(f"Failed to load knowledge graph: {e}")
 
     def _save(self) -> None:
-        """Save graph to disk."""
+        """Save graph to disk and sync to SQLite."""
         data = {
             "videos": {
                 vid: {
@@ -218,6 +218,44 @@ class VideoKnowledgeGraph:
         }
         self.graph_path.write_text(json.dumps(data, indent=2))
         logger.debug(f"Saved knowledge graph to {self.graph_path}")
+
+        # Dual-write: sync entity_video_summary to SQLite (fire-and-forget)
+        # This syncs the cross-video knowledge graph data
+        try:
+            from claudetube.db.sync import (
+                get_video_uuid,
+                sync_entity,
+                sync_entity_video_summary,
+            )
+
+            # Sync entities and their video summaries
+            for entity_key, entity in self._entities.items():
+                entity_uuid = sync_entity(entity_key, entity.entity_type)
+                if entity_uuid:
+                    for video_id in entity.video_ids:
+                        video_uuid = get_video_uuid(video_id)
+                        if video_uuid:
+                            sync_entity_video_summary(
+                                entity_uuid=entity_uuid,
+                                video_uuid=video_uuid,
+                                frequency=1,  # Default frequency for knowledge graph
+                            )
+
+            # Sync concepts as entities too
+            for concept_key, concept in self._concepts.items():
+                entity_uuid = sync_entity(concept_key, "concept")
+                if entity_uuid:
+                    for video_id in concept.video_ids:
+                        video_uuid = get_video_uuid(video_id)
+                        if video_uuid:
+                            sync_entity_video_summary(
+                                entity_uuid=entity_uuid,
+                                video_uuid=video_uuid,
+                                frequency=1,
+                            )
+        except Exception:
+            # Fire-and-forget: don't disrupt JSON writes
+            pass
 
     def add_video(
         self,
@@ -538,6 +576,18 @@ def index_video_to_graph(
         entities=entities,
         concepts=concept_terms,
     )
+
+    # Record pipeline step (fire-and-forget)
+    try:
+        from claudetube.db.sync import record_pipeline_step
+
+        record_pipeline_step(
+            video_id,
+            step_type="knowledge_index",
+            status="completed",
+        )
+    except Exception:
+        pass
 
     return {
         "video_id": video_id,
