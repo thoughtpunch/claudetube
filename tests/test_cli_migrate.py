@@ -232,7 +232,10 @@ class TestMigrateCommand:
         # Mock database
         mock_db = MagicMock()
         mock_repo = MagicMock()
-        mock_repo.get_by_video_id.return_value = {"id": "uuid-123", "video_id": video_id}
+        mock_repo.get_by_video_id.return_value = {
+            "id": "uuid-123",
+            "video_id": video_id,
+        }
 
         with (
             patch("sys.argv", ["claudetube", "migrate"]),
@@ -318,7 +321,9 @@ class TestMigrateCommand:
             main()
 
         # Channel name should be sanitized (unsafe chars replaced with _)
-        new_dir = tmp_path / "youtube" / "Bad_Channel_Name_Here_" / "no_playlist" / video_id
+        new_dir = (
+            tmp_path / "youtube" / "Bad_Channel_Name_Here_" / "no_playlist" / video_id
+        )
         assert new_dir.exists()
 
     def test_migrate_progress_reported(self, tmp_path, capsys):

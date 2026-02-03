@@ -229,7 +229,9 @@ class TestVideoPathFromCachePath:
         assert vp.video_id == "abc"
 
     def test_local_path(self):
-        vp = VideoPath.from_cache_path("local/no_channel/no_playlist/screen_rec_a3f2dd1e")
+        vp = VideoPath.from_cache_path(
+            "local/no_channel/no_playlist/screen_rec_a3f2dd1e"
+        )
         assert vp.domain == "local"
         assert vp.channel is None
         assert vp.playlist is None
@@ -363,7 +365,9 @@ class TestVideoPathFromUrl:
         assert vp.playlist is None
 
     def test_twitch_url_with_channel(self):
-        vp = VideoPath.from_url("https://www.twitch.tv/ninja/clip/AwkwardHelplessSalamanderSwiftRage")
+        vp = VideoPath.from_url(
+            "https://www.twitch.tv/ninja/clip/AwkwardHelplessSalamanderSwiftRage"
+        )
         assert vp.domain == "twitch"
         assert vp.channel == "ninja"
 

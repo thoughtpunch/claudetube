@@ -14,24 +14,26 @@ if TYPE_CHECKING:
 
 
 # Valid step types per schema CHECK constraint
-VALID_STEP_TYPES = frozenset([
-    "download",
-    "audio_extract",
-    "transcribe",
-    "scene_detect",
-    "keyframe_extract",
-    "visual_analyze",
-    "entity_extract",
-    "deep_analyze",
-    "focus_analyze",
-    "narrative_detect",
-    "change_detect",
-    "code_track",
-    "people_track",
-    "ad_generate",
-    "knowledge_index",
-    "embed",
-])
+VALID_STEP_TYPES = frozenset(
+    [
+        "download",
+        "audio_extract",
+        "transcribe",
+        "scene_detect",
+        "keyframe_extract",
+        "visual_analyze",
+        "entity_extract",
+        "deep_analyze",
+        "focus_analyze",
+        "narrative_detect",
+        "change_detect",
+        "code_track",
+        "people_track",
+        "ad_generate",
+        "knowledge_index",
+        "embed",
+    ]
+)
 
 # Valid statuses per schema CHECK constraint
 VALID_STATUSES = frozenset(["pending", "running", "completed", "failed", "skipped"])

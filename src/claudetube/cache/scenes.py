@@ -284,14 +284,16 @@ def save_scenes_data(cache_dir: Path, data: ScenesData) -> None:
             # Build scene dicts for bulk insert
             scene_dicts = []
             for scene in data.scenes:
-                scene_dicts.append({
-                    "scene_id": scene.scene_id,
-                    "start_time": scene.start_time,
-                    "end_time": scene.end_time,
-                    "title": scene.title,
-                    "transcript_text": scene.transcript_text,
-                    "method": data.method,
-                })
+                scene_dicts.append(
+                    {
+                        "scene_id": scene.scene_id,
+                        "start_time": scene.start_time,
+                        "end_time": scene.end_time,
+                        "title": scene.title,
+                        "transcript_text": scene.transcript_text,
+                        "method": data.method,
+                    }
+                )
             sync_scenes_bulk(video_uuid, scene_dicts)
 
             # Record pipeline step for scene detection

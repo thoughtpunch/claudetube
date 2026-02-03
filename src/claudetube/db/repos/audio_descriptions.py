@@ -69,7 +69,9 @@ class AudioDescriptionRepository:
             raise ValueError(msg)
 
         if source not in self.VALID_SOURCES:
-            msg = f"Invalid source: {source}. Must be one of {sorted(self.VALID_SOURCES)}"
+            msg = (
+                f"Invalid source: {source}. Must be one of {sorted(self.VALID_SOURCES)}"
+            )
             raise ValueError(msg)
 
         new_id = str(uuid.uuid4())

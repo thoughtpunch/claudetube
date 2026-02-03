@@ -257,13 +257,17 @@ def enrich_video(video_id: str, metadata: dict[str, Any], cache_base: Path) -> N
 
                 # Move directory (atomic on same filesystem)
                 shutil.move(str(old_dir), str(new_dir))
-                logger.info("Moved video cache: %s -> %s", old_cache_path, new_cache_path)
+                logger.info(
+                    "Moved video cache: %s -> %s", old_cache_path, new_cache_path
+                )
 
                 # Clean up empty parent directories
                 _cleanup_empty_parents(old_dir.parent, cache_base)
 
                 # Update database with new path
-                _upsert_with_new_path(db, video_id, domain, new_cache_path, channel, playlist, metadata)
+                _upsert_with_new_path(
+                    db, video_id, domain, new_cache_path, channel, playlist, metadata
+                )
 
             except OSError as e:
                 # Move failed - keep database at old path
@@ -281,7 +285,9 @@ def enrich_video(video_id: str, metadata: dict[str, Any], cache_base: Path) -> N
             # Just UPSERT metadata
             if new_dir.exists():
                 # New location already exists - use it
-                _upsert_with_new_path(db, video_id, domain, new_cache_path, channel, playlist, metadata)
+                _upsert_with_new_path(
+                    db, video_id, domain, new_cache_path, channel, playlist, metadata
+                )
             else:
                 # Source doesn't exist - keep old path
                 _upsert_metadata_only(db, video_id, domain, old_cache_path, metadata)

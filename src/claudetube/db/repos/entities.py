@@ -14,7 +14,9 @@ if TYPE_CHECKING:
 
 
 # Valid entity types per schema CHECK constraint
-VALID_ENTITY_TYPES = frozenset(["object", "concept", "person", "technology", "organization"])
+VALID_ENTITY_TYPES = frozenset(
+    ["object", "concept", "person", "technology", "organization"]
+)
 
 
 class EntityRepository:
@@ -231,7 +233,9 @@ class EntityRepository:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def get_by_name_and_type(self, name: str, entity_type: str) -> dict[str, Any] | None:
+    def get_by_name_and_type(
+        self, name: str, entity_type: str
+    ) -> dict[str, Any] | None:
         """Get an entity by name and type.
 
         Args:

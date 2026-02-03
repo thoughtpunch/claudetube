@@ -133,7 +133,9 @@ class TestTryProgressiveEnrichment:
         )
 
         # Should return new cache_dir
-        expected_new_dir = temp_cache_dir / "youtube" / "UCnewchannel" / "no_playlist" / "vid456"
+        expected_new_dir = (
+            temp_cache_dir / "youtube" / "UCnewchannel" / "no_playlist" / "vid456"
+        )
         assert result == expected_new_dir
         assert expected_new_dir.exists()
         assert not cache_dir.exists()
@@ -187,7 +189,9 @@ class TestTryProgressiveEnrichment:
             state=state,
         )
 
-        expected_new_dir = temp_cache_dir / "youtube" / "UCchannel" / "PLnewplaylist" / "vid789"
+        expected_new_dir = (
+            temp_cache_dir / "youtube" / "UCchannel" / "PLnewplaylist" / "vid789"
+        )
         assert result == expected_new_dir
         assert expected_new_dir.exists()
         assert not cache_dir.exists()
@@ -235,7 +239,9 @@ class TestTryProgressiveEnrichment:
             state=state,
         )
 
-        expected = temp_cache_dir / "youtube" / "UCfullchannel" / "PLfullplaylist" / "vidABC"
+        expected = (
+            temp_cache_dir / "youtube" / "UCfullchannel" / "PLfullplaylist" / "vidABC"
+        )
         assert result == expected
         assert expected.exists()
         assert not cache_dir.exists()
@@ -292,9 +298,7 @@ class TestTryProgressiveEnrichment:
         assert result == expected
         assert expected.exists()
 
-    def test_cleans_up_empty_parent_dirs(
-        self, in_memory_db, temp_cache_dir: Path
-    ):
+    def test_cleans_up_empty_parent_dirs(self, in_memory_db, temp_cache_dir: Path):
         """Empty no_channel/no_playlist dirs are cleaned up after move."""
         video_path = VideoPath(
             domain="youtube",
@@ -334,9 +338,7 @@ class TestTryProgressiveEnrichment:
         assert not (temp_cache_dir / "youtube" / "no_channel" / "no_playlist").exists()
         assert not (temp_cache_dir / "youtube" / "no_channel").exists()
 
-    def test_returns_original_on_move_failure(
-        self, in_memory_db, temp_cache_dir: Path
-    ):
+    def test_returns_original_on_move_failure(self, in_memory_db, temp_cache_dir: Path):
         """Returns original cache_dir if move fails."""
         video_path = VideoPath(
             domain="youtube",
@@ -378,9 +380,7 @@ class TestTryProgressiveEnrichment:
         assert result == cache_dir
         assert cache_dir.exists()
 
-    def test_fire_and_forget_on_any_error(
-        self, in_memory_db, temp_cache_dir: Path
-    ):
+    def test_fire_and_forget_on_any_error(self, in_memory_db, temp_cache_dir: Path):
         """Returns original cache_dir on any exception (fire-and-forget)."""
         video_path = VideoPath(
             domain="youtube",

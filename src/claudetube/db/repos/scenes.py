@@ -74,7 +74,9 @@ class SceneRepository:
             raise ValueError(msg)
 
         if method is not None and method not in self.VALID_METHODS:
-            msg = f"Invalid method: {method}. Must be one of {sorted(self.VALID_METHODS)}"
+            msg = (
+                f"Invalid method: {method}. Must be one of {sorted(self.VALID_METHODS)}"
+            )
             raise ValueError(msg)
 
         if relevance_boost < 0:
@@ -165,17 +167,19 @@ class SceneRepository:
         for scene in scenes:
             new_id = str(uuid.uuid4())
             uuids.append(new_id)
-            rows.append((
-                new_id,
-                video_uuid,
-                scene["scene_id"],
-                scene["start_time"],
-                scene["end_time"],
-                scene.get("title"),
-                scene.get("transcript_text"),
-                scene.get("method"),
-                scene.get("relevance_boost", 1.0),
-            ))
+            rows.append(
+                (
+                    new_id,
+                    video_uuid,
+                    scene["scene_id"],
+                    scene["start_time"],
+                    scene["end_time"],
+                    scene.get("title"),
+                    scene.get("transcript_text"),
+                    scene.get("method"),
+                    scene.get("relevance_boost", 1.0),
+                )
+            )
 
         self.db.executemany(
             """

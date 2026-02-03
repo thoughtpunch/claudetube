@@ -220,7 +220,9 @@ def _cmd_migrate(args):
                     if parsed_url.netloc:
                         domain = sanitize_domain(parsed_url.netloc)
                 except Exception:
-                    logging.warning(f"Could not extract domain from URL for {video_id}, using 'unknown'")
+                    logging.warning(
+                        f"Could not extract domain from URL for {video_id}, using 'unknown'"
+                    )
 
             # Extract channel from state (sanitize for filesystem)
             channel = None
@@ -255,7 +257,9 @@ def _cmd_migrate(args):
 
             # Check if target already exists
             if new_abs_path.exists():
-                logging.warning(f"SKIP: {video_id} target path already exists: {new_abs_path}")
+                logging.warning(
+                    f"SKIP: {video_id} target path already exists: {new_abs_path}"
+                )
                 skipped += 1
                 continue
 

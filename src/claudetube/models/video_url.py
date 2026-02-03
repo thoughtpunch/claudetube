@@ -114,9 +114,7 @@ class VideoURL(BaseModel):
                     self.video_id = vid
                     self.provider = provider["name"]
                     # Start with regex captures
-                    regex_data = {
-                        k: v for k, v in groups.items() if v is not None
-                    }
+                    regex_data = {k: v for k, v in groups.items() if v is not None}
                     # Merge query params (regex captures take priority)
                     self.provider_data = _merge_query_params(
                         self.url, provider["name"], regex_data

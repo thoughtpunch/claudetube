@@ -142,7 +142,9 @@ def process_video(
     state.playlist_id = url_playlist_id
     # Store hierarchical path info in state for database sync
     state.domain = video_path.domain
-    state.channel_id = meta.get("channel_id") or meta.get("uploader_id") or video_path.channel
+    state.channel_id = (
+        meta.get("channel_id") or meta.get("uploader_id") or video_path.channel
+    )
     cache_dir.mkdir(parents=True, exist_ok=True)
     save_state(state, cache_dir / "state.json")
     log_timed(f"Metadata: '{state.title}' ({state.duration_string})", t0)
@@ -244,7 +246,9 @@ def process_video(
                     full_text=full_text,
                     word_count=word_count,
                     duration=state.duration,
-                    file_size_bytes=int(txt_path.stat().st_size) if txt_path.exists() else None,
+                    file_size_bytes=int(txt_path.stat().st_size)
+                    if txt_path.exists()
+                    else None,
                     is_primary=True,
                 )
 
@@ -367,7 +371,9 @@ def process_video(
                         full_text=full_text,
                         word_count=word_count,
                         duration=state.duration,
-                        file_size_bytes=int(txt_path.stat().st_size) if txt_path.exists() else None,
+                        file_size_bytes=int(txt_path.stat().st_size)
+                        if txt_path.exists()
+                        else None,
                         is_primary=True,
                     )
             except Exception:
@@ -379,7 +385,9 @@ def process_video(
         except Exception as e:
             log_timed(f"Transcription failed: {e}", t0)
             # Record transcribe failure
-            safe_update_pipeline_step(transcribe_step_id, "failed", error_message=str(e))
+            safe_update_pipeline_step(
+                transcribe_step_id, "failed", error_message=str(e)
+            )
             # Continue without transcript
 
     # STEP 5: Optional frames
@@ -614,7 +622,9 @@ def process_local_video(
                         full_text=full_text,
                         word_count=word_count,
                         duration=state.duration,
-                        file_size_bytes=int(txt_path.stat().st_size) if txt_path.exists() else None,
+                        file_size_bytes=int(txt_path.stat().st_size)
+                        if txt_path.exists()
+                        else None,
                         is_primary=True,
                     )
 
@@ -684,7 +694,9 @@ def process_local_video(
 
         except Exception as e:
             # Record audio_extract failure
-            safe_update_pipeline_step(local_audio_step_id, "failed", error_message=str(e))
+            safe_update_pipeline_step(
+                local_audio_step_id, "failed", error_message=str(e)
+            )
             return VideoResult(
                 success=False,
                 video_id=video_id,
@@ -738,7 +750,9 @@ def process_local_video(
                         full_text=full_text,
                         word_count=word_count,
                         duration=state.duration,
-                        file_size_bytes=int(txt_path.stat().st_size) if txt_path.exists() else None,
+                        file_size_bytes=int(txt_path.stat().st_size)
+                        if txt_path.exists()
+                        else None,
                         is_primary=True,
                     )
             except Exception:
@@ -750,7 +764,9 @@ def process_local_video(
         except Exception as e:
             log_timed(f"Transcription failed: {e}", t0)
             # Record transcribe failure
-            safe_update_pipeline_step(local_transcribe_step_id, "failed", error_message=str(e))
+            safe_update_pipeline_step(
+                local_transcribe_step_id, "failed", error_message=str(e)
+            )
             # Continue without transcript - still return success for metadata/thumbnail
 
     # Update state

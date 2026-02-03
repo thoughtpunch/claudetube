@@ -83,7 +83,9 @@ def create_mock_video(
 
     if with_transcript:
         # Create mock transcript files
-        (video_dir / "audio.srt").write_text("1\n00:00:00,000 --> 00:00:10,000\nHello world\n")
+        (video_dir / "audio.srt").write_text(
+            "1\n00:00:00,000 --> 00:00:10,000\nHello world\n"
+        )
         (video_dir / "audio.txt").write_text("Hello world")
 
     if with_thumbnail:
@@ -95,10 +97,22 @@ def create_mock_video(
         scenes_dir = video_dir / "scenes"
         scenes_dir.mkdir()
         scenes_data = [
-            {"scene_id": 0, "start_time": 0.0, "end_time": 60.0, "transcript": "First half"},
-            {"scene_id": 1, "start_time": 60.0, "end_time": 120.0, "transcript": "Second half"},
+            {
+                "scene_id": 0,
+                "start_time": 0.0,
+                "end_time": 60.0,
+                "transcript": "First half",
+            },
+            {
+                "scene_id": 1,
+                "start_time": 60.0,
+                "end_time": 120.0,
+                "transcript": "Second half",
+            },
         ]
-        (scenes_dir / "scenes.json").write_text(json.dumps(scenes_data), encoding="utf-8")
+        (scenes_dir / "scenes.json").write_text(
+            json.dumps(scenes_data), encoding="utf-8"
+        )
 
     return video_dir
 
@@ -156,7 +170,9 @@ class TestImportVideo:
         assert result is True
 
         # Verify video was inserted
-        cursor = temp_db.execute("SELECT * FROM videos WHERE video_id = ?", ("test123",))
+        cursor = temp_db.execute(
+            "SELECT * FROM videos WHERE video_id = ?", ("test123",)
+        )
         row = cursor.fetchone()
         assert row is not None
         assert row["title"] == "Test Video test123"
@@ -170,7 +186,9 @@ class TestImportVideo:
         _import_video(video_dir, temp_cache, temp_db)
 
         # Get video UUID
-        cursor = temp_db.execute("SELECT id FROM videos WHERE video_id = ?", ("test123",))
+        cursor = temp_db.execute(
+            "SELECT id FROM videos WHERE video_id = ?", ("test123",)
+        )
         video_uuid = cursor.fetchone()["id"]
 
         # Verify audio track
@@ -190,7 +208,9 @@ class TestImportVideo:
         _import_video(video_dir, temp_cache, temp_db)
 
         # Get video UUID
-        cursor = temp_db.execute("SELECT id FROM videos WHERE video_id = ?", ("test123",))
+        cursor = temp_db.execute(
+            "SELECT id FROM videos WHERE video_id = ?", ("test123",)
+        )
         video_uuid = cursor.fetchone()["id"]
 
         # Verify transcription
@@ -210,12 +230,15 @@ class TestImportVideo:
         _import_video(video_dir, temp_cache, temp_db)
 
         # Get video UUID
-        cursor = temp_db.execute("SELECT id FROM videos WHERE video_id = ?", ("test123",))
+        cursor = temp_db.execute(
+            "SELECT id FROM videos WHERE video_id = ?", ("test123",)
+        )
         video_uuid = cursor.fetchone()["id"]
 
         # Verify thumbnail frame
         cursor = temp_db.execute(
-            "SELECT * FROM frames WHERE video_id = ? AND is_thumbnail = 1", (video_uuid,)
+            "SELECT * FROM frames WHERE video_id = ? AND is_thumbnail = 1",
+            (video_uuid,),
         )
         row = cursor.fetchone()
         assert row is not None
@@ -228,7 +251,9 @@ class TestImportVideo:
         _import_video(video_dir, temp_cache, temp_db)
 
         # Get video UUID
-        cursor = temp_db.execute("SELECT id FROM videos WHERE video_id = ?", ("test123",))
+        cursor = temp_db.execute(
+            "SELECT id FROM videos WHERE video_id = ?", ("test123",)
+        )
         video_uuid = cursor.fetchone()["id"]
 
         # Verify scenes

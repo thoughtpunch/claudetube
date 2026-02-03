@@ -330,10 +330,14 @@ class TestMergeResultsCrossVideo:
         from claudetube.analysis.search import SearchMoment, _merge_results_cross_video
 
         text_results = [
-            SearchMoment(1, 0, 0.0, 30.0, 0.6, "text preview", "0:00", "text", "video_a"),
+            SearchMoment(
+                1, 0, 0.0, 30.0, 0.6, "text preview", "0:00", "text", "video_a"
+            ),
         ]
         semantic_results = [
-            SearchMoment(1, 0, 0.0, 30.0, 0.8, "semantic preview", "0:00", "semantic", "video_a"),
+            SearchMoment(
+                1, 0, 0.0, 30.0, 0.8, "semantic preview", "0:00", "semantic", "video_a"
+            ),
         ]
 
         merged = _merge_results_cross_video(text_results, semantic_results, top_k=10)

@@ -97,7 +97,9 @@ class TestCleanupEmptyParents:
         nested.mkdir(parents=True)
 
         # Put another video in no_channel so it's not empty
-        other_video = temp_cache_dir / "youtube" / "no_channel" / "other_playlist" / "vid456"
+        other_video = (
+            temp_cache_dir / "youtube" / "no_channel" / "other_playlist" / "vid456"
+        )
         other_video.mkdir(parents=True)
 
         # Clean up starting from no_playlist
@@ -182,7 +184,9 @@ class TestSyncVideo:
         state = VideoState(video_id="test123", domain="youtube")
 
         # Even with invalid data that might cause issues, should not raise
-        with patch.object(VideoRepository, "upsert", side_effect=RuntimeError("DB error")):
+        with patch.object(
+            VideoRepository, "upsert", side_effect=RuntimeError("DB error")
+        ):
             # Should not raise
             sync_video(state, "youtube/no_channel/no_playlist/test123")
 
@@ -190,7 +194,9 @@ class TestSyncVideo:
 class TestEnrichVideo:
     """Tests for enrich_video() progressive enrichment."""
 
-    def test_enrich_video_moves_directory_on_channel_update(self, in_memory_db, temp_cache_dir: Path):
+    def test_enrich_video_moves_directory_on_channel_update(
+        self, in_memory_db, temp_cache_dir: Path
+    ):
         """enrich_video() moves directory when channel changes from NULL to real."""
         # Setup: create video with no_channel
         repo = VideoRepository(in_memory_db)
@@ -220,7 +226,9 @@ class TestEnrichVideo:
         assert record["cache_path"] == "youtube/UCnewchannel/no_playlist/vid123"
         assert record["channel"] == "UCnewchannel"
 
-    def test_enrich_video_moves_directory_on_playlist_update(self, in_memory_db, temp_cache_dir: Path):
+    def test_enrich_video_moves_directory_on_playlist_update(
+        self, in_memory_db, temp_cache_dir: Path
+    ):
         """enrich_video() moves directory when playlist changes from NULL to real."""
         repo = VideoRepository(in_memory_db)
         repo.insert(
@@ -248,7 +256,9 @@ class TestEnrichVideo:
         assert record["cache_path"] == "youtube/UCchannel/PLmyplaylist/vid456"
         assert record["playlist"] == "PLmyplaylist"
 
-    def test_enrich_video_does_not_move_if_path_unchanged(self, in_memory_db, temp_cache_dir: Path):
+    def test_enrich_video_does_not_move_if_path_unchanged(
+        self, in_memory_db, temp_cache_dir: Path
+    ):
         """enrich_video() does not move if path hasn't improved."""
         repo = VideoRepository(in_memory_db)
         repo.insert(
@@ -260,11 +270,17 @@ class TestEnrichVideo:
         )
 
         # Create directory
-        existing_dir = temp_cache_dir / "youtube" / "UCexisting" / "PLexisting" / "vid789"
+        existing_dir = (
+            temp_cache_dir / "youtube" / "UCexisting" / "PLexisting" / "vid789"
+        )
         existing_dir.mkdir(parents=True)
 
         # Enrich with same info (no improvement)
-        metadata = {"channel_id": "UCexisting", "playlist_id": "PLexisting", "title": "New Title"}
+        metadata = {
+            "channel_id": "UCexisting",
+            "playlist_id": "PLexisting",
+            "title": "New Title",
+        }
         enrich_video("vid789", metadata, temp_cache_dir)
 
         # Directory should still be in same place
@@ -274,7 +290,9 @@ class TestEnrichVideo:
         record = repo.get_by_video_id("vid789")
         assert record["title"] == "New Title"
 
-    def test_enrich_video_cleans_up_empty_parents(self, in_memory_db, temp_cache_dir: Path):
+    def test_enrich_video_cleans_up_empty_parents(
+        self, in_memory_db, temp_cache_dir: Path
+    ):
         """enrich_video() cleans up empty no_channel/no_playlist dirs after move."""
         repo = VideoRepository(in_memory_db)
         repo.insert(
@@ -296,7 +314,9 @@ class TestEnrichVideo:
         assert not (temp_cache_dir / "youtube" / "no_channel" / "no_playlist").exists()
         assert not (temp_cache_dir / "youtube" / "no_channel").exists()
 
-    def test_enrich_video_keeps_old_path_on_move_failure(self, in_memory_db, temp_cache_dir: Path):
+    def test_enrich_video_keeps_old_path_on_move_failure(
+        self, in_memory_db, temp_cache_dir: Path
+    ):
         """If shutil.move() fails, database retains old cache_path."""
         repo = VideoRepository(in_memory_db)
         repo.insert(
@@ -333,7 +353,11 @@ class TestExtractHelpers:
 
     def test_extract_channel_from_channel_id(self):
         """Extracts channel_id as first priority."""
-        meta = {"channel_id": "UCtest123", "uploader_id": "uploader", "channel": "Display Name"}
+        meta = {
+            "channel_id": "UCtest123",
+            "uploader_id": "uploader",
+            "channel": "Display Name",
+        }
         assert _extract_channel_from_metadata(meta) == "UCtest123"
 
     def test_extract_channel_from_uploader_id(self):
@@ -374,7 +398,9 @@ class TestSyncAudioTrack:
         """sync_audio_track() creates a new audio track record."""
         # First create a video
         video_repo = VideoRepository(in_memory_db)
-        video_uuid = video_repo.insert("vid123", "youtube", "youtube/no_channel/no_playlist/vid123")
+        video_uuid = video_repo.insert(
+            "vid123", "youtube", "youtube/no_channel/no_playlist/vid123"
+        )
 
         track_id = sync_audio_track(
             video_uuid=video_uuid,
@@ -659,7 +685,9 @@ class TestSyncTranscriptionWithEmbedding:
             )
 
             assert transcript_id is not None
-            mock_embed.assert_called_once_with(video_uuid, "Hello world transcript", 120.5)
+            mock_embed.assert_called_once_with(
+                video_uuid, "Hello world transcript", 120.5
+            )
 
     def test_sync_transcription_does_not_embed_if_no_full_text(self, in_memory_db):
         """sync_transcription() does not trigger embed if full_text is None."""

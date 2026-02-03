@@ -24,13 +24,15 @@ class TranscriptionRepository:
     """
 
     # Valid providers per schema CHECK constraint
-    VALID_PROVIDERS = frozenset([
-        "youtube_subtitles",
-        "whisper",
-        "deepgram",
-        "openai",
-        "manual",
-    ])
+    VALID_PROVIDERS = frozenset(
+        [
+            "youtube_subtitles",
+            "whisper",
+            "deepgram",
+            "openai",
+            "manual",
+        ]
+    )
 
     # Valid formats per schema CHECK constraint
     VALID_FORMATS = frozenset(["srt", "txt", "vtt"])

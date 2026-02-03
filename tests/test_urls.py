@@ -48,13 +48,17 @@ class TestVideoURL:
         assert v.provider_data.get("playlist") == "PLxyz"
 
     def test_youtube_watch_with_playlist(self):
-        v = VideoURL.parse("https://youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf")
+        v = VideoURL.parse(
+            "https://youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"
+        )
         assert v.video_id == "dQw4w9WgXcQ"
         assert v.provider == "YouTube"
         assert v.provider_data.get("playlist") == "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"
 
     def test_youtube_shorturl_with_playlist(self):
-        v = VideoURL.parse("https://youtu.be/dQw4w9WgXcQ?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf")
+        v = VideoURL.parse(
+            "https://youtu.be/dQw4w9WgXcQ?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"
+        )
         assert v.video_id == "dQw4w9WgXcQ"
         assert v.provider == "YouTube"
         assert v.provider_data.get("playlist") == "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"
@@ -65,7 +69,9 @@ class TestVideoURL:
         assert v.provider_data.get("playlist") is None
 
     def test_youtube_playlist_with_multiple_params(self):
-        v = VideoURL.parse("https://youtube.com/watch?v=dQw4w9WgXcQ&t=30&list=PLtest123&index=5")
+        v = VideoURL.parse(
+            "https://youtube.com/watch?v=dQw4w9WgXcQ&t=30&list=PLtest123&index=5"
+        )
         assert v.video_id == "dQw4w9WgXcQ"
         assert v.provider_data.get("playlist") == "PLtest123"
 
@@ -137,7 +143,9 @@ class TestVideoURL:
 
     # Channel/playlist capture tests
     def test_tiktok_captures_channel(self):
-        v = VideoURL.parse("https://www.tiktok.com/@celiatoks/video/7454538602173697313")
+        v = VideoURL.parse(
+            "https://www.tiktok.com/@celiatoks/video/7454538602173697313"
+        )
         assert v.video_id == "7454538602173697313"
         assert v.provider_data.get("channel") == "celiatoks"
 
@@ -152,7 +160,9 @@ class TestVideoURL:
         assert v.provider_data.get("channel") == "elonmusk"
 
     def test_twitch_clip_captures_channel(self):
-        v = VideoURL.parse("https://www.twitch.tv/shroud/clip/AmusedStrongSnood-g5jFT33X")
+        v = VideoURL.parse(
+            "https://www.twitch.tv/shroud/clip/AmusedStrongSnood-g5jFT33X"
+        )
         assert v.video_id == "AmusedStrongSnood-g5jFT33X"
         assert v.provider_data.get("channel") == "shroud"
 

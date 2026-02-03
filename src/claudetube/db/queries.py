@@ -18,7 +18,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-
     from claudetube.db.connection import Database
 
 logger = logging.getLogger(__name__)
@@ -78,17 +77,19 @@ def list_cached_videos_sql() -> list[dict[str, Any]] | None:
         """)
         results = []
         for row in cursor.fetchall():
-            results.append({
-                "video_id": row["video_id"],
-                "title": row["title"],
-                "duration_string": row["duration_string"],
-                "transcript_complete": bool(row["transcript_complete"]),
-                "transcript_source": row["transcript_source"],
-                "cache_dir": row["cache_path"],
-                "scene_count": row["scene_count"],
-                "frame_count": row["frame_count"],
-                "qa_count": row["qa_count"],
-            })
+            results.append(
+                {
+                    "video_id": row["video_id"],
+                    "title": row["title"],
+                    "duration_string": row["duration_string"],
+                    "transcript_complete": bool(row["transcript_complete"]),
+                    "transcript_source": row["transcript_source"],
+                    "cache_dir": row["cache_path"],
+                    "scene_count": row["scene_count"],
+                    "frame_count": row["frame_count"],
+                    "qa_count": row["qa_count"],
+                }
+            )
         logger.debug("Listed %d videos from SQL", len(results))
         return results
     except Exception:
@@ -136,12 +137,14 @@ def find_related_videos_sql(query: str) -> list[dict[str, Any]] | None:
         # Convert to the format expected by VideoKnowledgeGraph
         matches = []
         for row in results:
-            matches.append({
-                "video_id": row["video_id"],
-                "video_title": row["video_title"],
-                "match_type": row["match_type"],
-                "matched": row["matched_term"],
-            })
+            matches.append(
+                {
+                    "video_id": row["video_id"],
+                    "video_title": row["video_title"],
+                    "match_type": row["match_type"],
+                    "matched": row["matched_term"],
+                }
+            )
         logger.debug("Found %d related videos for '%s' via SQL", len(matches), query)
         return matches
     except Exception:
@@ -192,7 +195,9 @@ def get_video_connections_sql(video_id: str) -> list[str] | None:
             if connected_video:
                 connected_ids.append(connected_video["video_id"])
 
-        logger.debug("Found %d connections for %s via SQL", len(connected_ids), video_id)
+        logger.debug(
+            "Found %d connections for %s via SQL", len(connected_ids), video_id
+        )
         return connected_ids
     except Exception:
         logger.debug("SQL get_video_connections failed", exc_info=True)
@@ -246,21 +251,27 @@ def search_qa_fts(video_id: str, query: str) -> list[dict[str, Any]] | None:
         matches = []
         for row in results:
             if row["video_id"] == video_uuid:
-                matches.append({
-                    "question": row["question"],
-                    "answer": row["answer"],
-                    "scenes": row.get("scene_ids", []),
-                    "timestamp": row.get("created_at", ""),
-                })
+                matches.append(
+                    {
+                        "question": row["question"],
+                        "answer": row["answer"],
+                        "scenes": row.get("scene_ids", []),
+                        "timestamp": row.get("created_at", ""),
+                    }
+                )
 
-        logger.debug("Found %d Q&A matches for '%s' in %s via FTS", len(matches), query, video_id)
+        logger.debug(
+            "Found %d Q&A matches for '%s' in %s via FTS", len(matches), query, video_id
+        )
         return matches
     except Exception:
         logger.debug("FTS Q&A search failed", exc_info=True)
         return None
 
 
-def search_qa_fts_cross_video(query: str, limit: int = 20) -> list[dict[str, Any]] | None:
+def search_qa_fts_cross_video(
+    query: str, limit: int = 20
+) -> list[dict[str, Any]] | None:
     """Search Q&A history across ALL videos using FTS5.
 
     Uses qa_fts virtual table for full-text search across all videos.
@@ -289,16 +300,22 @@ def search_qa_fts_cross_video(query: str, limit: int = 20) -> list[dict[str, Any
         # Convert format and limit
         matches = []
         for row in results[:limit]:
-            matches.append({
-                "video_id": row.get("video_natural_id"),
-                "video_title": row.get("video_title"),
-                "question": row["question"],
-                "answer": row["answer"],
-                "scenes": row.get("scene_ids", []),
-                "timestamp": row.get("created_at", ""),
-            })
+            matches.append(
+                {
+                    "video_id": row.get("video_natural_id"),
+                    "video_title": row.get("video_title"),
+                    "question": row["question"],
+                    "answer": row["answer"],
+                    "scenes": row.get("scene_ids", []),
+                    "timestamp": row.get("created_at", ""),
+                }
+            )
 
-        logger.debug("Found %d Q&A matches for '%s' across all videos via FTS", len(matches), query)
+        logger.debug(
+            "Found %d Q&A matches for '%s' across all videos via FTS",
+            len(matches),
+            query,
+        )
         return matches
     except Exception:
         logger.debug("Cross-video FTS Q&A search failed", exc_info=True)
@@ -363,19 +380,26 @@ def search_transcripts_fts(
                 rank = row.get("rank", 0)
                 relevance = max(0.0, min(1.0, 1.0 + (rank / 20.0)))
 
-                matches.append({
-                    "scene_id": row["scene_id"],
-                    "start_time": row["start_time"],
-                    "end_time": row["end_time"],
-                    "transcript_text": row.get("transcript_text", ""),
-                    "relevance": relevance,
-                    "match_type": "fts",
-                })
+                matches.append(
+                    {
+                        "scene_id": row["scene_id"],
+                        "start_time": row["start_time"],
+                        "end_time": row["end_time"],
+                        "transcript_text": row.get("transcript_text", ""),
+                        "relevance": relevance,
+                        "match_type": "fts",
+                    }
+                )
 
                 if len(matches) >= top_k:
                     break
 
-        logger.debug("Found %d transcript matches for '%s' in %s via FTS", len(matches), query, video_id)
+        logger.debug(
+            "Found %d transcript matches for '%s' in %s via FTS",
+            len(matches),
+            query,
+            video_id,
+        )
         return matches
     except Exception:
         logger.debug("FTS transcript search failed", exc_info=True)
@@ -418,18 +442,24 @@ def search_transcripts_fts_cross_video(
             rank = row.get("rank", 0)
             relevance = max(0.0, min(1.0, 1.0 + (rank / 20.0)))
 
-            matches.append({
-                "video_id": row.get("video_natural_id"),
-                "video_title": row.get("video_title"),
-                "scene_id": row["scene_id"],
-                "start_time": row["start_time"],
-                "end_time": row["end_time"],
-                "transcript_text": row.get("transcript_text", ""),
-                "relevance": relevance,
-                "match_type": "fts",
-            })
+            matches.append(
+                {
+                    "video_id": row.get("video_natural_id"),
+                    "video_title": row.get("video_title"),
+                    "scene_id": row["scene_id"],
+                    "start_time": row["start_time"],
+                    "end_time": row["end_time"],
+                    "transcript_text": row.get("transcript_text", ""),
+                    "relevance": relevance,
+                    "match_type": "fts",
+                }
+            )
 
-        logger.debug("Found %d transcript matches for '%s' across all videos via FTS", len(matches), query)
+        logger.debug(
+            "Found %d transcript matches for '%s' across all videos via FTS",
+            len(matches),
+            query,
+        )
         return matches
     except Exception:
         logger.debug("Cross-video FTS transcript search failed", exc_info=True)
@@ -597,7 +627,12 @@ def get_incomplete_scenes(video_id: str, step_type: str) -> list[int] | None:
 
         # Get incomplete scenes
         result = pipeline_repo.get_incomplete_scenes(video_uuid, step_type)
-        logger.debug("Found %d incomplete scenes for %s step %s", len(result), video_id, step_type)
+        logger.debug(
+            "Found %d incomplete scenes for %s step %s",
+            len(result),
+            video_id,
+            step_type,
+        )
         return result
     except Exception:
         logger.debug("SQL incomplete scenes query failed", exc_info=True)

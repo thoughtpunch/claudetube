@@ -783,7 +783,9 @@ def find_moments(
 
     # Auto strategy: use unified search (FTS5 + vec)
     results = unified_search(
-        video_id, query, top_k=top_k,
+        video_id,
+        query,
+        top_k=top_k,
         semantic_weight=semantic_weight,
         cache_dir=cache_dir,
     )

@@ -174,7 +174,9 @@ def build_scene_index(
         video = video_repo.get_by_video_id(video_id)
 
         if video is None:
-            logger.warning("Video %s not in database, cannot index embeddings", video_id)
+            logger.warning(
+                "Video %s not in database, cannot index embeddings", video_id
+            )
             return 0
 
         video_uuid = video["id"]
@@ -218,9 +220,13 @@ def build_scene_index(
                 )
                 indexed_count += 1
             except Exception as e:
-                logger.warning("Failed to store embedding for scene %d: %s", scene_id, e)
+                logger.warning(
+                    "Failed to store embedding for scene %d: %s", scene_id, e
+                )
 
-        logger.info("Built vector index with %d scenes for video %s", indexed_count, video_id)
+        logger.info(
+            "Built vector index with %d scenes for video %s", indexed_count, video_id
+        )
         return indexed_count
 
     except Exception as e:
@@ -388,7 +394,9 @@ def search_scenes(
             scene_repo = SceneRepository(db)
             scene = scene_repo.get_scene(video_uuid, scene_id)
             if scene:
-                transcript_preview = (scene.get("transcript_text") or "")[:MAX_TRANSCRIPT_PREVIEW]
+                transcript_preview = (scene.get("transcript_text") or "")[
+                    :MAX_TRANSCRIPT_PREVIEW
+                ]
 
             # Get visual description if available
             from claudetube.db.repos.visual_descriptions import (
@@ -418,7 +426,9 @@ def search_scenes(
         raise
     except Exception as e:
         logger.warning("Vector search failed: %s", e)
-        raise ValueError(f"No vector index found at {cache_dir}. Run build_scene_index() first.") from e
+        raise ValueError(
+            f"No vector index found at {cache_dir}. Run build_scene_index() first."
+        ) from e
 
 
 def search_scenes_by_text(
@@ -491,6 +501,7 @@ def search_similar_cross_video(
     except RuntimeError:
         try:
             import asyncio
+
             embedding = asyncio.run(vec_store.get_embedding(query_text))
         except Exception:
             logger.debug("Failed to get query embedding")
@@ -527,7 +538,9 @@ def search_similar_cross_video(
         scene_repo = SceneRepository(db)
         scene = scene_repo.get_scene(video_uuid, scene_id)
         if scene:
-            transcript_preview = (scene.get("transcript_text") or "")[:MAX_TRANSCRIPT_PREVIEW]
+            transcript_preview = (scene.get("transcript_text") or "")[
+                :MAX_TRANSCRIPT_PREVIEW
+            ]
 
         search_results.append(
             SearchResult(

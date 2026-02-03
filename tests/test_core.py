@@ -383,7 +383,10 @@ class TestProcessVideo:
 
         assert result.video_id == "test1234567"
         # With hierarchical paths, the output_dir is youtube/no_channel/no_playlist/video_id
-        assert result.output_dir == tmp_path / "youtube" / "no_channel" / "no_playlist" / "test1234567"
+        assert (
+            result.output_dir
+            == tmp_path / "youtube" / "no_channel" / "no_playlist" / "test1234567"
+        )
 
     def test_incomplete_cache_not_treated_as_hit(self, tmp_path):
         """State with transcript_complete=False should not be a cache hit."""

@@ -170,7 +170,9 @@ class CodeEvolutionRepository:
             return False
 
         update_values.append(video_uuid)
-        sql = f"UPDATE code_evolutions SET {', '.join(update_fields)} WHERE video_id = ?"
+        sql = (
+            f"UPDATE code_evolutions SET {', '.join(update_fields)} WHERE video_id = ?"
+        )
 
         cursor = self.db.execute(sql, tuple(update_values))
         self.db.commit()

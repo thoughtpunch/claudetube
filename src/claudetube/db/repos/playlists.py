@@ -127,7 +127,10 @@ class PlaylistRepository:
         for field in enrichable:
             if field in metadata and metadata[field] is not None:
                 # Validate playlist_type if provided
-                if field == "playlist_type" and metadata[field] not in VALID_PLAYLIST_TYPES:
+                if (
+                    field == "playlist_type"
+                    and metadata[field] not in VALID_PLAYLIST_TYPES
+                ):
                     msg = f"Invalid playlist_type: {metadata[field]}"
                     raise ValueError(msg)
                 update_fields.append(f"{field} = COALESCE({field}, ?)")
@@ -180,9 +183,7 @@ class PlaylistRepository:
         Returns:
             List of dicts with playlist data, ordered by created_at desc.
         """
-        cursor = self.db.execute(
-            "SELECT * FROM playlists ORDER BY created_at DESC"
-        )
+        cursor = self.db.execute("SELECT * FROM playlists ORDER BY created_at DESC")
         return [dict(row) for row in cursor.fetchall()]
 
     def add_video(

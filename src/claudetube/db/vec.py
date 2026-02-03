@@ -38,16 +38,18 @@ logger = logging.getLogger(__name__)
 DEFAULT_DIMENSIONS = 1536
 
 # Valid source types for vec_metadata (must match schema)
-VALID_SOURCES = frozenset({
-    "transcription",
-    "scene_transcript",
-    "visual",
-    "technical",
-    "entity",
-    "qa",
-    "observation",
-    "audio_description",
-})
+VALID_SOURCES = frozenset(
+    {
+        "transcription",
+        "scene_transcript",
+        "visual",
+        "technical",
+        "entity",
+        "qa",
+        "observation",
+        "audio_description",
+    }
+)
 
 
 class VecExtensionError(Exception):
@@ -252,9 +254,7 @@ class VecStore:
 
         # Try to generate and store embedding
         if not self._ensure_vec_table():
-            logger.debug(
-                "vec table not available, metadata stored without embedding"
-            )
+            logger.debug("vec table not available, metadata stored without embedding")
             return metadata_id
 
         embedding = await self.get_embedding(text)
@@ -414,15 +414,17 @@ class VecStore:
             cursor = self._db.execute(sql, params)
             results = []
             for row in cursor.fetchall():
-                results.append({
-                    "id": row["id"],
-                    "video_id": row["video_id"],
-                    "scene_id": row["scene_id"],
-                    "source": row["source"],
-                    "start_time": row["start_time"],
-                    "end_time": row["end_time"],
-                    "distance": row["distance"],
-                })
+                results.append(
+                    {
+                        "id": row["id"],
+                        "video_id": row["video_id"],
+                        "scene_id": row["scene_id"],
+                        "source": row["source"],
+                        "start_time": row["start_time"],
+                        "end_time": row["end_time"],
+                        "distance": row["distance"],
+                    }
+                )
             return results
         except Exception as e:
             logger.warning("Vector search failed: %s", e)

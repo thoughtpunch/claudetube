@@ -159,7 +159,9 @@ class TranscribeOperation:
                         full_text=result.text,
                         word_count=len(result.text.split()) if result.text else None,
                         duration=result.duration,
-                        file_size_bytes=int(txt_path.stat().st_size) if txt_path.exists() else None,
+                        file_size_bytes=int(txt_path.stat().st_size)
+                        if txt_path.exists()
+                        else None,
                         is_primary=True,
                     )
             except Exception:
@@ -182,7 +184,9 @@ class TranscribeOperation:
 
         except Exception as e:
             # Record transcribe failure
-            safe_update_pipeline_step(transcribe_step_id, "failed", error_message=str(e))
+            safe_update_pipeline_step(
+                transcribe_step_id, "failed", error_message=str(e)
+            )
             raise
 
 

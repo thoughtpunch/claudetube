@@ -58,7 +58,10 @@ class Database:
         # WAL mode for concurrent reads; skip for :memory: (no effect)
         if self.db_path != ":memory:":
             conn.execute("PRAGMA journal_mode = WAL")
-        logger.debug("Created new SQLite connection for thread %s", threading.current_thread().name)
+        logger.debug(
+            "Created new SQLite connection for thread %s",
+            threading.current_thread().name,
+        )
         return conn
 
     def execute(self, sql: str, params: tuple | dict | None = None) -> sqlite3.Cursor:

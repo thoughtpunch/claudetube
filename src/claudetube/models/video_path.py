@@ -130,7 +130,9 @@ class VideoPath(BaseModel):
     @classmethod
     def channel_must_be_nonempty_or_none(cls, v: str | None) -> str | None:
         if v is not None and not v.strip():
-            raise ValueError("channel must be non-empty string or None, got empty string")
+            raise ValueError(
+                "channel must be non-empty string or None, got empty string"
+            )
         return v
 
     @field_validator("playlist")
@@ -255,9 +257,7 @@ class VideoPath(BaseModel):
         return cache_base / self.relative_path()
 
 
-def _extract_channel(
-    provider_data: dict | None, metadata: dict | None
-) -> str | None:
+def _extract_channel(provider_data: dict | None, metadata: dict | None) -> str | None:
     """Extract channel from provider data and/or yt-dlp metadata.
 
     Priority:
@@ -285,9 +285,7 @@ def _extract_channel(
     return None
 
 
-def _extract_playlist(
-    provider_data: dict | None, metadata: dict | None
-) -> str | None:
+def _extract_playlist(provider_data: dict | None, metadata: dict | None) -> str | None:
     """Extract playlist from provider data and/or yt-dlp metadata.
 
     Priority:

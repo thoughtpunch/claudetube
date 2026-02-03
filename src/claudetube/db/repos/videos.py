@@ -244,9 +244,7 @@ class VideoRepository:
         Returns:
             List of dicts with video data, ordered by created_at desc.
         """
-        cursor = self.db.execute(
-            "SELECT * FROM videos ORDER BY created_at DESC"
-        )
+        cursor = self.db.execute("SELECT * FROM videos ORDER BY created_at DESC")
         return [dict(row) for row in cursor.fetchall()]
 
     def search_fts(self, query: str) -> list[dict[str, Any]]:

@@ -970,7 +970,9 @@ class TestTranscriptionRepositoryFTS:
 
     def test_search_fts_multiple_videos(self, video_repo, transcription_repo):
         """Test FTS search across multiple videos."""
-        for i, topic in enumerate(["python programming", "javascript basics", "python decorators"]):
+        for i, topic in enumerate(
+            ["python programming", "javascript basics", "python decorators"]
+        ):
             vid_uuid = video_repo.insert(
                 video_id=f"vid{i}",
                 domain="youtube",
@@ -1167,7 +1169,9 @@ class TestConstraintValidation:
                 channels=32,  # Max is 16
             )
 
-    def test_transcription_invalid_confidence_rejected(self, video_repo, transcription_repo):
+    def test_transcription_invalid_confidence_rejected(
+        self, video_repo, transcription_repo
+    ):
         """Test that confidence > 1.0 is rejected."""
         video_uuid = video_repo.insert(
             video_id="badconf",
@@ -1517,9 +1521,15 @@ class TestSceneRepositoryGet:
         )
 
         # Insert out of order to verify ordering
-        scene_repo.insert(video_uuid=video_uuid, scene_id=2, start_time=60.0, end_time=90.0)
-        scene_repo.insert(video_uuid=video_uuid, scene_id=0, start_time=0.0, end_time=30.0)
-        scene_repo.insert(video_uuid=video_uuid, scene_id=1, start_time=30.0, end_time=60.0)
+        scene_repo.insert(
+            video_uuid=video_uuid, scene_id=2, start_time=60.0, end_time=90.0
+        )
+        scene_repo.insert(
+            video_uuid=video_uuid, scene_id=0, start_time=0.0, end_time=30.0
+        )
+        scene_repo.insert(
+            video_uuid=video_uuid, scene_id=1, start_time=30.0, end_time=60.0
+        )
 
         scenes = scene_repo.get_by_video(video_uuid)
         assert len(scenes) == 3
@@ -1712,9 +1722,15 @@ class TestSceneRepositoryDelete:
             cache_path="/cache/das",
         )
 
-        scene_repo.insert(video_uuid=video_uuid, scene_id=0, start_time=0.0, end_time=30.0)
-        scene_repo.insert(video_uuid=video_uuid, scene_id=1, start_time=30.0, end_time=60.0)
-        scene_repo.insert(video_uuid=video_uuid, scene_id=2, start_time=60.0, end_time=90.0)
+        scene_repo.insert(
+            video_uuid=video_uuid, scene_id=0, start_time=0.0, end_time=30.0
+        )
+        scene_repo.insert(
+            video_uuid=video_uuid, scene_id=1, start_time=30.0, end_time=60.0
+        )
+        scene_repo.insert(
+            video_uuid=video_uuid, scene_id=2, start_time=60.0, end_time=90.0
+        )
 
         count = scene_repo.delete_by_video(video_uuid)
         assert count == 3
@@ -1754,8 +1770,12 @@ class TestSceneRepositoryCount:
             cache_path="/cache/cv",
         )
 
-        scene_repo.insert(video_uuid=video_uuid, scene_id=0, start_time=0.0, end_time=30.0)
-        scene_repo.insert(video_uuid=video_uuid, scene_id=1, start_time=30.0, end_time=60.0)
+        scene_repo.insert(
+            video_uuid=video_uuid, scene_id=0, start_time=0.0, end_time=30.0
+        )
+        scene_repo.insert(
+            video_uuid=video_uuid, scene_id=1, start_time=30.0, end_time=60.0
+        )
 
         count = scene_repo.count_by_video(video_uuid)
         assert count == 2
@@ -1967,9 +1987,24 @@ class TestFrameRepositoryGet:
         )
 
         # Insert out of order to verify ordering
-        frame_repo.insert(video_uuid=video_uuid, timestamp=30.0, extraction_type="drill", file_path="f30.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="f10.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=20.0, extraction_type="drill", file_path="f20.jpg")
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=30.0,
+            extraction_type="drill",
+            file_path="f30.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=10.0,
+            extraction_type="drill",
+            file_path="f10.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=20.0,
+            extraction_type="drill",
+            file_path="f20.jpg",
+        )
 
         frames = frame_repo.get_by_video(video_uuid)
         assert len(frames) == 3
@@ -1997,9 +2032,27 @@ class TestFrameRepositoryGet:
             cache_path="/cache/sf",
         )
 
-        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="keyframe", file_path="k0.jpg", scene_id=0)
-        frame_repo.insert(video_uuid=video_uuid, timestamp=35.0, extraction_type="keyframe", file_path="k1.jpg", scene_id=1)
-        frame_repo.insert(video_uuid=video_uuid, timestamp=45.0, extraction_type="keyframe", file_path="k1b.jpg", scene_id=1)
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=5.0,
+            extraction_type="keyframe",
+            file_path="k0.jpg",
+            scene_id=0,
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=35.0,
+            extraction_type="keyframe",
+            file_path="k1.jpg",
+            scene_id=1,
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=45.0,
+            extraction_type="keyframe",
+            file_path="k1b.jpg",
+            scene_id=1,
+        )
 
         frames = frame_repo.get_by_scene(video_uuid, 1)
         assert len(frames) == 2
@@ -2013,9 +2066,24 @@ class TestFrameRepositoryGet:
             cache_path="/cache/tf",
         )
 
-        frame_repo.insert(video_uuid=video_uuid, timestamp=0.0, extraction_type="drill", file_path="d1.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="d2.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="hq", file_path="hq1.jpg")
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=0.0,
+            extraction_type="drill",
+            file_path="d1.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=10.0,
+            extraction_type="drill",
+            file_path="d2.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=5.0,
+            extraction_type="hq",
+            file_path="hq1.jpg",
+        )
 
         drill_frames = frame_repo.get_by_type(video_uuid, "drill")
         assert len(drill_frames) == 2
@@ -2127,9 +2195,26 @@ class TestFrameRepositoryKeyframes:
             cache_path="/cache/kfv",
         )
 
-        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="keyframe", file_path="kf1.jpg", scene_id=0)
-        frame_repo.insert(video_uuid=video_uuid, timestamp=35.0, extraction_type="keyframe", file_path="kf2.jpg", scene_id=1)
-        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="d1.jpg")
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=5.0,
+            extraction_type="keyframe",
+            file_path="kf1.jpg",
+            scene_id=0,
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=35.0,
+            extraction_type="keyframe",
+            file_path="kf2.jpg",
+            scene_id=1,
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=10.0,
+            extraction_type="drill",
+            file_path="d1.jpg",
+        )
 
         keyframes = frame_repo.get_keyframes(video_uuid)
         assert len(keyframes) == 2
@@ -2143,9 +2228,27 @@ class TestFrameRepositoryKeyframes:
             cache_path="/cache/kfs",
         )
 
-        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="keyframe", file_path="kf0.jpg", scene_id=0)
-        frame_repo.insert(video_uuid=video_uuid, timestamp=35.0, extraction_type="keyframe", file_path="kf1a.jpg", scene_id=1)
-        frame_repo.insert(video_uuid=video_uuid, timestamp=40.0, extraction_type="keyframe", file_path="kf1b.jpg", scene_id=1)
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=5.0,
+            extraction_type="keyframe",
+            file_path="kf0.jpg",
+            scene_id=0,
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=35.0,
+            extraction_type="keyframe",
+            file_path="kf1a.jpg",
+            scene_id=1,
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=40.0,
+            extraction_type="keyframe",
+            file_path="kf1b.jpg",
+            scene_id=1,
+        )
 
         keyframes = frame_repo.get_keyframes(video_uuid, scene_id=1)
         assert len(keyframes) == 2
@@ -2163,12 +2266,42 @@ class TestFrameRepositoryCountByType:
             cache_path="/cache/ct",
         )
 
-        frame_repo.insert(video_uuid=video_uuid, timestamp=0.0, extraction_type="drill", file_path="d1.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="d2.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=20.0, extraction_type="drill", file_path="d3.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="hq", file_path="hq1.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=15.0, extraction_type="keyframe", file_path="kf1.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=25.0, extraction_type="keyframe", file_path="kf2.jpg")
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=0.0,
+            extraction_type="drill",
+            file_path="d1.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=10.0,
+            extraction_type="drill",
+            file_path="d2.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=20.0,
+            extraction_type="drill",
+            file_path="d3.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=5.0,
+            extraction_type="hq",
+            file_path="hq1.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=15.0,
+            extraction_type="keyframe",
+            file_path="kf1.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=25.0,
+            extraction_type="keyframe",
+            file_path="kf2.jpg",
+        )
 
         counts = frame_repo.count_by_type(video_uuid)
         assert counts == {"drill": 3, "hq": 1, "keyframe": 2}
@@ -2223,9 +2356,24 @@ class TestFrameRepositoryDelete:
             cache_path="/cache/daf",
         )
 
-        frame_repo.insert(video_uuid=video_uuid, timestamp=0.0, extraction_type="drill", file_path="f1.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="f2.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=20.0, extraction_type="hq", file_path="f3.jpg")
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=0.0,
+            extraction_type="drill",
+            file_path="f1.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=10.0,
+            extraction_type="drill",
+            file_path="f2.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=20.0,
+            extraction_type="hq",
+            file_path="f3.jpg",
+        )
 
         count = frame_repo.delete_by_video(video_uuid)
         assert count == 3
@@ -2241,9 +2389,24 @@ class TestFrameRepositoryDelete:
             cache_path="/cache/dtf",
         )
 
-        frame_repo.insert(video_uuid=video_uuid, timestamp=0.0, extraction_type="drill", file_path="d1.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=10.0, extraction_type="drill", file_path="d2.jpg")
-        frame_repo.insert(video_uuid=video_uuid, timestamp=5.0, extraction_type="hq", file_path="hq1.jpg")
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=0.0,
+            extraction_type="drill",
+            file_path="d1.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=10.0,
+            extraction_type="drill",
+            file_path="d2.jpg",
+        )
+        frame_repo.insert(
+            video_uuid=video_uuid,
+            timestamp=5.0,
+            extraction_type="hq",
+            file_path="hq1.jpg",
+        )
 
         count = frame_repo.delete_by_type(video_uuid, "drill")
         assert count == 2
@@ -2349,7 +2512,9 @@ class TestVisualDescriptionRepositoryInsert:
                 description="",
             )
 
-    def test_insert_whitespace_description_raises(self, video_repo, visual_description_repo):
+    def test_insert_whitespace_description_raises(
+        self, video_repo, visual_description_repo
+    ):
         """Test that whitespace-only description raises ValueError."""
         video_uuid = video_repo.insert(
             video_id="wsdesc",
@@ -2398,9 +2563,15 @@ class TestVisualDescriptionRepositoryGet:
         )
 
         # Insert out of order
-        visual_description_repo.insert(video_uuid=video_uuid, scene_id=2, description="Scene 2")
-        visual_description_repo.insert(video_uuid=video_uuid, scene_id=0, description="Scene 0")
-        visual_description_repo.insert(video_uuid=video_uuid, scene_id=1, description="Scene 1")
+        visual_description_repo.insert(
+            video_uuid=video_uuid, scene_id=2, description="Scene 2"
+        )
+        visual_description_repo.insert(
+            video_uuid=video_uuid, scene_id=0, description="Scene 0"
+        )
+        visual_description_repo.insert(
+            video_uuid=video_uuid, scene_id=1, description="Scene 1"
+        )
 
         descriptions = visual_description_repo.get_by_video(video_uuid)
         assert len(descriptions) == 3
@@ -2428,8 +2599,12 @@ class TestVisualDescriptionRepositoryGet:
             cache_path="/cache/sv",
         )
 
-        visual_description_repo.insert(video_uuid=video_uuid, scene_id=0, description="Scene 0")
-        visual_description_repo.insert(video_uuid=video_uuid, scene_id=1, description="Scene 1")
+        visual_description_repo.insert(
+            video_uuid=video_uuid, scene_id=0, description="Scene 0"
+        )
+        visual_description_repo.insert(
+            video_uuid=video_uuid, scene_id=1, description="Scene 1"
+        )
 
         vd = visual_description_repo.get_by_scene(video_uuid, 1)
         assert vd is not None
@@ -2478,9 +2653,17 @@ class TestVisualDescriptionRepositoryFTS:
             cache_path="/cache/mf",
         )
 
-        visual_description_repo.insert(video_uuid=video_uuid, scene_id=0, description="A cat sleeping on a couch.")
-        visual_description_repo.insert(video_uuid=video_uuid, scene_id=1, description="A dog playing in the yard.")
-        visual_description_repo.insert(video_uuid=video_uuid, scene_id=2, description="Another cat climbing a tree.")
+        visual_description_repo.insert(
+            video_uuid=video_uuid, scene_id=0, description="A cat sleeping on a couch."
+        )
+        visual_description_repo.insert(
+            video_uuid=video_uuid, scene_id=1, description="A dog playing in the yard."
+        )
+        visual_description_repo.insert(
+            video_uuid=video_uuid,
+            scene_id=2,
+            description="Another cat climbing a tree.",
+        )
 
         results = visual_description_repo.search_fts("cat")
         assert len(results) == 2
@@ -2542,8 +2725,12 @@ class TestVisualDescriptionRepositoryDelete:
             cache_path="/cache/da",
         )
 
-        visual_description_repo.insert(video_uuid=video_uuid, scene_id=0, description="Scene 0")
-        visual_description_repo.insert(video_uuid=video_uuid, scene_id=1, description="Scene 1")
+        visual_description_repo.insert(
+            video_uuid=video_uuid, scene_id=0, description="Scene 0"
+        )
+        visual_description_repo.insert(
+            video_uuid=video_uuid, scene_id=1, description="Scene 1"
+        )
 
         count = visual_description_repo.delete_by_video(video_uuid)
         assert count == 2
@@ -2677,9 +2864,15 @@ class TestTechnicalContentRepositoryGet:
         )
 
         # Insert out of order
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=2, has_code=True, has_text=False)
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=0, has_code=False, has_text=True)
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True)
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=2, has_code=True, has_text=False
+        )
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=0, has_code=False, has_text=True
+        )
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True
+        )
 
         records = technical_content_repo.get_by_video(video_uuid)
         assert len(records) == 3
@@ -2696,7 +2889,9 @@ class TestTechnicalContentRepositoryGet:
             cache_path="/cache/st",
         )
 
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=0, has_code=False, has_text=False)
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=0, has_code=False, has_text=False
+        )
         technical_content_repo.insert(
             video_uuid=video_uuid,
             scene_id=1,
@@ -2718,10 +2913,18 @@ class TestTechnicalContentRepositoryGet:
             cache_path="/cache/cv",
         )
 
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=0, has_code=False, has_text=True)
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True)
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=2, has_code=True, has_text=False)
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=3, has_code=False, has_text=False)
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=0, has_code=False, has_text=True
+        )
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True
+        )
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=2, has_code=True, has_text=False
+        )
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=3, has_code=False, has_text=False
+        )
 
         code_scenes = technical_content_repo.get_scenes_with_code(video_uuid)
         assert len(code_scenes) == 2
@@ -2736,9 +2939,15 @@ class TestTechnicalContentRepositoryGet:
             cache_path="/cache/tv2",
         )
 
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=0, has_code=False, has_text=True)
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True)
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=2, has_code=True, has_text=False)
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=0, has_code=False, has_text=True
+        )
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True
+        )
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=2, has_code=True, has_text=False
+        )
 
         text_scenes = technical_content_repo.get_scenes_with_text(video_uuid)
         assert len(text_scenes) == 2
@@ -2823,8 +3032,12 @@ class TestTechnicalContentRepositoryDelete:
             cache_path="/cache/datc",
         )
 
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=0, has_code=False, has_text=False)
-        technical_content_repo.insert(video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True)
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=0, has_code=False, has_text=False
+        )
+        technical_content_repo.insert(
+            video_uuid=video_uuid, scene_id=1, has_code=True, has_text=True
+        )
 
         count = technical_content_repo.delete_by_video(video_uuid)
         assert count == 2
@@ -2938,8 +3151,12 @@ class TestAudioDescriptionRepositoryGet:
             cache_path="/cache/ga",
         )
 
-        audio_description_repo.insert(video_uuid=video_uuid, format_="vtt", source="generated", file_path="a.vtt")
-        audio_description_repo.insert(video_uuid=video_uuid, format_="txt", source="compiled", file_path="a.txt")
+        audio_description_repo.insert(
+            video_uuid=video_uuid, format_="vtt", source="generated", file_path="a.vtt"
+        )
+        audio_description_repo.insert(
+            video_uuid=video_uuid, format_="txt", source="compiled", file_path="a.txt"
+        )
 
         records = audio_description_repo.get_by_video(video_uuid)
         assert len(records) == 2
@@ -2971,8 +3188,12 @@ class TestAudioDescriptionRepositoryGet:
             cache_path="/cache/gfa",
         )
 
-        audio_description_repo.insert(video_uuid=video_uuid, format_="vtt", source="generated", file_path="a.vtt")
-        audio_description_repo.insert(video_uuid=video_uuid, format_="txt", source="generated", file_path="a.txt")
+        audio_description_repo.insert(
+            video_uuid=video_uuid, format_="vtt", source="generated", file_path="a.vtt"
+        )
+        audio_description_repo.insert(
+            video_uuid=video_uuid, format_="txt", source="generated", file_path="a.txt"
+        )
 
         ad = audio_description_repo.get_by_format(video_uuid, "txt")
         assert ad is not None
@@ -3038,8 +3259,12 @@ class TestAudioDescriptionRepositoryDelete:
             cache_path="/cache/daa",
         )
 
-        audio_description_repo.insert(video_uuid=video_uuid, format_="vtt", source="generated", file_path="a.vtt")
-        audio_description_repo.insert(video_uuid=video_uuid, format_="txt", source="compiled", file_path="a.txt")
+        audio_description_repo.insert(
+            video_uuid=video_uuid, format_="vtt", source="generated", file_path="a.vtt"
+        )
+        audio_description_repo.insert(
+            video_uuid=video_uuid, format_="txt", source="compiled", file_path="a.txt"
+        )
 
         count = audio_description_repo.delete_by_video(video_uuid)
         assert count == 2
@@ -3329,7 +3554,9 @@ class TestCodeEvolutionRepositoryInsert:
         assert ce["total_changes"] is None
         assert ce["file_path"] is None
 
-    def test_insert_negative_files_tracked_raises(self, video_repo, code_evolution_repo):
+    def test_insert_negative_files_tracked_raises(
+        self, video_repo, code_evolution_repo
+    ):
         """Test that negative files_tracked raises ValueError."""
         video_uuid = video_repo.insert(
             video_id="negfiles",
@@ -3343,7 +3570,9 @@ class TestCodeEvolutionRepositoryInsert:
                 files_tracked=-1,
             )
 
-    def test_insert_negative_total_changes_raises(self, video_repo, code_evolution_repo):
+    def test_insert_negative_total_changes_raises(
+        self, video_repo, code_evolution_repo
+    ):
         """Test that negative total_changes raises ValueError."""
         video_uuid = video_repo.insert(
             video_id="negchanges",
@@ -3652,7 +3881,9 @@ class TestEntityRepositoryVideoSummary:
         entity_uuid = entity_repo.insert_entity("AI", "concept")
 
         uuid1 = entity_repo.insert_video_summary(entity_uuid, video_uuid, 3)
-        uuid2 = entity_repo.insert_video_summary(entity_uuid, video_uuid, 10, avg_score=0.9)
+        uuid2 = entity_repo.insert_video_summary(
+            entity_uuid, video_uuid, 10, avg_score=0.9
+        )
         assert uuid1 == uuid2
 
         # Verify the update
@@ -3748,10 +3979,16 @@ class TestEntityRepositoryFindRelated:
     def test_find_related_videos(self, video_repo, entity_repo):
         """Test finding videos related to a query."""
         v1 = video_repo.insert(
-            video_id="relv1", domain="youtube", cache_path="/c/r1", title="Python Basics"
+            video_id="relv1",
+            domain="youtube",
+            cache_path="/c/r1",
+            title="Python Basics",
         )
         v2 = video_repo.insert(
-            video_id="relv2", domain="youtube", cache_path="/c/r2", title="JavaScript Guide"
+            video_id="relv2",
+            domain="youtube",
+            cache_path="/c/r2",
+            title="JavaScript Guide",
         )
 
         e1 = entity_repo.insert_entity("Python", "technology")
@@ -3776,15 +4013,9 @@ class TestEntityRepositoryConnections:
 
     def test_get_connections(self, video_repo, entity_repo):
         """Test finding connected videos via shared entities."""
-        v1 = video_repo.insert(
-            video_id="connv1", domain="youtube", cache_path="/c/cv1"
-        )
-        v2 = video_repo.insert(
-            video_id="connv2", domain="youtube", cache_path="/c/cv2"
-        )
-        v3 = video_repo.insert(
-            video_id="connv3", domain="youtube", cache_path="/c/cv3"
-        )
+        v1 = video_repo.insert(video_id="connv1", domain="youtube", cache_path="/c/cv1")
+        v2 = video_repo.insert(video_id="connv2", domain="youtube", cache_path="/c/cv2")
+        v3 = video_repo.insert(video_id="connv3", domain="youtube", cache_path="/c/cv3")
 
         e1 = entity_repo.insert_entity("Python", "technology")
         e2 = entity_repo.insert_entity("JavaScript", "technology")
@@ -4354,6 +4585,7 @@ class TestObservationRepositoryCount:
 def playlist_repo(db):
     """Create a PlaylistRepository instance."""
     from claudetube.db.repos import PlaylistRepository
+
     return PlaylistRepository(db)
 
 
@@ -4600,6 +4832,7 @@ class TestPlaylistRepositoryDelete:
 def pipeline_repo(db):
     """Create a PipelineRepository instance."""
     from claudetube.db.repos import PipelineRepository
+
     return PipelineRepository(db)
 
 
@@ -4671,11 +4904,22 @@ class TestPipelineRepositoryRecordStep:
         """Test all valid step types can be recorded."""
         video_uuid = video_repo.insert("alltypes", "youtube", "/c/at")
         types = [
-            "download", "audio_extract", "transcribe", "scene_detect",
-            "keyframe_extract", "visual_analyze", "entity_extract",
-            "deep_analyze", "focus_analyze", "narrative_detect",
-            "change_detect", "code_track", "people_track",
-            "ad_generate", "knowledge_index", "embed",
+            "download",
+            "audio_extract",
+            "transcribe",
+            "scene_detect",
+            "keyframe_extract",
+            "visual_analyze",
+            "entity_extract",
+            "deep_analyze",
+            "focus_analyze",
+            "narrative_detect",
+            "change_detect",
+            "code_track",
+            "people_track",
+            "ad_generate",
+            "knowledge_index",
+            "embed",
         ]
         for stype in types:
             step_uuid = pipeline_repo.record_step(video_uuid, stype, "pending")
@@ -4788,8 +5032,12 @@ class TestPipelineRepositoryQueries:
         """Test getting failed steps."""
         video_uuid = video_repo.insert("failsteps", "youtube", "/c/fs")
         pipeline_repo.record_step(video_uuid, "download", "completed")
-        pipeline_repo.record_step(video_uuid, "transcribe", "failed", error_message="Error 1")
-        pipeline_repo.record_step(video_uuid, "scene_detect", "failed", error_message="Error 2")
+        pipeline_repo.record_step(
+            video_uuid, "transcribe", "failed", error_message="Error 1"
+        )
+        pipeline_repo.record_step(
+            video_uuid, "scene_detect", "failed", error_message="Error 2"
+        )
 
         failed = pipeline_repo.get_failed(video_uuid)
         assert len(failed) == 2
@@ -4816,9 +5064,7 @@ class TestPipelineRepositoryScenes:
         scene_repo.insert(video_uuid, 2, 60.0, 90.0)
 
         # Complete scene 0 only
-        pipeline_repo.record_step(
-            video_uuid, "visual_analyze", "completed", scene_id=0
-        )
+        pipeline_repo.record_step(video_uuid, "visual_analyze", "completed", scene_id=0)
 
         incomplete = pipeline_repo.get_incomplete_scenes(video_uuid, "visual_analyze")
         assert 0 not in incomplete
@@ -4841,16 +5087,16 @@ class TestPipelineRepositoryScenes:
         scene_repo.insert(video_uuid, 0, 0.0, 30.0)
         scene_repo.insert(video_uuid, 1, 30.0, 60.0)
 
-        pipeline_repo.record_step(
-            video_uuid, "visual_analyze", "completed", scene_id=0
-        )
+        pipeline_repo.record_step(video_uuid, "visual_analyze", "completed", scene_id=0)
 
-        assert pipeline_repo.is_step_complete(
-            video_uuid, "visual_analyze", scene_id=0
-        ) is True
-        assert pipeline_repo.is_step_complete(
-            video_uuid, "visual_analyze", scene_id=1
-        ) is False
+        assert (
+            pipeline_repo.is_step_complete(video_uuid, "visual_analyze", scene_id=0)
+            is True
+        )
+        assert (
+            pipeline_repo.is_step_complete(video_uuid, "visual_analyze", scene_id=1)
+            is False
+        )
 
 
 class TestPipelineRepositoryStatus:

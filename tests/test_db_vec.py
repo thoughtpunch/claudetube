@@ -226,18 +226,14 @@ class TestEmbedText:
             patch.object(vec, "_ensure_vec_table", return_value=False),
             patch.object(vec, "get_embedding", return_value=None),
         ):
-            result = await vec.embed_text(
-                video_uuid, 0, "transcription", "Hello world"
-            )
+            result = await vec.embed_text(video_uuid, 0, "transcription", "Hello world")
 
         # Should have returned a metadata ID
         assert result is not None
         assert len(result) == 36  # UUID length
 
         # Check metadata was stored
-        cursor = db.execute(
-            "SELECT * FROM vec_metadata WHERE id = ?", (result,)
-        )
+        cursor = db.execute("SELECT * FROM vec_metadata WHERE id = ?", (result,))
         row = cursor.fetchone()
         assert row is not None
         assert row["video_id"] == video_uuid
@@ -451,9 +447,7 @@ class TestDimensionMismatch:
             mock_cursor.fetchone.return_value = {"rowid": 1}
             mock_execute.return_value = mock_cursor
 
-            result = await vec.embed_text(
-                video_uuid, 0, "transcription", "Hello"
-            )
+            result = await vec.embed_text(video_uuid, 0, "transcription", "Hello")
 
         # Should still return metadata ID (embedding storage was skipped)
         # The actual behavior depends on the mocking - just verify no crash

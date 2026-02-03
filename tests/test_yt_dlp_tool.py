@@ -26,34 +26,39 @@ class TestYoutubeConfigArgs:
 
     def test_returns_empty_when_no_config(self, tool):
         """No config files → empty args."""
-        with patch(
-            "claudetube.config.loader._find_project_config", return_value=None
-        ), patch(
-            "claudetube.config.loader._load_yaml_config", return_value=None
+        with (
+            patch("claudetube.config.loader._find_project_config", return_value=None),
+            patch("claudetube.config.loader._load_yaml_config", return_value=None),
         ):
             assert tool._youtube_config_args() == []
 
     def test_returns_empty_when_no_youtube_section(self, tool):
         """Config exists but no 'youtube' key → empty args."""
         fake_config = {"providers": {"openai": {"api_key": "sk-test"}}}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             assert tool._youtube_config_args() == []
 
     def test_po_token(self, tool):
         """po_token maps to --extractor-args youtube:po_token=..."""
         fake_config = {"youtube": {"po_token": "mweb.gvs+TOKEN123"}}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--extractor-args" in args
@@ -65,12 +70,15 @@ class TestYoutubeConfigArgs:
         cookie_file.write_text("# Netscape HTTP Cookie File\n")
 
         fake_config = {"youtube": {"cookies_file": str(cookie_file)}}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--cookies" in args
@@ -79,34 +87,35 @@ class TestYoutubeConfigArgs:
     def test_cookies_file_missing(self, tool):
         """cookies_file that doesn't exist → warning, no args."""
         fake_config = {"youtube": {"cookies_file": "/nonexistent/cookies.txt"}}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--cookies" not in args
 
     def test_pot_server_url(self, tool):
         """pot_server_url maps to --extractor-args youtubepot-bgutilhttp:base_url=..."""
-        fake_config = {
-            "youtube": {"pot_server_url": "http://192.168.1.100:4416"}
-        }
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        fake_config = {"youtube": {"pot_server_url": "http://192.168.1.100:4416"}}
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--extractor-args" in args
-            assert (
-                "youtubepot-bgutilhttp:base_url=http://192.168.1.100:4416"
-                in args
-            )
+            assert "youtubepot-bgutilhttp:base_url=http://192.168.1.100:4416" in args
 
     def test_pot_script_path_exists(self, tool, tmp_path):
         """pot_script_path maps to --extractor-args when script exists."""
@@ -114,38 +123,38 @@ class TestYoutubeConfigArgs:
         script.write_text("// bgutil script\n")
 
         fake_config = {"youtube": {"pot_script_path": str(script)}}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--extractor-args" in args
             # There may be multiple --extractor-args; find the bgutilscript one
-            bgutil_args = [
-                a for a in args if "youtubepot-bgutilscript:" in a
-            ]
+            bgutil_args = [a for a in args if "youtubepot-bgutilscript:" in a]
             assert len(bgutil_args) == 1
             assert f"script_path={script}" in bgutil_args[0]
 
     def test_pot_script_path_missing(self, tool):
         """pot_script_path that doesn't exist → warning, no args."""
-        fake_config = {
-            "youtube": {"pot_script_path": "/nonexistent/generate_once.js"}
-        }
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        fake_config = {"youtube": {"pot_script_path": "/nonexistent/generate_once.js"}}
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
-            bgutil_args = [
-                a for a in args if "youtubepot-bgutilscript:" in a
-            ]
+            bgutil_args = [a for a in args if "youtubepot-bgutilscript:" in a]
             assert len(bgutil_args) == 0
 
     def test_all_options_combined(self, tool, tmp_path):
@@ -163,12 +172,15 @@ class TestYoutubeConfigArgs:
                 "pot_script_path": str(script),
             }
         }
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "youtube:po_token=mweb.gvs+COMBINED" in args
@@ -188,12 +200,15 @@ class TestYoutubeConfigArgs:
     def test_youtube_section_not_dict(self, tool):
         """Non-dict youtube value → empty args."""
         fake_config = {"youtube": "invalid"}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert args == []
@@ -201,12 +216,15 @@ class TestYoutubeConfigArgs:
     def test_cookies_from_browser_valid(self, tool):
         """cookies_from_browser with supported browser → --cookies-from-browser."""
         fake_config = {"youtube": {"cookies_from_browser": "firefox"}}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--cookies-from-browser" in args
@@ -215,12 +233,15 @@ class TestYoutubeConfigArgs:
     def test_cookies_from_browser_unsupported(self, tool):
         """cookies_from_browser with unsupported browser → warning, no args."""
         fake_config = {"youtube": {"cookies_from_browser": "netscape"}}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--cookies-from-browser" not in args
@@ -239,12 +260,15 @@ class TestYoutubeConfigArgs:
                 "cookies_file": str(cookie_file),
             }
         }
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--cookies-from-browser" in args
@@ -255,20 +279,21 @@ class TestYoutubeConfigArgs:
     def test_cookies_from_browser_case_insensitive(self, tool):
         """Browser name is normalized to lowercase."""
         fake_config = {"youtube": {"cookies_from_browser": "Firefox"}}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--cookies-from-browser" in args
             assert "firefox" in args
 
-    def test_cookies_from_browser_fallback_to_cookies_file(
-        self, tool, tmp_path
-    ):
+    def test_cookies_from_browser_fallback_to_cookies_file(self, tool, tmp_path):
         """Unsupported browser falls through to cookies_file."""
         cookie_file = tmp_path / "cookies.txt"
         cookie_file.write_text("# cookies\n")
@@ -279,12 +304,15 @@ class TestYoutubeConfigArgs:
                 "cookies_file": str(cookie_file),
             }
         }
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--cookies-from-browser" not in args
@@ -293,18 +321,30 @@ class TestYoutubeConfigArgs:
 
     @pytest.mark.parametrize(
         "browser",
-        ["brave", "chrome", "chromium", "edge", "firefox",
-         "opera", "safari", "vivaldi", "whale"],
+        [
+            "brave",
+            "chrome",
+            "chromium",
+            "edge",
+            "firefox",
+            "opera",
+            "safari",
+            "vivaldi",
+            "whale",
+        ],
     )
     def test_all_supported_browsers(self, tool, browser):
         """All documented browsers are accepted."""
         fake_config = {"youtube": {"cookies_from_browser": browser}}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             args = tool._youtube_config_args()
             assert "--cookies-from-browser" in args
@@ -329,8 +369,16 @@ class TestYoutubeConfigArgsApplied:
 
     def test_get_metadata_uses_youtube_config(self, tool):
         """get_metadata passes YouTube config args for YouTube URLs."""
-        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
-             patch.object(tool, "_run", return_value=self._make_success_result(stdout='{"id":"x"}')):
+        with (
+            patch.object(
+                tool, "_youtube_config_args", return_value=["--cookies", "/f"]
+            ) as mock_cfg,
+            patch.object(
+                tool,
+                "_run",
+                return_value=self._make_success_result(stdout='{"id":"x"}'),
+            ),
+        ):
             tool.get_metadata("https://www.youtube.com/watch?v=abc123")
             mock_cfg.assert_called_once()
             run_args = tool._run.call_args[0][0]
@@ -338,42 +386,64 @@ class TestYoutubeConfigArgsApplied:
 
     def test_get_metadata_skips_config_for_non_youtube(self, tool):
         """get_metadata does NOT call _youtube_config_args for non-YouTube URLs."""
-        with patch.object(tool, "_youtube_config_args") as mock_cfg, \
-             patch.object(tool, "_run", return_value=self._make_success_result(stdout='{"id":"x"}')):
+        with (
+            patch.object(tool, "_youtube_config_args") as mock_cfg,
+            patch.object(
+                tool,
+                "_run",
+                return_value=self._make_success_result(stdout='{"id":"x"}'),
+            ),
+        ):
             tool.get_metadata("https://vimeo.com/123456")
             mock_cfg.assert_not_called()
 
     def test_download_thumbnail_uses_youtube_config(self, tool, tmp_path):
         """download_thumbnail passes YouTube config args for YouTube URLs."""
         (tmp_path / "thumbnail.jpg").write_bytes(b"\xff\xd8")
-        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
-             patch.object(tool, "_run", return_value=self._make_success_result()):
-            tool.download_thumbnail(
-                "https://www.youtube.com/watch?v=abc123", tmp_path
-            )
+        with (
+            patch.object(
+                tool, "_youtube_config_args", return_value=["--cookies", "/f"]
+            ) as mock_cfg,
+            patch.object(tool, "_run", return_value=self._make_success_result()),
+        ):
+            tool.download_thumbnail("https://www.youtube.com/watch?v=abc123", tmp_path)
             mock_cfg.assert_called_once()
 
     def test_fetch_subtitles_uses_youtube_config(self, tool, tmp_path):
         """fetch_subtitles passes YouTube config args for YouTube URLs."""
-        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
-             patch.object(tool, "_run", return_value=self._make_success_result()):
-            tool.fetch_subtitles(
-                "https://www.youtube.com/watch?v=abc123", tmp_path
-            )
+        with (
+            patch.object(
+                tool, "_youtube_config_args", return_value=["--cookies", "/f"]
+            ) as mock_cfg,
+            patch.object(tool, "_run", return_value=self._make_success_result()),
+        ):
+            tool.fetch_subtitles("https://www.youtube.com/watch?v=abc123", tmp_path)
             mock_cfg.assert_called_once()
 
     def test_get_formats_uses_youtube_config(self, tool):
         """get_formats passes YouTube config args for YouTube URLs."""
-        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
-             patch.object(tool, "_run", return_value=self._make_success_result(stdout='{"formats":[]}')):
+        with (
+            patch.object(
+                tool, "_youtube_config_args", return_value=["--cookies", "/f"]
+            ) as mock_cfg,
+            patch.object(
+                tool,
+                "_run",
+                return_value=self._make_success_result(stdout='{"formats":[]}'),
+            ),
+        ):
             tool.get_formats("https://www.youtube.com/watch?v=abc123")
             mock_cfg.assert_called_once()
 
     def test_download_video_segment_uses_youtube_config(self, tool, tmp_path):
         """download_video_segment passes YouTube config args for YouTube URLs."""
         out = tmp_path / "segment.mp4"
-        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
-             patch.object(tool, "_run", return_value=self._make_success_result()):
+        with (
+            patch.object(
+                tool, "_youtube_config_args", return_value=["--cookies", "/f"]
+            ) as mock_cfg,
+            patch.object(tool, "_run", return_value=self._make_success_result()),
+        ):
             tool.download_video_segment(
                 "https://www.youtube.com/watch?v=abc123", out, 0, 10
             )
@@ -383,8 +453,12 @@ class TestYoutubeConfigArgsApplied:
         """download_audio_description passes YouTube config args for YouTube URLs."""
         out = tmp_path / "ad.mp3"
         out.write_bytes(b"\x00")
-        with patch.object(tool, "_youtube_config_args", return_value=["--cookies", "/f"]) as mock_cfg, \
-             patch.object(tool, "_run", return_value=self._make_success_result()):
+        with (
+            patch.object(
+                tool, "_youtube_config_args", return_value=["--cookies", "/f"]
+            ) as mock_cfg,
+            patch.object(tool, "_run", return_value=self._make_success_result()),
+        ):
             tool.download_audio_description(
                 "https://www.youtube.com/watch?v=abc123",
                 out,
@@ -489,10 +563,12 @@ class TestCheckYoutubeAuthStatus:
 
     def test_level_0_nothing_configured(self, tool):
         """No deno, no config → auth level 0."""
-        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch("shutil.which", return_value=None), \
-             patch.object(tool, "check_pot_providers", return_value=[]), \
-             patch.object(tool, "_load_youtube_config", return_value={}):
+        with (
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch("shutil.which", return_value=None),
+            patch.object(tool, "check_pot_providers", return_value=[]),
+            patch.object(tool, "_load_youtube_config", return_value={}),
+        ):
             status = tool.check_youtube_auth_status()
             assert status["auth_level"] == 0
             assert status["deno_available"] is False
@@ -507,11 +583,13 @@ class TestCheckYoutubeAuthStatus:
         fake_proc.returncode = 0
         fake_proc.stdout = "deno 2.1.4\n"
 
-        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch("shutil.which", return_value="/usr/local/bin/deno"), \
-             patch("subprocess.run", return_value=fake_proc), \
-             patch.object(tool, "check_pot_providers", return_value=[]), \
-             patch.object(tool, "_load_youtube_config", return_value={}):
+        with (
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch("shutil.which", return_value="/usr/local/bin/deno"),
+            patch("subprocess.run", return_value=fake_proc),
+            patch.object(tool, "check_pot_providers", return_value=[]),
+            patch.object(tool, "_load_youtube_config", return_value={}),
+        ):
             status = tool.check_youtube_auth_status()
             assert status["auth_level"] == 1
             assert status["deno_available"] is True
@@ -528,11 +606,13 @@ class TestCheckYoutubeAuthStatus:
 
         yt_cfg = {"cookies_file": str(cookie_file)}
 
-        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch("shutil.which", return_value="/usr/local/bin/deno"), \
-             patch("subprocess.run", return_value=fake_proc), \
-             patch.object(tool, "check_pot_providers", return_value=[]), \
-             patch.object(tool, "_load_youtube_config", return_value=yt_cfg):
+        with (
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch("shutil.which", return_value="/usr/local/bin/deno"),
+            patch("subprocess.run", return_value=fake_proc),
+            patch.object(tool, "check_pot_providers", return_value=[]),
+            patch.object(tool, "_load_youtube_config", return_value=yt_cfg),
+        ):
             status = tool.check_youtube_auth_status()
             assert status["auth_level"] == 2
             assert status["cookies_configured"] is True
@@ -552,11 +632,13 @@ class TestCheckYoutubeAuthStatus:
             "po_token": "mweb.gvs+TOKENVALUE",
         }
 
-        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch("shutil.which", return_value="/usr/local/bin/deno"), \
-             patch("subprocess.run", return_value=fake_proc), \
-             patch.object(tool, "check_pot_providers", return_value=[]), \
-             patch.object(tool, "_load_youtube_config", return_value=yt_cfg):
+        with (
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch("shutil.which", return_value="/usr/local/bin/deno"),
+            patch("subprocess.run", return_value=fake_proc),
+            patch.object(tool, "check_pot_providers", return_value=[]),
+            patch.object(tool, "_load_youtube_config", return_value=yt_cfg),
+        ):
             status = tool.check_youtube_auth_status()
             assert status["auth_level"] == 3
             assert status["po_token_configured"] is True
@@ -573,11 +655,17 @@ class TestCheckYoutubeAuthStatus:
 
         yt_cfg = {"cookies_file": str(cookie_file)}
 
-        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch("shutil.which", return_value="/usr/local/bin/deno"), \
-             patch("subprocess.run", return_value=fake_proc), \
-             patch.object(tool, "check_pot_providers", return_value=["bgutil:http-1.2.2 (external)"]), \
-             patch.object(tool, "_load_youtube_config", return_value=yt_cfg):
+        with (
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch("shutil.which", return_value="/usr/local/bin/deno"),
+            patch("subprocess.run", return_value=fake_proc),
+            patch.object(
+                tool,
+                "check_pot_providers",
+                return_value=["bgutil:http-1.2.2 (external)"],
+            ),
+            patch.object(tool, "_load_youtube_config", return_value=yt_cfg),
+        ):
             status = tool.check_youtube_auth_status()
             assert status["auth_level"] == 4
             assert status["pot_plugin_loaded"] is True
@@ -591,11 +679,13 @@ class TestCheckYoutubeAuthStatus:
 
         yt_cfg = {"cookies_from_browser": "firefox"}
 
-        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch("shutil.which", return_value="/usr/local/bin/deno"), \
-             patch("subprocess.run", return_value=fake_proc), \
-             patch.object(tool, "check_pot_providers", return_value=[]), \
-             patch.object(tool, "_load_youtube_config", return_value=yt_cfg):
+        with (
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch("shutil.which", return_value="/usr/local/bin/deno"),
+            patch("subprocess.run", return_value=fake_proc),
+            patch.object(tool, "check_pot_providers", return_value=[]),
+            patch.object(tool, "_load_youtube_config", return_value=yt_cfg),
+        ):
             status = tool.check_youtube_auth_status()
             assert status["cookies_configured"] is True
             assert status["cookies_source"] == "browser:firefox"
@@ -604,29 +694,35 @@ class TestCheckYoutubeAuthStatus:
         """pot_server_url triggers reachability check."""
         yt_cfg = {"pot_server_url": "http://localhost:4416"}
 
-        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch("shutil.which", return_value=None), \
-             patch.object(tool, "check_pot_providers", return_value=[]), \
-             patch.object(tool, "_load_youtube_config", return_value=yt_cfg), \
-             patch("urllib.request.urlopen", side_effect=ConnectionRefusedError):
+        with (
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch("shutil.which", return_value=None),
+            patch.object(tool, "check_pot_providers", return_value=[]),
+            patch.object(tool, "_load_youtube_config", return_value=yt_cfg),
+            patch("urllib.request.urlopen", side_effect=ConnectionRefusedError),
+        ):
             status = tool.check_youtube_auth_status()
             assert status["pot_server_reachable"] is False
 
     def test_pot_server_not_configured(self, tool):
         """No pot_server_url → pot_server_reachable is None."""
-        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch("shutil.which", return_value=None), \
-             patch.object(tool, "check_pot_providers", return_value=[]), \
-             patch.object(tool, "_load_youtube_config", return_value={}):
+        with (
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch("shutil.which", return_value=None),
+            patch.object(tool, "check_pot_providers", return_value=[]),
+            patch.object(tool, "_load_youtube_config", return_value={}),
+        ):
             status = tool.check_youtube_auth_status()
             assert status["pot_server_reachable"] is None
 
     def test_recommendations_when_nothing_configured(self, tool):
         """No config → recommendations include deno, cookies, and PO token."""
-        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch("shutil.which", return_value=None), \
-             patch.object(tool, "check_pot_providers", return_value=[]), \
-             patch.object(tool, "_load_youtube_config", return_value={}):
+        with (
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch("shutil.which", return_value=None),
+            patch.object(tool, "check_pot_providers", return_value=[]),
+            patch.object(tool, "_load_youtube_config", return_value={}),
+        ):
             status = tool.check_youtube_auth_status()
             recs = status["recommendations"]
             assert any("deno" in r.lower() for r in recs)
@@ -644,11 +740,17 @@ class TestCheckYoutubeAuthStatus:
 
         yt_cfg = {"cookies_file": str(cookie_file)}
 
-        with patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch("shutil.which", return_value="/usr/local/bin/deno"), \
-             patch("subprocess.run", return_value=fake_proc), \
-             patch.object(tool, "check_pot_providers", return_value=["bgutil:http-1.2.2 (external)"]), \
-             patch.object(tool, "_load_youtube_config", return_value=yt_cfg):
+        with (
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch("shutil.which", return_value="/usr/local/bin/deno"),
+            patch("subprocess.run", return_value=fake_proc),
+            patch.object(
+                tool,
+                "check_pot_providers",
+                return_value=["bgutil:http-1.2.2 (external)"],
+            ),
+            patch.object(tool, "_load_youtube_config", return_value=yt_cfg),
+        ):
             status = tool.check_youtube_auth_status()
             assert status["recommendations"] == []
 
@@ -702,19 +804,23 @@ class TestFormatAuthErrorMessage:
 
     def test_uses_computed_status_when_none(self, tool):
         """When auth_status is None, computes it."""
-        with patch.object(tool, "check_youtube_auth_status", return_value={
-            "auth_level": 0,
-            "deno_available": False,
-            "deno_version": None,
-            "cookies_configured": False,
-            "cookies_source": None,
-            "pot_plugin_loaded": False,
-            "pot_plugin_version": None,
-            "po_token_configured": False,
-            "po_token_type": None,
-            "pot_server_reachable": None,
-            "recommendations": [],
-        }) as mock_check:
+        with patch.object(
+            tool,
+            "check_youtube_auth_status",
+            return_value={
+                "auth_level": 0,
+                "deno_available": False,
+                "deno_version": None,
+                "cookies_configured": False,
+                "cookies_source": None,
+                "pot_plugin_loaded": False,
+                "pot_plugin_version": None,
+                "po_token_configured": False,
+                "po_token_type": None,
+                "pot_server_reachable": None,
+                "recommendations": [],
+            },
+        ) as mock_check:
             msg = tool.format_auth_error_message()
             mock_check.assert_called_once()
             assert "403" in msg
@@ -744,10 +850,16 @@ class TestRunActionableError:
             stderr="ERROR: HTTP Error 403: Forbidden (retry)",
         )
 
-        with patch("subprocess.run", side_effect=[first_result, retry_result]), \
-             patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}), \
-             patch.object(tool, "format_auth_error_message", return_value="\nAuth guidance here"):
-            result = tool._run(["--dump-json", "https://youtube.com/watch?v=x"], retry_clients=True)
+        with (
+            patch("subprocess.run", side_effect=[first_result, retry_result]),
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+            patch.object(
+                tool, "format_auth_error_message", return_value="\nAuth guidance here"
+            ),
+        ):
+            result = tool._run(
+                ["--dump-json", "https://youtube.com/watch?v=x"], retry_clients=True
+            )
             assert not result.success
             assert "Auth guidance here" in result.stderr
 
@@ -760,9 +872,13 @@ class TestRunActionableError:
             stderr="ERROR: Video unavailable",
         )
 
-        with patch("subprocess.run", return_value=error_result), \
-             patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}):
-            result = tool._run(["--dump-json", "https://example.com/video"], retry_clients=True)
+        with (
+            patch("subprocess.run", return_value=error_result),
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+        ):
+            result = tool._run(
+                ["--dump-json", "https://example.com/video"], retry_clients=True
+            )
             assert not result.success
             assert "auth" not in result.stderr.lower()
 
@@ -778,22 +894,24 @@ class TestLoadYoutubeConfig:
     def test_returns_youtube_section(self, tool):
         """Returns the youtube config dict."""
         fake_config = {"youtube": {"po_token": "mweb.gvs+TOKEN"}}
-        with patch(
-            "claudetube.config.loader._find_project_config",
-            return_value=Path("/fake/config.yaml"),
-        ), patch(
-            "claudetube.config.loader._load_yaml_config",
-            return_value=fake_config,
+        with (
+            patch(
+                "claudetube.config.loader._find_project_config",
+                return_value=Path("/fake/config.yaml"),
+            ),
+            patch(
+                "claudetube.config.loader._load_yaml_config",
+                return_value=fake_config,
+            ),
         ):
             cfg = tool._load_youtube_config()
             assert cfg == {"po_token": "mweb.gvs+TOKEN"}
 
     def test_returns_empty_when_no_config(self, tool):
         """No config → empty dict."""
-        with patch(
-            "claudetube.config.loader._find_project_config", return_value=None
-        ), patch(
-            "claudetube.config.loader._load_yaml_config", return_value=None
+        with (
+            patch("claudetube.config.loader._find_project_config", return_value=None),
+            patch("claudetube.config.loader._load_yaml_config", return_value=None),
         ):
             cfg = tool._load_youtube_config()
             assert cfg == {}

@@ -267,7 +267,9 @@ class CacheManager:
                             "video_id": video_id,
                             "title": state.get("title"),
                             "duration_string": state.get("duration_string"),
-                            "transcript_complete": state.get("transcript_complete", False),
+                            "transcript_complete": state.get(
+                                "transcript_complete", False
+                            ),
                             "transcript_source": state.get("transcript_source"),
                             "cache_dir": str(state_file.parent),
                         }
@@ -288,7 +290,9 @@ class CacheManager:
                             "video_id": video_id,
                             "title": state.get("title"),
                             "duration_string": state.get("duration_string"),
-                            "transcript_complete": state.get("transcript_complete", False),
+                            "transcript_complete": state.get(
+                                "transcript_complete", False
+                            ),
                             "transcript_source": state.get("transcript_source"),
                             "cache_dir": str(state_file.parent),
                         }

@@ -172,17 +172,19 @@ class YtDlpTool(VideoTool):
         return bool(_YOUTUBE_URL_RE.search(url))
 
     # Browsers supported by yt-dlp's --cookies-from-browser flag
-    _SUPPORTED_BROWSERS = frozenset({
-        "brave",
-        "chrome",
-        "chromium",
-        "edge",
-        "firefox",
-        "opera",
-        "safari",
-        "vivaldi",
-        "whale",
-    })
+    _SUPPORTED_BROWSERS = frozenset(
+        {
+            "brave",
+            "chrome",
+            "chromium",
+            "edge",
+            "firefox",
+            "opera",
+            "safari",
+            "vivaldi",
+            "whale",
+        }
+    )
 
     def _youtube_config_args(self) -> list[str]:
         """Build yt-dlp args from YouTube config (cookies, PO token, bgutil).
@@ -239,8 +241,7 @@ class YtDlpTool(VideoTool):
                     cookie_source_set = True
                 else:
                     logger.warning(
-                        "Unsupported browser for cookie extraction: %r. "
-                        "Supported: %s",
+                        "Unsupported browser for cookie extraction: %r. Supported: %s",
                         browser,
                         ", ".join(sorted(self._SUPPORTED_BROWSERS)),
                     )
@@ -255,25 +256,27 @@ class YtDlpTool(VideoTool):
                         args.extend(["--cookies", str(cookies_path)])
                         cookie_source_set = True
                     else:
-                        logger.warning(
-                            "Cookies file not found: %s", cookies_path
-                        )
+                        logger.warning("Cookies file not found: %s", cookies_path)
 
             # --- PO token ---
             po_token = yt_cfg.get("po_token")
             if po_token:
-                args.extend([
-                    "--extractor-args",
-                    f"youtube:po_token={po_token}",
-                ])
+                args.extend(
+                    [
+                        "--extractor-args",
+                        f"youtube:po_token={po_token}",
+                    ]
+                )
 
             # --- bgutil-ytdlp-pot-provider: HTTP server URL ---
             pot_server_url = yt_cfg.get("pot_server_url")
             if pot_server_url:
-                args.extend([
-                    "--extractor-args",
-                    f"youtubepot-bgutilhttp:base_url={pot_server_url}",
-                ])
+                args.extend(
+                    [
+                        "--extractor-args",
+                        f"youtubepot-bgutilhttp:base_url={pot_server_url}",
+                    ]
+                )
 
             # --- bgutil-ytdlp-pot-provider: script path (fallback mode) ---
             pot_script_path = yt_cfg.get("pot_script_path")
@@ -282,14 +285,14 @@ class YtDlpTool(VideoTool):
 
                 script_path = Path(pot_script_path).expanduser()
                 if script_path.exists():
-                    args.extend([
-                        "--extractor-args",
-                        f"youtubepot-bgutilscript:script_path={script_path}",
-                    ])
-                else:
-                    logger.warning(
-                        "bgutil script not found: %s", script_path
+                    args.extend(
+                        [
+                            "--extractor-args",
+                            f"youtubepot-bgutilscript:script_path={script_path}",
+                        ]
                     )
+                else:
+                    logger.warning("bgutil script not found: %s", script_path)
         except Exception:
             logger.debug("Failed to load YouTube config", exc_info=True)
 
@@ -387,7 +390,11 @@ class YtDlpTool(VideoTool):
                     # First line is typically "deno 2.x.x ..."
                     for line in proc.stdout.splitlines():
                         if line.strip().startswith("deno"):
-                            deno_version = line.strip().split()[1] if len(line.strip().split()) > 1 else line.strip()
+                            deno_version = (
+                                line.strip().split()[1]
+                                if len(line.strip().split()) > 1
+                                else line.strip()
+                            )
                             break
             except Exception:
                 pass
@@ -513,7 +520,9 @@ class YtDlpTool(VideoTool):
             "recommendations": recommendations,
         }
 
-    def format_auth_error_message(self, auth_status: dict[str, Any] | None = None) -> str:
+    def format_auth_error_message(
+        self, auth_status: dict[str, Any] | None = None
+    ) -> str:
         """Format an actionable error message for YouTube 403 failures.
 
         Args:
@@ -557,7 +566,9 @@ class YtDlpTool(VideoTool):
             diag.append(
                 f"  PO token: manual ({auth_status.get('po_token_type', 'unknown type')})"
             )
-            diag.append("  Note: Manual PO tokens expire in ~12 hours. Token may have expired.")
+            diag.append(
+                "  Note: Manual PO tokens expire in ~12 hours. Token may have expired."
+            )
         else:
             diag.append("  PO token: not configured")
 
@@ -631,10 +642,12 @@ class YtDlpTool(VideoTool):
         # YouTube-specific: add extractor client args and config-driven opts
         yt_args: list[str] = []
         if self._is_youtube_url(url):
-            yt_args.extend([
-                "--extractor-args",
-                "youtube:player_client=default,mweb",
-            ])
+            yt_args.extend(
+                [
+                    "--extractor-args",
+                    "youtube:player_client=default,mweb",
+                ]
+            )
             yt_args.extend(self._youtube_config_args())
 
         args = [

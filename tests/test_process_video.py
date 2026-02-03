@@ -355,7 +355,9 @@ class TestProcessVideoWhisperPath:
         """Skips download_audio if audio.mp3 already exists."""
         # Pre-create the audio file at hierarchical path (youtube/no_channel/no_playlist/video_id)
         # This is where process_video will look for a new video
-        audio_dir = cache_base / "youtube" / "no_channel" / "no_playlist" / FAKE_VIDEO_ID
+        audio_dir = (
+            cache_base / "youtube" / "no_channel" / "no_playlist" / FAKE_VIDEO_ID
+        )
         audio_dir.mkdir(parents=True)
         (audio_dir / "audio.mp3").write_bytes(b"pre-existing-audio")
 

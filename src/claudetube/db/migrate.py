@@ -38,7 +38,9 @@ def _get_applied_versions(db: Database) -> set[int]:
     return {row["version"] for row in cursor.fetchall()}
 
 
-def _discover_migrations(migrations_dir: Path | None = None) -> list[tuple[int, str, str]]:
+def _discover_migrations(
+    migrations_dir: Path | None = None,
+) -> list[tuple[int, str, str]]:
     """Discover migration SQL files sorted by version number.
 
     Args:

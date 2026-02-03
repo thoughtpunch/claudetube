@@ -26,18 +26,20 @@ class NarrativeRepository:
     """
 
     # Valid video_type values per schema CHECK constraint
-    VALID_VIDEO_TYPES = frozenset([
-        "coding_tutorial",
-        "lecture",
-        "demo",
-        "presentation",
-        "interview",
-        "review",
-        "vlog",
-        "documentary",
-        "music_video",
-        "other",
-    ])
+    VALID_VIDEO_TYPES = frozenset(
+        [
+            "coding_tutorial",
+            "lecture",
+            "demo",
+            "presentation",
+            "interview",
+            "review",
+            "vlog",
+            "documentary",
+            "music_video",
+            "other",
+        ]
+    )
 
     def __init__(self, db: Database) -> None:
         """Initialize with a Database instance.

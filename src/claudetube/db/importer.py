@@ -423,7 +423,9 @@ def _import_scenes(
         return
 
     # scenes_data is a list of scene dicts
-    scenes_list = scenes_data if isinstance(scenes_data, list) else scenes_data.get("scenes", [])
+    scenes_list = (
+        scenes_data if isinstance(scenes_data, list) else scenes_data.get("scenes", [])
+    )
 
     for i, scene in enumerate(scenes_list):
         try:
@@ -478,9 +480,7 @@ def _import_scenes(
             )
 
         # Import keyframes
-        _import_scene_keyframes(
-            scene_subdir, cache_path, video_uuid, scene_id, db
-        )
+        _import_scene_keyframes(scene_subdir, cache_path, video_uuid, scene_id, db)
 
 
 def _import_visual_description(
@@ -577,7 +577,9 @@ def _import_scene_keyframes(
                 except ValueError:
                     timestamp = 0.0
 
-            file_path = f"{cache_path}/scenes/scene_{scene_id:03d}/keyframes/{frame_file.name}"
+            file_path = (
+                f"{cache_path}/scenes/scene_{scene_id:03d}/keyframes/{frame_file.name}"
+            )
             file_size = frame_file.stat().st_size
 
             repo.insert(

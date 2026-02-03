@@ -390,8 +390,12 @@ class TestSchemaVersionTable:
         """Test getting versions after applying migrations."""
         db = Database(":memory:")
         _ensure_schema_version_table(db)
-        db.execute("INSERT INTO schema_version (version, description) VALUES (1, 'first')")
-        db.execute("INSERT INTO schema_version (version, description) VALUES (3, 'third')")
+        db.execute(
+            "INSERT INTO schema_version (version, description) VALUES (1, 'first')"
+        )
+        db.execute(
+            "INSERT INTO schema_version (version, description) VALUES (3, 'third')"
+        )
         db.commit()
 
         versions = _get_applied_versions(db)
@@ -425,7 +429,9 @@ class TestRunMigrations:
         assert cursor.fetchone() is not None
 
         # Verify version was recorded
-        cursor = db.execute("SELECT version, description FROM schema_version WHERE version = 1")
+        cursor = db.execute(
+            "SELECT version, description FROM schema_version WHERE version = 1"
+        )
         row = cursor.fetchone()
         assert row["version"] == 1
         assert row["description"] == "create users"
@@ -496,9 +502,7 @@ class TestRunMigrations:
         (tmp_path / "001_valid.sql").write_text(
             "CREATE TABLE t1 (id INTEGER PRIMARY KEY);"
         )
-        (tmp_path / "002_invalid.sql").write_text(
-            "THIS IS NOT VALID SQL AT ALL;"
-        )
+        (tmp_path / "002_invalid.sql").write_text("THIS IS NOT VALID SQL AT ALL;")
 
         db = Database(":memory:")
 
@@ -528,7 +532,9 @@ class TestRunMigrations:
         assert count == 1
 
         # Verify all objects were created
-        cursor = db.execute("SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type IN ('table', 'index')")
+        cursor = db.execute(
+            "SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type IN ('table', 'index')"
+        )
         row = cursor.fetchone()
         # users + posts + schema_version tables + idx_posts_user index + sqlite_autoindex
         assert row["cnt"] >= 4

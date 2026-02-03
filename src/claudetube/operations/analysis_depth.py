@@ -264,7 +264,9 @@ def extract_technical_content(
                 code_language = None
                 if code_blocks:
                     # Get the most common language from code blocks
-                    langs = [b.get("language") for b in code_blocks if b.get("language")]
+                    langs = [
+                        b.get("language") for b in code_blocks if b.get("language")
+                    ]
                     if langs:
                         code_language = max(set(langs), key=langs.count)
 
