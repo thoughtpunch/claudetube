@@ -83,9 +83,22 @@ def process_video(
 
     # STEP 1: Fetch metadata
     log_timed("Fetching video metadata...", t0)
+
+    # Record download pipeline step as running
+    try:
+        from claudetube.db.sync import record_pipeline_step, safe_update_pipeline_step
+
+        download_step_id = record_pipeline_step(
+            video_id, "download", "running", provider="yt-dlp"
+        )
+    except Exception:
+        download_step_id = None
+
     try:
         meta = fetch_metadata(url)
     except Exception as e:
+        # Record download failure
+        safe_update_pipeline_step(download_step_id, "failed", error_message=str(e))
         return VideoResult(
             success=False,
             video_id=video_id,
@@ -97,6 +110,14 @@ def process_video(
     state.playlist_id = playlist_id
     cache.save_state(video_id, state)
     log_timed(f"Metadata: '{state.title}' ({state.duration_string})", t0)
+
+    # Note: enrich_video() is NOT called here intentionally.
+    # enrich_video() may move the cache directory for hierarchical organization,
+    # which would invalidate the path variables (srt_path, audio_path, etc.).
+    # Progressive enrichment should be run separately AFTER initial processing.
+
+    # Record download step completed
+    safe_update_pipeline_step(download_step_id, "completed")
 
     # STEP 1b: Download thumbnail
     if not thumbnail_path.exists():
@@ -122,6 +143,43 @@ def process_video(
             f"DONE via subtitles ({sub_result['source']}) in {time.time() - t0:.1f}s",
             t0,
         )
+
+        # Fire-and-forget: sync transcription from subtitles to database
+        try:
+            from claudetube.db.sync import (
+                get_video_uuid,
+                record_pipeline_step,
+                sync_transcription,
+            )
+
+            video_uuid = get_video_uuid(video_id)
+            if video_uuid:
+                # Read full transcript text for FTS indexing
+                full_text = sub_result["txt"]
+                word_count = len(full_text.split()) if full_text else None
+
+                sync_transcription(
+                    video_uuid=video_uuid,
+                    provider="youtube_subtitles",
+                    format_="txt",
+                    file_path="audio.txt",
+                    full_text=full_text,
+                    word_count=word_count,
+                    duration=state.duration,
+                    file_size_bytes=int(txt_path.stat().st_size) if txt_path.exists() else None,
+                    is_primary=True,
+                )
+
+                # Record transcribe step as completed (subtitles path)
+                record_pipeline_step(
+                    video_id,
+                    "transcribe",
+                    "completed",
+                    provider="youtube_subtitles",
+                )
+        except Exception:
+            pass  # Fire-and-forget
+
         return VideoResult(
             success=True,
             video_id=video_id,
@@ -136,11 +194,47 @@ def process_video(
     log_timed("No subtitles available, falling back to whisper...", t0)
     if not audio_path.exists():
         log_timed("Downloading audio...", t0)
+
+        # Record audio_extract pipeline step as running
+        try:
+            from claudetube.db.sync import (
+                record_pipeline_step,
+                safe_update_pipeline_step,
+            )
+
+            audio_step_id = record_pipeline_step(
+                video_id, "audio_extract", "running", provider="yt-dlp"
+            )
+        except Exception:
+            audio_step_id = None
+
         try:
             download_audio(url, audio_path)
             size_mb = audio_path.stat().st_size / 1024 / 1024
             log_timed(f"Audio downloaded: {size_mb:.1f}MB", t0)
+
+            # Fire-and-forget: sync audio track to database
+            try:
+                from claudetube.db.sync import get_video_uuid, sync_audio_track
+
+                video_uuid = get_video_uuid(video_id)
+                if video_uuid:
+                    sync_audio_track(
+                        video_uuid=video_uuid,
+                        format_="mp3",
+                        file_path="audio.mp3",
+                        file_size_bytes=int(audio_path.stat().st_size),
+                        duration=state.duration,
+                    )
+            except Exception:
+                pass  # Fire-and-forget
+
+            # Record audio_extract step completed
+            safe_update_pipeline_step(audio_step_id, "completed")
+
         except Exception as e:
+            # Record audio_extract failure
+            safe_update_pipeline_step(audio_step_id, "failed", error_message=str(e))
             return VideoResult(
                 success=False,
                 video_id=video_id,
@@ -152,13 +246,62 @@ def process_video(
     # STEP 4: Transcribe with whisper
     if not srt_path.exists():
         log_timed(f"Transcribing with faster-whisper ({whisper_model})...", t0)
+
+        # Record transcribe pipeline step as running
+        try:
+            from claudetube.db.sync import (
+                record_pipeline_step,
+                safe_update_pipeline_step,
+            )
+
+            transcribe_step_id = record_pipeline_step(
+                video_id,
+                "transcribe",
+                "running",
+                provider="whisper",
+                model=whisper_model,
+            )
+        except Exception:
+            transcribe_step_id = None
+
         try:
             transcript = transcribe_audio(audio_path, model_size=whisper_model)
             txt_path.write_text(transcript["txt"])
             srt_path.write_text(transcript["srt"])
             log_timed("Transcription complete", t0)
+
+            # Fire-and-forget: sync transcription to database
+            try:
+                from claudetube.db.sync import get_video_uuid, sync_transcription
+
+                video_uuid = get_video_uuid(video_id)
+                if video_uuid:
+                    # Read full transcript text for FTS indexing
+                    full_text = transcript["txt"]
+                    word_count = len(full_text.split()) if full_text else None
+
+                    sync_transcription(
+                        video_uuid=video_uuid,
+                        provider="whisper",
+                        format_="txt",
+                        file_path="audio.txt",
+                        model=whisper_model,
+                        full_text=full_text,
+                        word_count=word_count,
+                        duration=state.duration,
+                        file_size_bytes=int(txt_path.stat().st_size) if txt_path.exists() else None,
+                        is_primary=True,
+                    )
+            except Exception:
+                pass  # Fire-and-forget
+
+            # Record transcribe step completed
+            safe_update_pipeline_step(transcribe_step_id, "completed")
+
         except Exception as e:
             log_timed(f"Transcription failed: {e}", t0)
+            # Record transcribe failure
+            safe_update_pipeline_step(transcribe_step_id, "failed", error_message=str(e))
             # Continue without transcript
 
     # STEP 5: Optional frames
@@ -349,6 +492,43 @@ def process_local_video(
             state.transcript_complete = True
             state.transcript_source = transcript_source
             cache.save_state(video_id, state)
+
+            # Fire-and-forget: sync transcription from local subtitles to database
+            try:
+                from claudetube.db.sync import (
+                    get_video_uuid,
+                    record_pipeline_step,
+                    sync_transcription,
+                )
+
+                video_uuid = get_video_uuid(video_id)
+                if video_uuid:
+                    # Read full transcript text for FTS indexing
+                    full_text = sub_result["txt"]
+                    word_count = len(full_text.split()) if full_text else None
+
+                    sync_transcription(
+                        video_uuid=video_uuid,
+                        provider="manual",  # local subtitles treated as manual
+                        format_="txt",
+                        file_path="audio.txt",
+                        full_text=full_text,
+                        word_count=word_count,
+                        duration=state.duration,
+                        file_size_bytes=int(txt_path.stat().st_size) if txt_path.exists() else None,
+                        is_primary=True,
+                    )
+
+                    # Record transcribe step as completed
+                    record_pipeline_step(
+                        video_id,
+                        "transcribe",
+                        "completed",
+                        provider="manual",
+                    )
+            except Exception:
+                pass  # Fire-and-forget
+
             return VideoResult(
                 success=True,
                 video_id=video_id,
@@ -365,11 +545,47 @@ def process_local_video(
         log_timed("No existing subtitles, falling back to whisper...", t0)
         audio_path = cache.get_audio_path(video_id)
         log_timed("Extracting audio...", t0)
+
+        # Record audio_extract pipeline step as running
+        try:
+            from claudetube.db.sync import (
+                record_pipeline_step,
+                safe_update_pipeline_step,
+            )
+
+            local_audio_step_id = record_pipeline_step(
+                video_id, "audio_extract", "running", provider="ffmpeg"
+            )
+        except Exception:
+            local_audio_step_id = None
+
         try:
             audio_path = extract_audio_local(cached_path, cache_dir)
             size_mb = audio_path.stat().st_size / 1024 / 1024
             log_timed(f"Audio extracted: {size_mb:.1f}MB", t0)
+
+            # Fire-and-forget: sync audio track to database
+            try:
+                from claudetube.db.sync import get_video_uuid, sync_audio_track
+
+                video_uuid = get_video_uuid(video_id)
+                if video_uuid:
+                    sync_audio_track(
+                        video_uuid=video_uuid,
+                        format_="mp3",
+                        file_path="audio.mp3",
+                        file_size_bytes=int(audio_path.stat().st_size),
+                        duration=state.duration,
+                    )
+            except Exception:
+                pass  # Fire-and-forget
+
+            # Record audio_extract step completed
+            safe_update_pipeline_step(local_audio_step_id, "completed")
+
         except Exception as e:
+            # Record audio_extract failure
+            safe_update_pipeline_step(local_audio_step_id, "failed", error_message=str(e))
             return VideoResult(
                 success=False,
                 video_id=video_id,
@@ -379,14 +595,63 @@ def process_local_video(
             )
 
         log_timed(f"Transcribing with faster-whisper ({whisper_model})...", t0)
+
+        # Record transcribe pipeline step as running
+        try:
+            from claudetube.db.sync import (
+                record_pipeline_step,
+                safe_update_pipeline_step,
+            )
+
+            local_transcribe_step_id = record_pipeline_step(
+                video_id,
+                "transcribe",
+                "running",
+                provider="whisper",
+                model=whisper_model,
+            )
+        except Exception:
+            local_transcribe_step_id = None
+
         try:
             transcript = transcribe_audio(audio_path, model_size=whisper_model)
             txt_path.write_text(transcript["txt"])
             srt_path.write_text(transcript["srt"])
             transcript_source = "whisper"
             log_timed("Transcription complete", t0)
+
+            # Fire-and-forget: sync transcription to database
+            try:
+                from claudetube.db.sync import get_video_uuid, sync_transcription
+
+                video_uuid = get_video_uuid(video_id)
+                if video_uuid:
+                    # Read full transcript text for FTS indexing
+                    full_text = transcript["txt"]
+                    word_count = len(full_text.split()) if full_text else None
+
+                    sync_transcription(
+                        video_uuid=video_uuid,
+                        provider="whisper",
+                        format_="txt",
+                        file_path="audio.txt",
+                        model=whisper_model,
+                        full_text=full_text,
+                        word_count=word_count,
+                        duration=state.duration,
+                        file_size_bytes=int(txt_path.stat().st_size) if txt_path.exists() else None,
+                        is_primary=True,
+                    )
+            except Exception:
+                pass  # Fire-and-forget
+
+            # Record transcribe step completed
+            safe_update_pipeline_step(local_transcribe_step_id, "completed")
+
         except Exception as e:
             log_timed(f"Transcription failed: {e}", t0)
+            # Record transcribe failure
+            safe_update_pipeline_step(local_transcribe_step_id, "failed", error_message=str(e))
             # Continue without transcript - still return success for metadata/thumbnail
 
     # Update state

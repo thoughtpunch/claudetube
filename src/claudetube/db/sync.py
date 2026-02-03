@@ -11,6 +11,7 @@ updates the database path atomically.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import shutil
 from pathlib import Path
@@ -21,6 +22,28 @@ if TYPE_CHECKING:
     from claudetube.models.state import VideoState
 
 logger = logging.getLogger(__name__)
+
+
+def safe_update_pipeline_step(
+    step_uuid: str | None,
+    status: str,
+    *,
+    error_message: str | None = None,
+) -> None:
+    """Fire-and-forget wrapper for update_pipeline_step.
+
+    Handles None step_uuid gracefully and suppresses all exceptions.
+    Use this from processor.py to avoid try-except-pass patterns.
+
+    Args:
+        step_uuid: UUID of the step to update, or None to skip.
+        status: New status value.
+        error_message: Optional error message (for failed status).
+    """
+    if step_uuid is None:
+        return
+    with contextlib.suppress(Exception):
+        update_pipeline_step(step_uuid, status, error_message=error_message)
 
 
 def _get_db() -> Database | None:
@@ -563,3 +586,114 @@ def get_video_uuid(video_id: str) -> str | None:
     except Exception:
         logger.debug("Failed to get video UUID", exc_info=True)
         return None
+
+
+def record_pipeline_step(
+    video_id: str,
+    step_type: str,
+    status: str,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    scene_id: int | None = None,
+    config: str | None = None,
+    error_message: str | None = None,
+) -> str | None:
+    """Record a pipeline step for a video.
+
+    Looks up the video UUID by natural key and records the step.
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_id: Natural key (e.g., YouTube video ID).
+        step_type: Type of processing step (download, audio_extract, transcribe, etc.).
+        status: Current status (pending, running, completed, failed, skipped).
+        provider: Optional provider name (e.g., 'whisper', 'yt-dlp').
+        model: Optional model name (e.g., 'small', 'tiny').
+        scene_id: Optional scene ID if step is per-scene.
+        config: Optional JSON config string.
+        error_message: Optional error message (for failed status).
+
+    Returns:
+        The generated UUID for the pipeline step, or None if sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return None
+
+        # Get video UUID first
+        from claudetube.db.repos.videos import VideoRepository
+
+        video_repo = VideoRepository(db)
+        existing = video_repo.get_by_video_id(video_id)
+        if existing is None:
+            logger.debug("Cannot record pipeline step: video %s not found", video_id)
+            return None
+
+        video_uuid = existing["id"]
+
+        from claudetube.db.repos.pipeline import PipelineRepository
+
+        pipeline_repo = PipelineRepository(db)
+        step_uuid = pipeline_repo.record_step(
+            video_uuid=video_uuid,
+            step_type=step_type,
+            status=status,
+            provider=provider,
+            model=model,
+            scene_id=scene_id,
+            config=config,
+            error_message=error_message,
+        )
+        logger.debug(
+            "Recorded pipeline step %s for video %s: %s -> %s",
+            step_uuid,
+            video_id,
+            step_type,
+            status,
+        )
+        return step_uuid
+
+    except Exception:
+        logger.debug("Failed to record pipeline step", exc_info=True)
+        return None
+
+
+def update_pipeline_step(
+    step_uuid: str,
+    status: str,
+    *,
+    error_message: str | None = None,
+) -> bool:
+    """Update an existing pipeline step.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        step_uuid: UUID of the step to update.
+        status: New status value.
+        error_message: Optional error message (for failed status).
+
+    Returns:
+        True if step was updated, False if not found or sync failed.
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return False
+
+        from claudetube.db.repos.pipeline import PipelineRepository
+
+        pipeline_repo = PipelineRepository(db)
+        result = pipeline_repo.update_step(
+            step_uuid=step_uuid,
+            status=status,
+            error_message=error_message,
+        )
+        logger.debug("Updated pipeline step %s -> %s", step_uuid, status)
+        return result
+
+    except Exception:
+        logger.debug("Failed to update pipeline step", exc_info=True)
+        return False

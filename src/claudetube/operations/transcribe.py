@@ -26,6 +26,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _map_provider_to_db(provider: str) -> str:
+    """Map provider name to valid database provider enum value.
+
+    The database expects specific provider values. This maps various
+    provider names to their canonical DB values.
+
+    Args:
+        provider: Provider name from transcription result.
+
+    Returns:
+        Valid provider value for database.
+    """
+    # Map known providers to DB enum values
+    mapping = {
+        "whisper": "whisper",
+        "whisper-local": "whisper",
+        "faster-whisper": "whisper",
+        "openai": "openai",
+        "openai-whisper": "openai",
+        "deepgram": "deepgram",
+        "youtube": "youtube_subtitles",
+        "youtube_subtitles": "youtube_subtitles",
+    }
+    return mapping.get(provider.lower(), "manual")
+
+
 def transcribe_audio(
     audio_path: Path,
     model_size: str = "tiny",
@@ -87,28 +113,77 @@ class TranscribeOperation:
         cache = CacheManager(cache_dir or get_cache_dir())
         srt_path, txt_path = cache.get_transcript_paths(video_id)
 
-        result = await self.transcriber.transcribe(audio_path, language=language)
+        # Record transcribe pipeline step as running
+        try:
+            from claudetube.db.sync import (
+                record_pipeline_step,
+                safe_update_pipeline_step,
+            )
 
-        srt_path.write_text(result.to_srt())
-        txt_path.write_text(result.text)
+            transcribe_step_id = record_pipeline_step(
+                video_id,
+                "transcribe",
+                "running",
+                provider=getattr(self.transcriber, "provider_name", "unknown"),
+            )
+        except Exception:
+            transcribe_step_id = None
 
-        state = cache.get_state(video_id)
-        if state:
-            state.transcript_complete = True
-            state.transcript_source = result.provider
-            cache.save_state(video_id, state)
+        try:
+            result = await self.transcriber.transcribe(audio_path, language=language)
 
-        return {
-            "success": True,
-            "video_id": video_id,
-            "transcript_srt": str(srt_path),
-            "transcript_txt": str(txt_path),
-            "source": result.provider,
-            "whisper_model": None,
-            "segments": len(result.segments),
-            "duration": result.duration,
-            "message": f"Transcribed with {result.provider}.",
-        }
+            srt_path.write_text(result.to_srt())
+            txt_path.write_text(result.text)
+
+            state = cache.get_state(video_id)
+            if state:
+                state.transcript_complete = True
+                state.transcript_source = result.provider
+                cache.save_state(video_id, state)
+
+            # Fire-and-forget: sync transcription to database
+            try:
+                from claudetube.db.sync import get_video_uuid, sync_transcription
+
+                video_uuid = get_video_uuid(video_id)
+                if video_uuid:
+                    # Map provider to valid DB provider
+                    db_provider = _map_provider_to_db(result.provider)
+
+                    sync_transcription(
+                        video_uuid=video_uuid,
+                        provider=db_provider,
+                        format_="txt",
+                        file_path="audio.txt",
+                        language=result.language,
+                        full_text=result.text,
+                        word_count=len(result.text.split()) if result.text else None,
+                        duration=result.duration,
+                        file_size_bytes=int(txt_path.stat().st_size) if txt_path.exists() else None,
+                        is_primary=True,
+                    )
+            except Exception:
+                pass  # Fire-and-forget
+
+            # Record transcribe step completed
+            safe_update_pipeline_step(transcribe_step_id, "completed")
+
+            return {
+                "success": True,
+                "video_id": video_id,
+                "transcript_srt": str(srt_path),
+                "transcript_txt": str(txt_path),
+                "source": result.provider,
+                "whisper_model": None,
+                "segments": len(result.segments),
+                "duration": result.duration,
+                "message": f"Transcribed with {result.provider}.",
+            }
+
+        except Exception as e:
+            # Record transcribe failure
+            safe_update_pipeline_step(transcribe_step_id, "failed", error_message=str(e))
+            raise
 
 
 async def transcribe_video(

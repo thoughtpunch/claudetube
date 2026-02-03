@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 def save_state(state: VideoState, state_file: Path) -> None:
     """Save video state to JSON file.
 
+    Also performs fire-and-forget sync to SQLite for dual-write indexing.
+    The JSON file is authoritative; SQLite sync failures are logged but
+    never prevent the JSON write from succeeding.
+
     Args:
         state: VideoState to save
         state_file: Path to state.json file
@@ -35,6 +39,19 @@ def save_state(state: VideoState, state_file: Path) -> None:
         state_file.write_text(json.dumps(state.to_dict(), indent=2))
     except Exception as e:
         raise CacheError(f"Failed to save state: {e}") from e
+
+    # Fire-and-forget sync to SQLite
+    try:
+        from claudetube.db.sync import sync_video
+
+        # Calculate relative cache path from state_file
+        # state_file is like /base/path/video_id/state.json
+        # cache_path should be video_id (relative to cache base)
+        cache_path = state_file.parent.name
+        sync_video(state, cache_path)
+    except Exception:
+        # Fire-and-forget: log and continue
+        logger.debug("Failed to sync state to SQLite", exc_info=True)
 
 
 def load_state(state_file: Path) -> VideoState | None:
