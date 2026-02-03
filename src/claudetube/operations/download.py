@@ -8,12 +8,28 @@ import logging
 from typing import TYPE_CHECKING
 
 from claudetube.tools.ffmpeg import FFmpegTool
-from claudetube.tools.yt_dlp import YtDlpTool
+from claudetube.tools.yt_dlp import (
+    DownloadProgress,
+    ProgressCallback,
+    YtDlpTool,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Re-export progress types for callers
+__all__ = [
+    "DownloadProgress",
+    "ProgressCallback",
+    "fetch_metadata",
+    "download_audio",
+    "download_thumbnail",
+    "fetch_subtitles",
+    "download_video_segment",
+    "extract_audio_local",
+]
 
 # Singleton tool instance
 _yt_dlp: YtDlpTool | None = None
@@ -48,6 +64,7 @@ def download_audio(
     url: str,
     output_path: Path,
     quality: str = "64K",
+    on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Download audio from video.
 
@@ -55,6 +72,8 @@ def download_audio(
         url: Video URL
         output_path: Output file path
         quality: Audio quality (e.g., "64K", "128K")
+        on_progress: Optional callback for progress updates.
+            Receives DownloadProgress objects with status, percent, speed, etc.
 
     Returns:
         Path to downloaded audio file
@@ -63,7 +82,7 @@ def download_audio(
         DownloadError: If download fails
     """
     tool = _get_yt_dlp()
-    return tool.download_audio(url, output_path, quality=quality)
+    return tool.download_audio(url, output_path, quality=quality, on_progress=on_progress)
 
 
 def download_thumbnail(
@@ -111,6 +130,7 @@ def download_video_segment(
     end_time: float,
     quality_sort: str = "+res,+size,+br,+fps",
     concurrent_fragments: int = 1,
+    on_progress: ProgressCallback | None = None,
 ) -> Path | None:
     """Download a video segment for frame extraction.
 
@@ -121,6 +141,8 @@ def download_video_segment(
         end_time: End time in seconds
         quality_sort: yt-dlp format sort string
         concurrent_fragments: Number of concurrent fragments
+        on_progress: Optional callback for progress updates.
+            Receives DownloadProgress objects with status, percent, speed, etc.
 
     Returns:
         Path to downloaded video, or None if failed
@@ -133,6 +155,7 @@ def download_video_segment(
         end_time=end_time,
         quality_sort=quality_sort,
         concurrent_fragments=concurrent_fragments,
+        on_progress=on_progress,
     )
 
 

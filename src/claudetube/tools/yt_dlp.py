@@ -44,9 +44,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DownloadProgress:
-    """Structured progress data from yt-dlp --progress-template."""
+    """Structured progress data from yt-dlp --progress-template.
 
-    status: str  # "downloading", "finished", "error"
+    Supports both download progress and postprocessor progress.
+
+    Download status values: "downloading", "finished", "error"
+    Postprocessor status values: "started", "processing", "finished"
+    """
+
+    status: str  # "downloading", "finished", "error", "started", "processing"
     percent: float | None = None  # 0.0-100.0
     speed: str | None = None  # Human-readable speed, e.g., "1.5MiB/s"
     eta: str | None = None  # Human-readable ETA, e.g., "00:30"
@@ -55,6 +61,9 @@ class DownloadProgress:
     fragment_index: int | None = None
     fragment_count: int | None = None
     filename: str | None = None
+    # Postprocessor-specific fields
+    postprocessor: str | None = None  # Name of postprocessor, e.g., "FFmpegExtractAudio"
+    info_dict: dict | None = None  # For accessing other fields like title
 
     @classmethod
     def from_json_line(cls, line: str) -> DownloadProgress | None:
@@ -115,6 +124,8 @@ class DownloadProgress:
             fragment_index=fragment_index,
             fragment_count=fragment_count,
             filename=data.get("filename"),
+            postprocessor=data.get("postprocessor"),
+            info_dict=data.get("info_dict"),
         )
 
 
@@ -725,11 +736,11 @@ class YtDlpTool(VideoTool):
         except Exception as e:
             return ToolResult.from_error(str(e))
 
-    # JSON progress template for structured output parsing.
+    # JSON progress templates for structured output parsing.
     # Uses yt-dlp's --progress-template to output JSON lines during download.
     # Fields: status, percent, speed, eta, downloaded_bytes, total_bytes,
     #         fragment_index, fragment_count, filename
-    _PROGRESS_TEMPLATE = (
+    _PROGRESS_TEMPLATE_DOWNLOAD = (
         '{"status":"%(progress.status)s",'
         '"percent":"%(progress._percent_str)s",'
         '"speed":"%(progress._speed_str)s",'
@@ -738,6 +749,15 @@ class YtDlpTool(VideoTool):
         '"total_bytes":%(progress.total_bytes|0)s,'
         '"fragment_index":%(progress.fragment_index|0)s,'
         '"fragment_count":%(progress.fragment_count|0)s,'
+        '"filename":"%(info.filename)s"}'
+    )
+
+    # Postprocessor progress template for operations like MP3 conversion.
+    # status: "started", "processing", "finished"
+    # postprocessor: name like "FFmpegExtractAudio", "FFmpegVideoConvertor"
+    _PROGRESS_TEMPLATE_POSTPROCESS = (
+        '{"status":"%(progress.status)s",'
+        '"postprocessor":"%(progress.postprocessor)s",'
         '"filename":"%(info.filename)s"}'
     )
 
@@ -753,6 +773,10 @@ class YtDlpTool(VideoTool):
         and passed to the callback. This allows real-time progress tracking
         without parsing human-readable output.
 
+        Supports both download progress and postprocessor progress:
+        - Download: status="downloading"|"finished"|"error", percent, speed, eta, etc.
+        - Postprocessor: status="started"|"processing"|"finished", postprocessor name
+
         Args:
             args: Command arguments (without the yt-dlp executable)
             on_progress: Callback invoked with DownloadProgress for each update
@@ -761,10 +785,12 @@ class YtDlpTool(VideoTool):
         Returns:
             ToolResult with success status and captured output
         """
-        # Add progress template args
+        # Add progress template args for both download and postprocessor stages
         progress_args = [
             "--progress-template",
-            f"download:{self._PROGRESS_TEMPLATE}",
+            f"download:{self._PROGRESS_TEMPLATE_DOWNLOAD}",
+            "--progress-template",
+            f"postprocess:{self._PROGRESS_TEMPLATE_POSTPROCESS}",
             "--newline",  # Ensure each progress update is on its own line
         ]
         cmd = [self.get_path()] + progress_args + args

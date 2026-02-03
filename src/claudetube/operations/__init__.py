@@ -33,8 +33,11 @@ from claudetube.operations.code_evolution import (
     track_code_evolution,
 )
 from claudetube.operations.download import (
+    DownloadProgress,
+    ProgressCallback,
     download_audio,
     download_thumbnail,
+    download_video_segment,
     extract_audio_local,
     fetch_metadata,
     fetch_subtitles,
@@ -113,8 +116,13 @@ from claudetube.operations.watch import (
 __all__ = [
     "process_video",
     "process_local_video",
+    # Progress tracking
+    "DownloadProgress",
+    "ProgressCallback",
+    # Download operations
     "fetch_metadata",
     "download_audio",
+    "download_video_segment",
     "download_thumbnail",
     "extract_audio_local",
     "fetch_subtitles",

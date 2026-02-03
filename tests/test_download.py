@@ -116,7 +116,7 @@ class TestDownloadAudio:
         result = download.download_audio("https://example.com/v", output)
 
         mock_tool.download_audio.assert_called_once_with(
-            "https://example.com/v", output, quality="64K"
+            "https://example.com/v", output, quality="64K", on_progress=None
         )
         assert result == output
 
@@ -129,7 +129,7 @@ class TestDownloadAudio:
         download.download_audio("https://example.com/v", output, quality="128K")
 
         mock_tool.download_audio.assert_called_once_with(
-            "https://example.com/v", output, quality="128K"
+            "https://example.com/v", output, quality="128K", on_progress=None
         )
 
     @patch("claudetube.operations.download.YtDlpTool")
@@ -255,6 +255,7 @@ class TestDownloadVideoSegment:
             end_time=20.0,
             quality_sort="+res,+size,+br,+fps",
             concurrent_fragments=1,
+            on_progress=None,
         )
         assert result == output
 
@@ -294,6 +295,7 @@ class TestDownloadVideoSegment:
             end_time=10,
             quality_sort="res:1080",
             concurrent_fragments=4,
+            on_progress=None,
         )
 
 
