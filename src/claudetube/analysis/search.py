@@ -79,6 +79,58 @@ def _search_transcript_text(
 ) -> list[SearchMoment]:
     """Search scenes by transcript text matching.
 
+    Uses FTS5 for faster search when available, falls back to
+    case-insensitive substring and word matching.
+
+    Args:
+        cache_dir: Video cache directory.
+        query: Natural language query.
+        top_k: Maximum number of results.
+
+    Returns:
+        List of SearchMoment objects sorted by relevance.
+    """
+    # Extract video_id from cache_dir (last component)
+    video_id = cache_dir.name
+
+    # Try FTS search first (faster and more accurate)
+    try:
+        from claudetube.db.queries import search_transcripts_fts
+
+        fts_result = search_transcripts_fts(video_id, query, top_k)
+        if fts_result is not None and fts_result:
+            moments = []
+            for i, row in enumerate(fts_result):
+                preview = _create_preview(
+                    row.get("transcript_text", ""), query, max_len=150
+                )
+                moments.append(
+                    SearchMoment(
+                        rank=i + 1,
+                        scene_id=row["scene_id"],
+                        start_time=row["start_time"],
+                        end_time=row["end_time"],
+                        relevance=row.get("relevance", 0.5),
+                        preview=preview,
+                        timestamp_str=format_timestamp(row["start_time"]),
+                        match_type="fts",
+                    )
+                )
+            return moments
+    except Exception:
+        pass
+
+    # Fallback: in-memory text matching
+    return _search_transcript_text_memory(cache_dir, query, top_k)
+
+
+def _search_transcript_text_memory(
+    cache_dir: Path,
+    query: str,
+    top_k: int = 5,
+) -> list[SearchMoment]:
+    """Search scenes by transcript text matching (in-memory fallback).
+
     Uses case-insensitive substring and word matching for fast results.
 
     Args:

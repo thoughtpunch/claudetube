@@ -84,7 +84,26 @@ class CacheManager:
         return self.get_cache_dir(video_id) / "thumbnail.jpg"
 
     def list_cached_videos(self) -> list[dict]:
-        """List all cached videos with basic metadata."""
+        """List all cached videos with basic metadata.
+
+        Uses SQL query for speed when available, falls back to filesystem
+        scanning if database is unavailable.
+        """
+        # Try SQL first (faster for large caches)
+        try:
+            from claudetube.db.queries import list_cached_videos_sql
+
+            sql_result = list_cached_videos_sql()
+            if sql_result is not None:
+                return sql_result
+        except Exception:
+            pass
+
+        # Fallback: scan filesystem
+        return self._list_cached_videos_filesystem()
+
+    def _list_cached_videos_filesystem(self) -> list[dict]:
+        """List cached videos by scanning the filesystem (fallback)."""
         videos = []
         if not self.cache_base.exists():
             return videos

@@ -355,12 +355,47 @@ class VideoKnowledgeGraph:
     def find_related_videos(self, query: str) -> list[RelatedVideoMatch]:
         """Find videos related to a concept or entity.
 
+        Uses SQL query for speed when available and when in-memory graph
+        is empty (default graph). Falls back to in-memory graph scanning
+        when the graph has been populated from JSON (custom graph dir).
+
         Args:
             query: Search query (case-insensitive substring match)
 
         Returns:
             List of RelatedVideoMatch objects, deduplicated by video_id
         """
+        # If we have in-memory data, use it (this means graph was loaded from JSON)
+        # This handles the case where tests or custom graph dirs are used
+        if self._videos or self._entities or self._concepts:
+            return self._find_related_videos_memory(query)
+
+        # Try SQL for empty in-memory graph (faster for large DBs)
+        try:
+            from claudetube.db.queries import find_related_videos_sql
+
+            sql_result = find_related_videos_sql(query)
+            if sql_result is not None:
+                # Convert SQL result to RelatedVideoMatch objects
+                matches = []
+                for row in sql_result:
+                    matches.append(
+                        RelatedVideoMatch(
+                            video_id=row["video_id"],
+                            video_title=row.get("video_title", ""),
+                            match_type=row.get("match_type", "entity"),
+                            matched_term=row.get("matched", ""),
+                        )
+                    )
+                return matches
+        except Exception:
+            pass
+
+        # Fallback: in-memory graph search
+        return self._find_related_videos_memory(query)
+
+    def _find_related_videos_memory(self, query: str) -> list[RelatedVideoMatch]:
+        """Find related videos using in-memory graph (fallback)."""
         query_lower = query.lower()
         matches: list[RelatedVideoMatch] = []
         seen_videos: set[str] = set()
@@ -402,12 +437,35 @@ class VideoKnowledgeGraph:
     def get_video_connections(self, video_id: str) -> list[str]:
         """Get other videos sharing entities/concepts with this one.
 
+        Uses SQL query for speed when available and when in-memory graph
+        is empty. Falls back to in-memory graph scanning when the graph
+        has been populated from JSON.
+
         Args:
             video_id: Video to find connections for
 
         Returns:
             List of connected video IDs
         """
+        # If we have in-memory data, use it (handles tests and custom graph dirs)
+        if self._videos or self._entities or self._concepts:
+            return self._get_video_connections_memory(video_id)
+
+        # Try SQL for empty in-memory graph (faster for large DBs)
+        try:
+            from claudetube.db.queries import get_video_connections_sql
+
+            sql_result = get_video_connections_sql(video_id)
+            if sql_result is not None:
+                return sql_result
+        except Exception:
+            pass
+
+        # Fallback: in-memory graph search
+        return self._get_video_connections_memory(video_id)
+
+    def _get_video_connections_memory(self, video_id: str) -> list[str]:
+        """Get video connections using in-memory graph (fallback)."""
         if video_id not in self._videos:
             return []
 
@@ -452,7 +510,30 @@ class VideoKnowledgeGraph:
         return self._concepts.get(name.lower())
 
     def get_stats(self) -> dict:
-        """Get statistics about the knowledge graph."""
+        """Get statistics about the knowledge graph.
+
+        Uses in-memory counts when graph has data, SQL when empty.
+        """
+        # If we have in-memory data, use it (handles tests and custom graph dirs)
+        if self._videos or self._entities or self._concepts:
+            return {
+                "video_count": len(self._videos),
+                "entity_count": len(self._entities),
+                "concept_count": len(self._concepts),
+                "graph_path": str(self.graph_path),
+            }
+
+        # Try SQL for empty in-memory graph
+        try:
+            from claudetube.db.queries import get_knowledge_graph_stats_sql
+
+            sql_result = get_knowledge_graph_stats_sql()
+            if sql_result is not None:
+                return sql_result
+        except Exception:
+            pass
+
+        # Fallback: in-memory counts
         return {
             "video_count": len(self._videos),
             "entity_count": len(self._entities),

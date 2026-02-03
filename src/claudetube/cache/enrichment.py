@@ -351,6 +351,9 @@ def search_cached_qa(
     This enables "second query faster than first" by returning cached
     answers when the same or similar question is asked again.
 
+    Uses FTS5 for faster search when available, falls back to in-memory
+    keyword matching if database is unavailable.
+
     Args:
         video_id: Video identifier.
         cache_dir: Video cache directory.
@@ -359,6 +362,17 @@ def search_cached_qa(
     Returns:
         List of matching Q&A dicts from history.
     """
+    # Try FTS search first (faster and more accurate)
+    try:
+        from claudetube.db.queries import search_qa_fts
+
+        fts_result = search_qa_fts(video_id, query)
+        if fts_result is not None:
+            return fts_result
+    except Exception:
+        pass
+
+    # Fallback: in-memory keyword search
     memory = VideoMemory(video_id, cache_dir)
     return memory.search_qa_history(query)
 
