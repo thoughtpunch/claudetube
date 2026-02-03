@@ -645,6 +645,9 @@ class YtDlpTool(VideoTool):
             )
 
             # Handle 403 / format errors by retrying with alternative clients
+            # NOTE: We try android_vr and web_safari as fallbacks since these
+            # often work when default/mweb fail with 403 (they use different
+            # auth flows that don't require PO tokens in some cases).
             if result.returncode != 0 and retry_clients:
                 stderr = result.stderr or ""
                 if "403" in stderr or "Requested format is not available" in stderr:
@@ -657,9 +660,10 @@ class YtDlpTool(VideoTool):
                     # Extract clients tried from first attempt
                     first_clients = _extract_clients_tried(first_stderr) or ["default"]
 
+                    # Try android_vr and web_safari - these often work without PO tokens
                     client_args = [
                         "--extractor-args",
-                        "youtube:player_client=default,mweb",
+                        "youtube:player_client=android_vr,web_safari",
                     ]
                     cmd_retry = [self.get_path()] + client_args + args
                     result = subprocess.run(
@@ -673,8 +677,8 @@ class YtDlpTool(VideoTool):
                     if result.returncode != 0:
                         retry_stderr = result.stderr or ""
                         retry_clients_list = _extract_clients_tried(retry_stderr) or [
-                            "default",
-                            "mweb",
+                            "android_vr",
+                            "web_safari",
                         ]
 
                         # Build structured error with all clients tried
@@ -699,7 +703,7 @@ class YtDlpTool(VideoTool):
                             "",
                             f"[First attempt] {first_stderr.strip()}",
                             "",
-                            f"[Retry with default,mweb] {retry_stderr.strip()}",
+                            f"[Retry with android_vr,web_safari] {retry_stderr.strip()}",
                         ]
 
                         # Add warnings summary if present
@@ -1329,15 +1333,12 @@ class YtDlpTool(VideoTool):
         Raises:
             DownloadError: If download fails
         """
-        # YouTube-specific: add extractor client args and config-driven opts
+        # YouTube-specific: add config-driven opts (cookies, PO tokens, etc.)
+        # NOTE: We do NOT force specific player_client here - let yt-dlp's
+        # auto-detection choose the best client (android_vr often works when
+        # default/mweb fail with 403).
         yt_args: list[str] = []
         if self._is_youtube_url(url):
-            yt_args.extend(
-                [
-                    "--extractor-args",
-                    "youtube:player_client=default,mweb",
-                ]
-            )
             yt_args.extend(self._youtube_config_args())
 
         args = [
