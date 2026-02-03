@@ -12,6 +12,7 @@ from claudetube.cache.storage import load_state, save_state
 from claudetube.config.loader import get_cache_dir
 from claudetube.models.local_file import LocalFile, LocalFileError
 from claudetube.models.state import VideoState
+from claudetube.models.video_path import VideoPath
 from claudetube.models.video_result import VideoResult
 from claudetube.operations.download import (
     download_audio,
@@ -156,15 +157,22 @@ def process_video(
     except Exception:
         pass  # Fire-and-forget
 
-    # Update audio and transcript paths to use the hierarchical cache_dir
+    # Progressive enrichment: check if yt-dlp metadata provides better path info
+    # than what we extracted from URL alone. If so, move the cache directory.
+    cache_dir = _try_progressive_enrichment(
+        video_id=video_id,
+        video_path=video_path,
+        meta=meta,
+        cache_dir=cache_dir,
+        cache_base=cache_base,
+        state=state,
+    )
+
+    # Update audio and transcript paths to use the (possibly moved) cache_dir
     audio_path = cache_dir / "audio.mp3"
     srt_path = cache_dir / "audio.srt"
     txt_path = cache_dir / "audio.txt"
     thumbnail_path = cache_dir / "thumbnail.jpg"
-
-    # Note: enrich_video() can be called AFTER initial processing completes
-    # to move cache directories when better metadata is available.
-    # Progressive enrichment is handled by db/sync.py:enrich_video().
 
     # Record download step completed
     safe_update_pipeline_step(download_step_id, "completed")
@@ -763,3 +771,83 @@ def process_local_video(
         frames=[],
         metadata=state.to_dict(),
     )
+
+
+def _try_progressive_enrichment(
+    video_id: str,
+    video_path: VideoPath,
+    meta: dict,
+    cache_dir: Path,
+    cache_base: Path,
+    state: VideoState,
+) -> Path:
+    """Attempt to move cache directory if metadata provides richer path info.
+
+    Compares the initial VideoPath (from URL parsing) with what we'd get from
+    yt-dlp metadata. If metadata provides channel/playlist info we didn't have,
+    triggers directory move via enrich_video().
+
+    This implements progressive enrichment: initial download uses URL-derived
+    path (may be no_channel/no_playlist), then enriched with yt-dlp metadata.
+
+    Args:
+        video_id: The video's natural key.
+        video_path: Initial VideoPath from URL parsing.
+        meta: yt-dlp metadata dict with channel_id, playlist_id, etc.
+        cache_dir: Current cache directory (before potential move).
+        cache_base: Base cache directory.
+        state: VideoState to update if path changes.
+
+    Returns:
+        The cache directory (may be new location if moved).
+    """
+    try:
+        # Build enriched path using yt-dlp metadata
+        enriched_path = VideoPath.from_url(state.url or "", metadata=meta)
+
+        # Override playlist if it was explicitly provided in video_path
+        if video_path.playlist and not enriched_path.playlist:
+            enriched_path = VideoPath(
+                domain=enriched_path.domain,
+                channel=enriched_path.channel,
+                playlist=video_path.playlist,
+                video_id=enriched_path.video_id,
+            )
+
+        # Check if path improved
+        old_rel = str(video_path.relative_path())
+        new_rel = str(enriched_path.relative_path())
+
+        if old_rel == new_rel:
+            # No improvement, return original cache_dir
+            return cache_dir
+
+        # Path improved - attempt enrichment via db/sync
+        from claudetube.db.sync import enrich_video
+
+        enrich_video(video_id, meta, cache_base)
+
+        # After enrich_video, directory may have moved
+        # Calculate new cache_dir from enriched path
+        new_cache_dir = enriched_path.cache_dir(cache_base)
+
+        if new_cache_dir.exists() and (new_cache_dir / "state.json").exists():
+            # Move succeeded - update state with new location info
+            state.domain = enriched_path.domain
+            state.channel_id = enriched_path.channel
+            state.playlist_id = enriched_path.playlist
+            save_state(state, new_cache_dir / "state.json")
+            log_timed(f"Enriched path: {old_rel} -> {new_rel}", 0)
+            return new_cache_dir
+
+        # Move may have failed - return original
+        return cache_dir
+
+    except Exception:
+        # Fire-and-forget: any error returns original cache_dir
+        import logging
+
+        logging.getLogger(__name__).debug(
+            "Progressive enrichment failed (ignored)", exc_info=True
+        )
+        return cache_dir
