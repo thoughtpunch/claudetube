@@ -4,6 +4,7 @@ yt-dlp tool wrapper for video downloading and metadata.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -11,16 +12,273 @@ import re
 import shutil
 import subprocess
 import urllib.request
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Protocol
 
 from claudetube.exceptions import DownloadError, MetadataError
 from claudetube.tools.base import ToolResult, VideoTool
 from claudetube.utils.system import find_tool
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Structured Output Types
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DownloadProgress:
+    """Structured progress data from yt-dlp --progress-template."""
+
+    status: str  # "downloading", "finished", "error"
+    percent: float | None = None  # 0.0-100.0
+    speed: str | None = None  # Human-readable speed, e.g., "1.5MiB/s"
+    eta: str | None = None  # Human-readable ETA, e.g., "00:30"
+    downloaded_bytes: int | None = None
+    total_bytes: int | None = None
+    fragment_index: int | None = None
+    fragment_count: int | None = None
+    filename: str | None = None
+
+    @classmethod
+    def from_json_line(cls, line: str) -> DownloadProgress | None:
+        """Parse a JSON progress line from yt-dlp --progress-template output.
+
+        Args:
+            line: A single line from yt-dlp stdout (may or may not be JSON)
+
+        Returns:
+            DownloadProgress if line is valid progress JSON, None otherwise
+        """
+        line = line.strip()
+        if not line.startswith("{"):
+            return None
+
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+
+        # Must have at least a status field to be valid progress
+        if "status" not in data:
+            return None
+
+        # Parse percent from string like "  5.0%" or "100%"
+        percent = None
+        if "percent" in data and data["percent"]:
+            with contextlib.suppress(ValueError, AttributeError):
+                percent = float(str(data["percent"]).strip().rstrip("%"))
+
+        # Parse downloaded/total bytes
+        downloaded_bytes = None
+        total_bytes = None
+        if "downloaded_bytes" in data:
+            with contextlib.suppress(ValueError, TypeError):
+                downloaded_bytes = int(data["downloaded_bytes"])
+        if "total_bytes" in data:
+            with contextlib.suppress(ValueError, TypeError):
+                total_bytes = int(data["total_bytes"])
+
+        # Parse fragment info
+        fragment_index = None
+        fragment_count = None
+        if "fragment_index" in data:
+            with contextlib.suppress(ValueError, TypeError):
+                fragment_index = int(data["fragment_index"])
+        if "fragment_count" in data:
+            with contextlib.suppress(ValueError, TypeError):
+                fragment_count = int(data["fragment_count"])
+
+        return cls(
+            status=data.get("status", "unknown"),
+            percent=percent,
+            speed=data.get("speed"),
+            eta=data.get("eta"),
+            downloaded_bytes=downloaded_bytes,
+            total_bytes=total_bytes,
+            fragment_index=fragment_index,
+            fragment_count=fragment_count,
+            filename=data.get("filename"),
+        )
+
+
+class ProgressCallback(Protocol):
+    """Protocol for progress callback functions."""
+
+    def __call__(self, progress: DownloadProgress) -> None:
+        """Called with progress updates during download."""
+        ...
+
+
+@dataclass
+class YtDlpError:
+    """Structured error information parsed from yt-dlp stderr.
+
+    Attributes:
+        category: Error classification (e.g., "auth", "unavailable", "geo", "network")
+        message: The original error message from yt-dlp
+        stderr: Full stderr output for debugging
+        details: Additional parsed details (error codes, URLs, etc.)
+    """
+
+    category: str
+    message: str
+    stderr: str
+    details: dict[str, Any] = field(default_factory=dict)
+
+
+# Error patterns for classification
+# Each tuple: (pattern, category, detail_extractor)
+# detail_extractor is optional function to extract extra info from match
+_ERROR_PATTERNS: list[tuple[re.Pattern, str, Callable[[re.Match], dict] | None]] = [
+    # Authentication / access errors
+    (
+        re.compile(r"HTTP Error 403", re.IGNORECASE),
+        "auth",
+        None,
+    ),
+    (
+        re.compile(r"Sign in to confirm your age|age.restricted", re.IGNORECASE),
+        "age_restricted",
+        None,
+    ),
+    (
+        re.compile(r"private video|video is private", re.IGNORECASE),
+        "private",
+        None,
+    ),
+    (
+        re.compile(r"members.only|subscriber.only", re.IGNORECASE),
+        "members_only",
+        None,
+    ),
+    (
+        re.compile(r"PO Token|po_token|Proof of Origin", re.IGNORECASE),
+        "po_token",
+        None,
+    ),
+    # Availability errors
+    (
+        re.compile(
+            r"Video unavailable|This video is unavailable|removed by the uploader",
+            re.IGNORECASE,
+        ),
+        "unavailable",
+        None,
+    ),
+    (
+        re.compile(r"copyright|blocked.*copyright", re.IGNORECASE),
+        "copyright",
+        None,
+    ),
+    (
+        re.compile(r"This video has been removed", re.IGNORECASE),
+        "removed",
+        None,
+    ),
+    (
+        re.compile(r"premiere|Premieres in", re.IGNORECASE),
+        "premiere",
+        None,
+    ),
+    (
+        re.compile(r"live event|live stream", re.IGNORECASE),
+        "live",
+        None,
+    ),
+    # Geo restriction
+    (
+        re.compile(
+            r"not available in your country|geo.?restrict|blocked in your country",
+            re.IGNORECASE,
+        ),
+        "geo_restricted",
+        None,
+    ),
+    # Format errors
+    (
+        re.compile(r"Requested format is not available", re.IGNORECASE),
+        "format_unavailable",
+        None,
+    ),
+    (
+        re.compile(r"No video formats found", re.IGNORECASE),
+        "no_formats",
+        None,
+    ),
+    # Network errors
+    (
+        re.compile(r"Connection reset|Connection refused|Connection timed out", re.IGNORECASE),
+        "network",
+        None,
+    ),
+    (
+        re.compile(r"SSL.*error|certificate verify failed", re.IGNORECASE),
+        "ssl",
+        None,
+    ),
+    (
+        re.compile(r"HTTP Error (\d+)", re.IGNORECASE),
+        "http_error",
+        lambda m: {"http_code": int(m.group(1))},
+    ),
+    # Rate limiting
+    (
+        re.compile(r"429|too many requests|rate.?limit", re.IGNORECASE),
+        "rate_limited",
+        None,
+    ),
+    # Invalid input
+    (
+        re.compile(r"is not a valid URL|Unsupported URL", re.IGNORECASE),
+        "invalid_url",
+        None,
+    ),
+    (
+        re.compile(r"No video could be found", re.IGNORECASE),
+        "not_found",
+        None,
+    ),
+]
+
+
+def parse_yt_dlp_error(stderr: str) -> YtDlpError:
+    """Parse yt-dlp stderr output into structured error information.
+
+    Args:
+        stderr: The stderr output from a failed yt-dlp command
+
+    Returns:
+        YtDlpError with category, message, and details
+    """
+    # Extract the main ERROR message if present
+    error_match = re.search(r"ERROR:\s*(.+?)(?:\n|$)", stderr)
+    message = error_match.group(1).strip() if error_match else stderr.strip()
+
+    # Try each pattern to classify the error
+    for pattern, category, detail_extractor in _ERROR_PATTERNS:
+        match = pattern.search(stderr)
+        if match:
+            details = detail_extractor(match) if detail_extractor else {}
+            return YtDlpError(
+                category=category,
+                message=message,
+                stderr=stderr,
+                details=details,
+            )
+
+    # Default to "unknown" category
+    return YtDlpError(
+        category="unknown",
+        message=message,
+        stderr=stderr,
+        details={},
+    )
 
 # Pattern to detect YouTube URLs
 _YOUTUBE_URL_RE = re.compile(
@@ -165,6 +423,108 @@ class YtDlpTool(VideoTool):
             return ToolResult.from_error(f"Timeout after {timeout}s")
         except Exception as e:
             return ToolResult.from_error(str(e))
+
+    # JSON progress template for structured output parsing.
+    # Uses yt-dlp's --progress-template to output JSON lines during download.
+    # Fields: status, percent, speed, eta, downloaded_bytes, total_bytes,
+    #         fragment_index, fragment_count, filename
+    _PROGRESS_TEMPLATE = (
+        '{"status":"%(progress.status)s",'
+        '"percent":"%(progress._percent_str)s",'
+        '"speed":"%(progress._speed_str)s",'
+        '"eta":"%(progress._eta_str)s",'
+        '"downloaded_bytes":%(progress.downloaded_bytes|0)s,'
+        '"total_bytes":%(progress.total_bytes|0)s,'
+        '"fragment_index":%(progress.fragment_index|0)s,'
+        '"fragment_count":%(progress.fragment_count|0)s,'
+        '"filename":"%(info.filename)s"}'
+    )
+
+    def _run_with_progress(
+        self,
+        args: list[str],
+        on_progress: ProgressCallback | None = None,
+        timeout: int | None = None,
+    ) -> ToolResult:
+        """Run yt-dlp with structured progress output.
+
+        Uses --progress-template to emit JSON progress lines that are parsed
+        and passed to the callback. This allows real-time progress tracking
+        without parsing human-readable output.
+
+        Args:
+            args: Command arguments (without the yt-dlp executable)
+            on_progress: Callback invoked with DownloadProgress for each update
+            timeout: Command timeout in seconds
+
+        Returns:
+            ToolResult with success status and captured output
+        """
+        # Add progress template args
+        progress_args = [
+            "--progress-template",
+            f"download:{self._PROGRESS_TEMPLATE}",
+            "--newline",  # Ensure each progress update is on its own line
+        ]
+        cmd = [self.get_path()] + progress_args + args
+        env = self._subprocess_env()
+
+        try:
+            # Use Popen to read output line-by-line for progress parsing
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+            )
+
+            stdout_lines: list[str] = []
+            stderr_content = ""
+
+            # Read stdout line by line for progress updates
+            if process.stdout:
+                for line in process.stdout:
+                    stdout_lines.append(line)
+
+                    # Try to parse as progress JSON
+                    if on_progress:
+                        progress = DownloadProgress.from_json_line(line)
+                        if progress:
+                            # Don't let callback errors stop the download
+                            with contextlib.suppress(Exception):
+                                on_progress(progress)
+
+            # Wait for completion and get stderr
+            _, stderr_content = process.communicate(timeout=timeout)
+            returncode = process.returncode
+
+            return ToolResult(
+                success=returncode == 0,
+                stdout="".join(stdout_lines),
+                stderr=stderr_content,
+                returncode=returncode,
+            )
+
+        except subprocess.TimeoutExpired:
+            process.kill()
+            return ToolResult.from_error(f"Timeout after {timeout}s")
+        except Exception as e:
+            return ToolResult.from_error(str(e))
+
+    def parse_error(self, stderr: str) -> YtDlpError:
+        """Parse stderr output into structured error information.
+
+        This is a convenience method that wraps the module-level
+        parse_yt_dlp_error function.
+
+        Args:
+            stderr: The stderr output from a failed yt-dlp command
+
+        Returns:
+            YtDlpError with category, message, and details
+        """
+        return parse_yt_dlp_error(stderr)
 
     @staticmethod
     def _is_youtube_url(url: str) -> bool:
@@ -613,7 +973,7 @@ class YtDlpTool(VideoTool):
             error_msg = result.stderr.strip() if result.stderr else "Unknown error"
             if "ERROR:" in error_msg:
                 error_msg = error_msg.split("ERROR:")[-1].strip()
-            raise MetadataError(error_msg[:500])
+            raise MetadataError(error_msg)
 
         try:
             return json.loads(result.stdout)
@@ -625,6 +985,7 @@ class YtDlpTool(VideoTool):
         url: str,
         output_path: Path,
         quality: str = "64K",
+        on_progress: ProgressCallback | None = None,
     ) -> Path:
         """Download audio from video.
 
@@ -632,6 +993,8 @@ class YtDlpTool(VideoTool):
             url: Video URL
             output_path: Output file path
             quality: Audio quality (e.g., "64K", "128K")
+            on_progress: Optional callback for progress updates.
+                If provided, uses structured JSON progress output.
 
         Returns:
             Path to downloaded audio file
@@ -666,7 +1029,11 @@ class YtDlpTool(VideoTool):
             url,
         ]
 
-        result = self._run(args)
+        # Use progress-enabled runner if callback provided
+        if on_progress:
+            result = self._run_with_progress(args, on_progress=on_progress)
+        else:
+            result = self._run(args)
         first_error = result.stderr if not result.success else ""
 
         # Fallback: extract from smallest video if no audio-only stream
@@ -687,18 +1054,22 @@ class YtDlpTool(VideoTool):
                 str(output_path),
                 url,
             ]
-            result = self._run(args)
+            # Also use progress-enabled runner for fallback
+            if on_progress:
+                result = self._run_with_progress(args, on_progress=on_progress)
+            else:
+                result = self._run(args)
 
         if not result.success or not output_path.exists():
-            fallback_error = result.stderr[:200] if result.stderr else ""
+            fallback_error = result.stderr or ""
             # Include both errors when the fallback also fails
             if first_error and fallback_error:
                 error_detail = (
-                    f"[audio-only] {first_error[:200]} "
-                    f"[video fallback] {fallback_error}"
+                    f"[audio-only] {first_error.strip()}\n"
+                    f"[video fallback] {fallback_error.strip()}"
                 )
             else:
-                error_detail = fallback_error or first_error[:200]
+                error_detail = fallback_error or first_error
             raise DownloadError(f"Audio download failed: {error_detail}")
 
         return output_path
@@ -855,7 +1226,7 @@ class YtDlpTool(VideoTool):
             error_msg = result.stderr.strip() if result.stderr else "Unknown error"
             if "ERROR:" in error_msg:
                 error_msg = error_msg.split("ERROR:")[-1].strip()
-            raise MetadataError(error_msg[:500])
+            raise MetadataError(error_msg)
 
         try:
             data = json.loads(result.stdout)
@@ -951,7 +1322,7 @@ class YtDlpTool(VideoTool):
 
         if not result.success or not output_path.exists():
             raise DownloadError(
-                f"Audio description download failed: {result.stderr[:200] if result.stderr else 'Unknown error'}"
+                f"Audio description download failed: {result.stderr or 'Unknown error'}"
             )
 
         return output_path
@@ -964,6 +1335,7 @@ class YtDlpTool(VideoTool):
         end_time: float,
         quality_sort: str = "+res,+size,+br,+fps",
         concurrent_fragments: int = 1,
+        on_progress: ProgressCallback | None = None,
     ) -> Path | None:
         """Download a video segment for frame extraction.
 
@@ -974,6 +1346,8 @@ class YtDlpTool(VideoTool):
             end_time: End time in seconds
             quality_sort: yt-dlp format sort string
             concurrent_fragments: Number of concurrent download fragments
+            on_progress: Optional callback for progress updates.
+                If provided, uses structured JSON progress output.
 
         Returns:
             Path to downloaded video, or None if failed
@@ -1002,5 +1376,8 @@ class YtDlpTool(VideoTool):
             url,
         ]
 
-        self._run(args)
+        if on_progress:
+            self._run_with_progress(args, on_progress=on_progress)
+        else:
+            self._run(args)
         return output_path if output_path.exists() else None

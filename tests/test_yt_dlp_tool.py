@@ -924,3 +924,383 @@ class TestLoadYoutubeConfig:
         ):
             cfg = tool._load_youtube_config()
             assert cfg == {}
+
+
+# ---------------------------------------------------------------------------
+# DownloadProgress
+# ---------------------------------------------------------------------------
+
+
+class TestDownloadProgress:
+    """Tests for DownloadProgress dataclass and parsing."""
+
+    def test_parse_valid_progress_json(self):
+        """Valid JSON progress line is parsed correctly."""
+        from claudetube.tools.yt_dlp import DownloadProgress
+
+        line = '{"status":"downloading","percent":"  42.5%","speed":"1.5MiB/s","eta":"00:30","downloaded_bytes":1000,"total_bytes":2000}'
+        progress = DownloadProgress.from_json_line(line)
+
+        assert progress is not None
+        assert progress.status == "downloading"
+        assert progress.percent == 42.5
+        assert progress.speed == "1.5MiB/s"
+        assert progress.eta == "00:30"
+        assert progress.downloaded_bytes == 1000
+        assert progress.total_bytes == 2000
+
+    def test_parse_finished_status(self):
+        """Finished status is parsed correctly."""
+        from claudetube.tools.yt_dlp import DownloadProgress
+
+        line = '{"status":"finished","percent":"100%","downloaded_bytes":5000,"total_bytes":5000}'
+        progress = DownloadProgress.from_json_line(line)
+
+        assert progress is not None
+        assert progress.status == "finished"
+        assert progress.percent == 100.0
+
+    def test_parse_invalid_json(self):
+        """Invalid JSON returns None."""
+        from claudetube.tools.yt_dlp import DownloadProgress
+
+        assert DownloadProgress.from_json_line("not json") is None
+        assert DownloadProgress.from_json_line("{invalid}") is None
+        assert DownloadProgress.from_json_line("") is None
+
+    def test_parse_non_progress_json(self):
+        """JSON without status field returns None."""
+        from claudetube.tools.yt_dlp import DownloadProgress
+
+        line = '{"foo":"bar","baz":123}'
+        assert DownloadProgress.from_json_line(line) is None
+
+    def test_parse_with_fragments(self):
+        """Fragment info is parsed correctly."""
+        from claudetube.tools.yt_dlp import DownloadProgress
+
+        line = '{"status":"downloading","percent":"10%","fragment_index":5,"fragment_count":100}'
+        progress = DownloadProgress.from_json_line(line)
+
+        assert progress is not None
+        assert progress.fragment_index == 5
+        assert progress.fragment_count == 100
+
+    def test_parse_with_missing_optional_fields(self):
+        """Missing optional fields default to None."""
+        from claudetube.tools.yt_dlp import DownloadProgress
+
+        line = '{"status":"downloading"}'
+        progress = DownloadProgress.from_json_line(line)
+
+        assert progress is not None
+        assert progress.status == "downloading"
+        assert progress.percent is None
+        assert progress.speed is None
+        assert progress.eta is None
+        assert progress.downloaded_bytes is None
+
+    def test_parse_percent_without_percent_sign(self):
+        """Percent value works with or without % sign."""
+        from claudetube.tools.yt_dlp import DownloadProgress
+
+        line = '{"status":"downloading","percent":"75"}'
+        progress = DownloadProgress.from_json_line(line)
+
+        assert progress is not None
+        assert progress.percent == 75.0
+
+
+# ---------------------------------------------------------------------------
+# YtDlpError and parse_yt_dlp_error
+# ---------------------------------------------------------------------------
+
+
+class TestYtDlpError:
+    """Tests for YtDlpError parsing and classification."""
+
+    def test_parse_403_error(self):
+        """HTTP 403 error is classified as 'auth'."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        stderr = "ERROR: HTTP Error 403: Forbidden"
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.category == "auth"
+        assert "403" in error.message or "Forbidden" in error.message
+        assert error.stderr == stderr
+
+    def test_parse_video_unavailable(self):
+        """Video unavailable error is classified correctly."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        stderr = "ERROR: Video unavailable. This video is no longer available."
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.category == "unavailable"
+
+    def test_parse_geo_restricted(self):
+        """Geo-restricted error is classified correctly."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        stderr = "ERROR: This video is not available in your country."
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.category == "geo_restricted"
+
+    def test_parse_age_restricted(self):
+        """Age-restricted error is classified correctly."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        stderr = "ERROR: Sign in to confirm your age. This video may be inappropriate for some users."
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.category == "age_restricted"
+
+    def test_parse_private_video(self):
+        """Private video error is classified correctly."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        stderr = "ERROR: Private video. Sign in if you've been granted access."
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.category == "private"
+
+    def test_parse_format_unavailable(self):
+        """Format unavailable error is classified correctly."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        stderr = "ERROR: Requested format is not available. Use --list-formats."
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.category == "format_unavailable"
+
+    def test_parse_rate_limited(self):
+        """Rate limiting error is classified correctly."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        # Test with plain "too many requests" message (not HTTP 429 which matches http_error first)
+        stderr = "ERROR: Request was rate limited. Please try again later."
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.category == "rate_limited"
+
+    def test_parse_http_error_with_code(self):
+        """HTTP error extracts status code in details."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        stderr = "ERROR: HTTP Error 500: Internal Server Error"
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.category == "http_error"
+        assert error.details.get("http_code") == 500
+
+    def test_parse_po_token_warning(self):
+        """PO token warning is classified correctly."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        stderr = "WARNING: PO Token is required for this request."
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.category == "po_token"
+
+    def test_parse_unknown_error(self):
+        """Unknown error falls back to 'unknown' category."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        stderr = "ERROR: Something completely unexpected happened"
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.category == "unknown"
+        assert "unexpected" in error.message
+
+    def test_parse_error_extracts_message(self):
+        """Error message is extracted from ERROR: prefix."""
+        from claudetube.tools.yt_dlp import parse_yt_dlp_error
+
+        stderr = "[youtube] abc123: Downloading webpage\nERROR: Video is unavailable"
+        error = parse_yt_dlp_error(stderr)
+
+        assert error.message == "Video is unavailable"
+
+    def test_tool_parse_error_method(self, tool):
+        """Tool.parse_error() wraps module function."""
+        stderr = "ERROR: HTTP Error 403: Forbidden"
+        error = tool.parse_error(stderr)
+
+        assert error.category == "auth"
+
+
+# ---------------------------------------------------------------------------
+# _run_with_progress
+# ---------------------------------------------------------------------------
+
+
+class TestRunWithProgress:
+    """Tests for _run_with_progress method."""
+
+    def test_calls_progress_callback(self, tool):
+        """Progress callback is called with parsed progress data."""
+        from claudetube.tools.yt_dlp import DownloadProgress
+
+        progress_updates: list[DownloadProgress] = []
+
+        def on_progress(progress: DownloadProgress) -> None:
+            progress_updates.append(progress)
+
+        # Mock Popen to return progress lines
+        mock_stdout = iter([
+            '{"status":"downloading","percent":"50%"}\n',
+            '{"status":"finished","percent":"100%"}\n',
+        ])
+
+        mock_process = MagicMock()
+        mock_process.stdout = mock_stdout
+        mock_process.communicate.return_value = ("", "")
+        mock_process.returncode = 0
+
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+        ):
+            result = tool._run_with_progress(["--test"], on_progress=on_progress)
+
+            assert result.success
+            assert len(progress_updates) == 2
+            assert progress_updates[0].percent == 50.0
+            assert progress_updates[1].status == "finished"
+
+    def test_handles_non_json_lines(self, tool):
+        """Non-JSON lines are collected but don't trigger callback."""
+        progress_updates = []
+
+        def on_progress(progress) -> None:
+            progress_updates.append(progress)
+
+        mock_stdout = iter([
+            "[download] Downloading video\n",
+            '{"status":"downloading","percent":"25%"}\n',
+            "[download] Complete\n",
+        ])
+
+        mock_process = MagicMock()
+        mock_process.stdout = mock_stdout
+        mock_process.communicate.return_value = ("", "")
+        mock_process.returncode = 0
+
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+        ):
+            result = tool._run_with_progress(["--test"], on_progress=on_progress)
+
+            # Only one progress update (the JSON line)
+            assert len(progress_updates) == 1
+            assert progress_updates[0].percent == 25.0
+
+            # But all lines are in stdout
+            assert "[download] Downloading video" in result.stdout
+            assert "[download] Complete" in result.stdout
+
+    def test_callback_exception_doesnt_stop_download(self, tool):
+        """Exception in callback doesn't stop the download."""
+        call_count = 0
+
+        def on_progress(progress) -> None:
+            nonlocal call_count
+            call_count += 1
+            raise RuntimeError("Callback error!")
+
+        mock_stdout = iter([
+            '{"status":"downloading","percent":"50%"}\n',
+            '{"status":"finished","percent":"100%"}\n',
+        ])
+
+        mock_process = MagicMock()
+        mock_process.stdout = mock_stdout
+        mock_process.communicate.return_value = ("", "")
+        mock_process.returncode = 0
+
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+        ):
+            result = tool._run_with_progress(["--test"], on_progress=on_progress)
+
+            # Download still succeeds
+            assert result.success
+            # Both lines were processed (callback was called twice)
+            assert call_count == 2
+
+    def test_without_callback(self, tool):
+        """Works without callback (progress lines still collected)."""
+        mock_stdout = iter([
+            '{"status":"downloading","percent":"100%"}\n',
+        ])
+
+        mock_process = MagicMock()
+        mock_process.stdout = mock_stdout
+        mock_process.communicate.return_value = ("", "")
+        mock_process.returncode = 0
+
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+        ):
+            result = tool._run_with_progress(["--test"], on_progress=None)
+
+            assert result.success
+            assert '{"status":"downloading"' in result.stdout
+
+    def test_progress_template_args_added(self, tool):
+        """Progress template args are added to command."""
+        mock_process = MagicMock()
+        mock_process.stdout = iter([])
+        mock_process.communicate.return_value = ("", "")
+        mock_process.returncode = 0
+
+        with (
+            patch("subprocess.Popen", return_value=mock_process) as mock_popen,
+            patch.object(tool, "_subprocess_env", return_value={"PATH": "/usr/bin"}),
+        ):
+            tool._run_with_progress(["--test-arg"])
+
+            # Check the command includes progress template
+            call_args = mock_popen.call_args[0][0]
+            assert "--progress-template" in call_args
+            assert "--newline" in call_args
+            assert "--test-arg" in call_args
+
+
+# ---------------------------------------------------------------------------
+# Full error output (no truncation)
+# ---------------------------------------------------------------------------
+
+
+class TestFullErrorOutput:
+    """Tests that error messages are no longer truncated."""
+
+    def test_download_audio_full_error(self, tool, tmp_path):
+        """download_audio includes full error, not truncated."""
+        from claudetube.exceptions import DownloadError as DLError
+
+        long_error = "ERROR: " + "x" * 500 + " (end of error)"
+        out = tmp_path / "audio.mp3"
+
+        with (
+            patch.object(
+                tool,
+                "_run",
+                return_value=type(
+                    "R",
+                    (),
+                    {"success": False, "stdout": "", "stderr": long_error, "returncode": 1},
+                )(),
+            ),
+        ):
+            try:
+                tool.download_audio("https://example.com/video", out)
+                raise AssertionError("Expected DownloadError")
+            except DLError as e:
+                # Error should include the end marker (not truncated)
+                assert "(end of error)" in str(e)
