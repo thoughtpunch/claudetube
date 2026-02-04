@@ -78,8 +78,12 @@ class SceneChange:
 
     @property
     def is_major_transition(self) -> bool:
-        """Check if this is a major transition (significant topic shift or content change)."""
-        return self.topic_shift_score > 0.5 or self.content_type_change
+        """Check if this is a major transition (significant topic shift or content change).
+
+        Note: This property uses a fixed threshold. For smart filtering that
+        considers all transitions (relative threshold), see ChangesData.get_major_transitions().
+        """
+        return self.topic_shift_score >= 0.7 or self.content_type_change
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -118,9 +122,7 @@ class ChangesData:
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        major_transitions = [
-            c.scene_b_id for c in self.changes if c.is_major_transition
-        ]
+        major_transitions = self.get_major_transitions()
         avg_topic_shift = (
             sum(c.topic_shift_score for c in self.changes) / len(self.changes)
             if self.changes
@@ -140,6 +142,44 @@ class ChangesData:
                 "total_changes": len(self.changes),
             },
         }
+
+    def get_major_transitions(self, percentile: float = 0.75) -> list[int]:
+        """Get scene IDs of major transitions using relative thresholding.
+
+        Major transitions are identified as:
+        1. Top N% of topic_shift_scores (default: top 25%), AND score >= 0.3
+        2. OR any content type change
+
+        This prevents marking all transitions as major while still
+        identifying truly significant structural changes.
+
+        Args:
+            percentile: Percentile threshold (0.75 = top 25%)
+
+        Returns:
+            List of scene_b_id values for major transitions
+        """
+        if not self.changes:
+            return []
+
+        # Collect all topic shift scores
+        scores = [c.topic_shift_score for c in self.changes]
+
+        # Compute percentile threshold (e.g., 75th percentile = top 25%)
+        sorted_scores = sorted(scores)
+        idx = int(len(sorted_scores) * percentile)
+        threshold = sorted_scores[min(idx, len(sorted_scores) - 1)]
+
+        # Ensure minimum threshold of 0.3 to avoid noise
+        threshold = max(threshold, 0.3)
+
+        major = []
+        for c in self.changes:
+            # Major if: top percentile topic shift OR content type change
+            if c.topic_shift_score >= threshold or c.content_type_change:
+                major.append(c.scene_b_id)
+
+        return major
 
     @classmethod
     def from_dict(cls, data: dict) -> ChangesData:
@@ -369,6 +409,29 @@ def _infer_content_type_from_transcript(transcript: str) -> str:
     ]
     if sum(1 for kw in demo_keywords if kw in text) >= 2:
         return "screencast"
+
+    # Animation/educational indicators (like 3Blue1Brown)
+    animation_keywords = [
+        "animation",
+        "visualize",
+        "visualization",
+        "imagine",
+        "picture",
+        "think of",
+        "represent",
+        "illustrate",
+        "3d",
+        "geometric",
+        "circle",
+        "sphere",
+        "cube",
+        "line",
+        "arrow",
+        "moving",
+        "transform",
+    ]
+    if sum(1 for kw in animation_keywords if kw in text) >= 2:
+        return "animation"
 
     # Default to presenter (talking head) if substantial speech content
     word_count = len(text.split())
