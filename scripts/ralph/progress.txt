@@ -33,3 +33,4 @@ Investigated the reported bug where MCP tool calls returned "Video not found" wh
 - 2026-02-03 17:56 | claudetube-58qv [P1] | JSON parse error on URLs with playlist params
 2026-02-03 17:58:55 - claudetube-58qv: Verified fix already in main (6d85ec6), closed
 - 2026-02-03 17:59 | claudetube-8lw5 [P1] | extract_entities returns empty arrays - no actual vision analysis
+- 2026-02-03 18:09 | claudetube-lx2j [P2] | Whisper SRT segments too long (30+ seconds)
