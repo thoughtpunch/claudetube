@@ -139,6 +139,80 @@ def _require_cached_video(video_id: str) -> "Path":
     return cache.require_cached(video_id)
 
 
+def _get_playlist_context_for_video(video_id: str) -> dict | None:
+    """Check if a video is part of any cached playlist and return context.
+
+    Scans cached playlists to find if this video is a member. If found,
+    returns navigation context to help Claude understand the video's place
+    in a series and offer navigation options.
+
+    Args:
+        video_id: Video ID to check.
+
+    Returns:
+        Dict with playlist context if video is in a playlist, None otherwise.
+    """
+    from claudetube.navigation.context import PlaylistContext
+    from claudetube.operations.playlist import (
+        list_cached_playlists,
+        load_playlist_metadata,
+    )
+
+    playlists = list_cached_playlists()
+
+    for playlist_info in playlists:
+        playlist_id = playlist_info.get("playlist_id")
+        if not playlist_id:
+            continue
+
+        metadata = load_playlist_metadata(playlist_id)
+        if not metadata:
+            continue
+
+        videos = metadata.get("videos", [])
+        for i, v in enumerate(videos):
+            if v.get("video_id") == video_id:
+                # Found the video in this playlist
+                context = PlaylistContext.load(playlist_id)
+                if context:
+                    context.mark_watched(video_id)
+
+                # Build navigation hints
+                prev_video = videos[i - 1] if i > 0 else None
+                next_video = videos[i + 1] if i < len(videos) - 1 else None
+
+                result = {
+                    "playlist_id": playlist_id,
+                    "playlist_title": metadata.get("title", ""),
+                    "playlist_type": metadata.get("inferred_type", "collection"),
+                    "position": i + 1,  # 1-indexed for human readability
+                    "total_videos": len(videos),
+                    "display": f'Video {i + 1} of {len(videos)} in "{metadata.get("title", "playlist")}"',
+                }
+
+                if prev_video:
+                    result["previous_video"] = {
+                        "video_id": prev_video.get("video_id"),
+                        "title": prev_video.get("title"),
+                    }
+
+                if next_video:
+                    result["next_video"] = {
+                        "video_id": next_video.get("video_id"),
+                        "title": next_video.get("title"),
+                    }
+                    result["hint"] = (
+                        "Use watch_next or watch_video_in_playlist to continue the series."
+                    )
+
+                if context:
+                    result["progress"] = context.get_progress_summary()
+
+                return result
+
+    return None
+
+
 @mcp.tool()
 async def process_video_tool(
     url: str,
@@ -150,6 +224,13 @@ async def process_video_tool(
 
     Returns JSON with metadata, transcript text (capped at 50k chars),
     and file paths for the full transcript and thumbnail.
+
+    **Playlist Awareness:** If this video is part of a cached playlist,
+    the response includes `playlist_context` with navigation info:
+    - Position in playlist ("Video 3 of 12")
+    - Previous/next video titles
+    - Progress tracking
+    - Hint to use watch_next or watch_video_in_playlist to continue
 
     Args:
         url: Video URL, video ID, or local file path.
@@ -210,22 +291,27 @@ async def process_video_tool(
                 f"Use get_transcript for the full text.]"
             )
 
-    return json.dumps(
-        {
-            "video_id": result.video_id,
-            "metadata": result.metadata,
-            "transcript": transcript_text,
-            "transcript_srt_path": (
-                str(result.transcript_srt) if result.transcript_srt else None
-            ),
-            "transcript_txt_path": (
-                str(result.transcript_txt) if result.transcript_txt else None
-            ),
-            "thumbnail_path": str(result.thumbnail) if result.thumbnail else None,
-            "output_dir": str(result.output_dir),
-        },
-        indent=2,
-    )
+    # Check if this video is part of any cached playlist
+    playlist_context = _get_playlist_context_for_video(result.video_id)
+
+    response = {
+        "video_id": result.video_id,
+        "metadata": result.metadata,
+        "transcript": transcript_text,
+        "transcript_srt_path": (
+            str(result.transcript_srt) if result.transcript_srt else None
+        ),
+        "transcript_txt_path": (
+            str(result.transcript_txt) if result.transcript_txt else None
+        ),
+        "thumbnail_path": str(result.thumbnail) if result.thumbnail else None,
+        "output_dir": str(result.output_dir),
+    }
+
+    if playlist_context:
+        response["playlist_context"] = playlist_context
+
+    return json.dumps(response, indent=2)
 
 
 @mcp.tool()

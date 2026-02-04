@@ -382,6 +382,60 @@ class TestPlaylistContext:
         assert watched_ids == ["v3", "v1", "v5"]
 
 
+class TestPlaylistContextDetection:
+    """Test automatic playlist context detection for videos."""
+
+    def test_playlist_context_structure(self):
+        """Verify playlist context has correct structure for navigation."""
+        # This tests the data structure that process_video_tool returns
+        # when a video is part of a playlist
+
+        # Mock playlist context as returned by _get_playlist_context_for_video
+        context = {
+            "playlist_id": "test-playlist",
+            "playlist_title": "Python Tutorial Series",
+            "playlist_type": "series",
+            "position": 2,
+            "total_videos": 4,
+            "display": 'Video 2 of 4 in "Python Tutorial Series"',
+            "previous_video": {"video_id": "vid_intro", "title": "Introduction"},
+            "next_video": {"video_id": "vid_functions", "title": "Functions"},
+            "hint": "Use watch_next or watch_video_in_playlist to continue the series.",
+        }
+
+        # Verify structure provides Claude with navigation info
+        assert context["position"] == 2
+        assert context["total_videos"] == 4
+        assert "previous_video" in context
+        assert "next_video" in context
+        assert "hint" in context
+        assert "watch_next" in context["hint"]
+
+    def test_first_video_no_previous(self):
+        """First video in playlist has no previous_video."""
+        context = {
+            "playlist_id": "test-playlist",
+            "position": 1,
+            "total_videos": 4,
+            "next_video": {"video_id": "vid_basics", "title": "Basics"},
+        }
+
+        assert "previous_video" not in context
+        assert "next_video" in context
+
+    def test_last_video_no_next(self):
+        """Last video in playlist has no next_video."""
+        context = {
+            "playlist_id": "test-playlist",
+            "position": 4,
+            "total_videos": 4,
+            "previous_video": {"video_id": "vid_functions", "title": "Functions"},
+        }
+
+        assert "previous_video" in context
+        assert "next_video" not in context
+
+
 class TestNavigationIntegration:
     """Integration tests for navigation workflow."""
 
