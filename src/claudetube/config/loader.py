@@ -1,15 +1,25 @@
 """
 Unified configuration loader with priority resolution.
 
-Priority order (highest to lowest):
-1. Environment variable (CLAUDETUBE_CACHE_DIR)
+Root directory (CLAUDETUBE_ROOT):
+- macOS/Linux: ~/.claudetube
+- Windows: %APPDATA%\\claudetube
+- Override: CLAUDETUBE_ROOT environment variable
+
+Cache directory priority (highest to lowest):
+1. Environment variable (CLAUDETUBE_CACHE_DIR) - override
 2. Project config (.claudetube/config.yaml)
-3. User config (~/.config/claudetube/config.yaml)
-4. Default (~/.claude/video_cache)
+3. User config ({root_dir}/config.yaml)
+4. Default ({root_dir}/cache)
+
+User config location:
+- {root_dir}/config.yaml (e.g., ~/.claudetube/config.yaml)
+- Project config at .claudetube/config.yaml overrides user config
 """
 
 import logging
 import os
+import sys
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
@@ -32,11 +42,15 @@ class ConfigSource(Enum):
 class ClaudetubeConfig:
     """Resolved claudetube configuration."""
 
+    root_dir: Path
     cache_dir: Path
     source: ConfigSource
 
     def __repr__(self) -> str:
-        return f"ClaudetubeConfig(cache_dir={self.cache_dir!r}, source={self.source.value!r})"
+        return (
+            f"ClaudetubeConfig(root_dir={self.root_dir!r}, "
+            f"cache_dir={self.cache_dir!r}, source={self.source.value!r})"
+        )
 
 
 def _load_yaml_config(config_path: Path) -> dict[str, Any] | None:
@@ -115,54 +129,72 @@ def _find_project_config() -> Path | None:
     return None
 
 
+def _get_root_dir() -> Path:
+    """Get the claudetube root directory.
+
+    Priority:
+    1. CLAUDETUBE_ROOT environment variable
+    2. Platform-specific default:
+       - Windows: %APPDATA%\\claudetube
+       - macOS/Linux: ~/.claudetube
+
+    Returns:
+        Path to the root directory (may not exist yet).
+    """
+    # Check environment variable first
+    env_root = os.environ.get("CLAUDETUBE_ROOT")
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+
+    # Platform-specific defaults
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            return Path(appdata) / "claudetube"
+        return Path.home() / "AppData" / "Roaming" / "claudetube"
+    else:
+        # macOS/Linux: ~/.claudetube
+        return Path.home() / ".claudetube"
+
+
 def _get_user_config_path() -> Path:
     """Get the user-level config path.
 
     Returns:
-        Path to user config file:
-        - Windows: %APPDATA%/claudetube/config.yaml
-        - macOS/Linux: ~/.config/claudetube/config.yaml
+        Path to user config file at {root_dir}/config.yaml
     """
-    import sys
-
-    if sys.platform == "win32":
-        # Windows: use APPDATA environment variable
-        appdata = os.environ.get("APPDATA")
-        if appdata:
-            return Path(appdata) / "claudetube" / "config.yaml"
-        # Fallback to home directory on Windows
-        return Path.home() / "AppData" / "Roaming" / "claudetube" / "config.yaml"
-    else:
-        # macOS/Linux: use XDG_CONFIG_HOME or ~/.config
-        xdg_config = os.environ.get("XDG_CONFIG_HOME")
-        if xdg_config:
-            return Path(xdg_config) / "claudetube" / "config.yaml"
-        return Path.home() / ".config" / "claudetube" / "config.yaml"
+    return _get_root_dir() / "config.yaml"
 
 
 def _get_default_cache_dir() -> Path:
-    """Get the default cache directory."""
-    return Path.home() / ".claude" / "video_cache"
+    """Get the default cache directory.
+
+    Returns:
+        Path to {root_dir}/cache
+    """
+    return _get_root_dir() / "cache"
 
 
 def _resolve_config() -> ClaudetubeConfig:
     """Resolve configuration from all sources in priority order.
 
-    Priority:
+    Priority for cache_dir:
     1. Environment variable (CLAUDETUBE_CACHE_DIR)
     2. Project config (.claudetube/config.yaml)
-    3. User config (~/.config/claudetube/config.yaml)
-    4. Default (~/.claude/video_cache)
+    3. User config ({root_dir}/config.yaml)
+    4. Default ({root_dir}/cache)
 
     Returns:
-        Resolved ClaudetubeConfig with cache_dir and source.
+        Resolved ClaudetubeConfig with root_dir, cache_dir and source.
     """
-    # 1. Check environment variable
+    root_dir = _get_root_dir()
+
+    # 1. Check environment variable for cache_dir override
     env_cache_dir = os.environ.get("CLAUDETUBE_CACHE_DIR")
     if env_cache_dir:
         cache_dir = Path(env_cache_dir).expanduser().resolve()
         logger.info(f"Using cache_dir from CLAUDETUBE_CACHE_DIR: {cache_dir}")
-        return ClaudetubeConfig(cache_dir=cache_dir, source=ConfigSource.ENV)
+        return ClaudetubeConfig(root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.ENV)
 
     # 2. Check project config
     project_config_path = _find_project_config()
@@ -173,7 +205,7 @@ def _resolve_config() -> ClaudetubeConfig:
             logger.info(
                 f"Using cache_dir from project config {project_config_path}: {cache_dir}"
             )
-            return ClaudetubeConfig(cache_dir=cache_dir, source=ConfigSource.PROJECT)
+            return ClaudetubeConfig(root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.PROJECT)
 
     # 3. Check user config
     user_config_path = _get_user_config_path()
@@ -181,12 +213,12 @@ def _resolve_config() -> ClaudetubeConfig:
     cache_dir = _get_cache_dir_from_yaml(user_config, user_config_path)
     if cache_dir:
         logger.info(f"Using cache_dir from user config {user_config_path}: {cache_dir}")
-        return ClaudetubeConfig(cache_dir=cache_dir, source=ConfigSource.USER)
+        return ClaudetubeConfig(root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.USER)
 
     # 4. Fall back to default
     cache_dir = _get_default_cache_dir()
     logger.debug(f"Using default cache_dir: {cache_dir}")
-    return ClaudetubeConfig(cache_dir=cache_dir, source=ConfigSource.DEFAULT)
+    return ClaudetubeConfig(root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.DEFAULT)
 
 
 @lru_cache(maxsize=1)
@@ -202,6 +234,21 @@ def get_config() -> ClaudetubeConfig:
     return _resolve_config()
 
 
+def get_root_dir(ensure_exists: bool = True) -> Path:
+    """Get the resolved root directory.
+
+    Args:
+        ensure_exists: If True (default), create the directory if it doesn't exist.
+
+    Returns:
+        Path to the root directory (e.g., ~/.claudetube).
+    """
+    root_dir = get_config().root_dir
+    if ensure_exists:
+        root_dir.mkdir(parents=True, exist_ok=True)
+    return root_dir
+
+
 def get_cache_dir(ensure_exists: bool = True) -> Path:
     """Get the resolved cache directory.
 
@@ -215,6 +262,21 @@ def get_cache_dir(ensure_exists: bool = True) -> Path:
     if ensure_exists:
         cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
+
+
+def get_db_dir(ensure_exists: bool = True) -> Path:
+    """Get the database directory.
+
+    Args:
+        ensure_exists: If True (default), create the directory if it doesn't exist.
+
+    Returns:
+        Path to the database directory ({root_dir}/db).
+    """
+    db_dir = get_config().root_dir / "db"
+    if ensure_exists:
+        db_dir.mkdir(parents=True, exist_ok=True)
+    return db_dir
 
 
 def clear_config_cache() -> None:

@@ -11,6 +11,8 @@ from claudetube.config.loader import (
     clear_config_cache,
     get_cache_dir,
     get_config,
+    get_db_dir,
+    get_root_dir,
 )
 from claudetube.config.output_templates import (
     NO_CHANNEL,
@@ -40,7 +42,9 @@ __all__ = [
     "ClaudetubeConfig",
     "ConfigSource",
     "get_config",
+    "get_root_dir",
     "get_cache_dir",
+    "get_db_dir",
     "clear_config_cache",
     # Output templates
     "NO_CHANNEL",

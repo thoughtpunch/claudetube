@@ -591,17 +591,17 @@ class TestGetDatabase:
         close_database()  # Still nothing
 
     def test_default_path_resolution(self, tmp_path, monkeypatch):
-        """Test that default path is {cache_dir}/claudetube.db."""
+        """Test that default path is {root_dir}/db/claudetube.db."""
         from claudetube.db import _default_db_path
 
-        monkeypatch.setenv("CLAUDETUBE_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDETUBE_ROOT", str(tmp_path))
 
         from claudetube.config.loader import clear_config_cache
 
         clear_config_cache()
 
         path = _default_db_path()
-        assert path == tmp_path / "claudetube.db"
+        assert path == tmp_path / "db" / "claudetube.db"
 
     def test_get_database_runs_migrations(self, tmp_path):
         """Test that get_database runs migrations automatically."""
@@ -731,17 +731,17 @@ class TestGetVectorsDatabase:
         close_database()
 
     def test_default_vectors_path_resolution(self, tmp_path, monkeypatch):
-        """Test that default vectors path is {cache_dir}/claudetube-vectors.db."""
+        """Test that default vectors path is {root_dir}/db/claudetube-vectors.db."""
         from claudetube.db import _default_vectors_db_path
 
-        monkeypatch.setenv("CLAUDETUBE_CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDETUBE_ROOT", str(tmp_path))
 
         from claudetube.config.loader import clear_config_cache
 
         clear_config_cache()
 
         path = _default_vectors_db_path()
-        assert path == tmp_path / "claudetube-vectors.db"
+        assert path == tmp_path / "db" / "claudetube-vectors.db"
 
     def test_close_database_closes_both(self):
         """Test close_database closes both main and vectors databases."""

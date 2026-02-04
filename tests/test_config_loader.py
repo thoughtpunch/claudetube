@@ -11,12 +11,15 @@ from claudetube.config.loader import (
     _find_project_config,
     _get_cache_dir_from_yaml,
     _get_default_cache_dir,
+    _get_root_dir,
     _get_user_config_path,
     _load_yaml_config,
     _resolve_config,
     clear_config_cache,
     get_cache_dir,
     get_config,
+    get_db_dir,
+    get_root_dir,
 )
 
 
@@ -36,23 +39,33 @@ class TestClaudetubeConfig:
 
     def test_config_creation(self):
         """Test creating a config instance."""
-        config = ClaudetubeConfig(cache_dir=Path("/tmp/cache"), source=ConfigSource.ENV)
+        config = ClaudetubeConfig(
+            root_dir=Path("/tmp/root"),
+            cache_dir=Path("/tmp/cache"),
+            source=ConfigSource.ENV,
+        )
+        assert config.root_dir == Path("/tmp/root")
         assert config.cache_dir == Path("/tmp/cache")
         assert config.source == ConfigSource.ENV
 
     def test_config_repr(self):
         """Test config string representation."""
         config = ClaudetubeConfig(
-            cache_dir=Path("/tmp/cache"), source=ConfigSource.USER
+            root_dir=Path("/tmp/root"),
+            cache_dir=Path("/tmp/cache"),
+            source=ConfigSource.USER,
         )
         repr_str = repr(config)
+        assert "root_dir=" in repr_str
         assert "cache_dir=" in repr_str
         assert "source='user'" in repr_str
 
     def test_config_is_frozen(self):
         """Test config is immutable."""
         config = ClaudetubeConfig(
-            cache_dir=Path("/tmp/cache"), source=ConfigSource.DEFAULT
+            root_dir=Path("/tmp/root"),
+            cache_dir=Path("/tmp/cache"),
+            source=ConfigSource.DEFAULT,
         )
         with pytest.raises(AttributeError):
             config.cache_dir = Path("/other")  # type: ignore
@@ -147,22 +160,58 @@ class TestFindProjectConfig:
         assert result is None
 
 
+class TestGetRootDir:
+    """Tests for _get_root_dir."""
+
+    def test_returns_default_path(self, monkeypatch):
+        """Test default root dir is ~/.claudetube."""
+        monkeypatch.delenv("CLAUDETUBE_ROOT", raising=False)
+        result = _get_root_dir()
+        assert result == Path.home() / ".claudetube"
+
+    def test_env_override(self, tmp_path, monkeypatch):
+        """Test CLAUDETUBE_ROOT env var overrides default."""
+        monkeypatch.setenv("CLAUDETUBE_ROOT", str(tmp_path / "custom_root"))
+        result = _get_root_dir()
+        assert result == tmp_path / "custom_root"
+
+    def test_expands_tilde(self, monkeypatch):
+        """Test CLAUDETUBE_ROOT with ~ is expanded."""
+        monkeypatch.setenv("CLAUDETUBE_ROOT", "~/my_claudetube")
+        result = _get_root_dir()
+        assert result == Path.home() / "my_claudetube"
+
+
 class TestGetUserConfigPath:
     """Tests for _get_user_config_path."""
 
-    def test_returns_expected_path(self):
-        """Test user config path is in ~/.config/claudetube/."""
+    def test_returns_expected_path(self, monkeypatch):
+        """Test user config path is in {root_dir}/config.yaml."""
+        monkeypatch.delenv("CLAUDETUBE_ROOT", raising=False)
         result = _get_user_config_path()
-        assert result == Path.home() / ".config" / "claudetube" / "config.yaml"
+        assert result == Path.home() / ".claudetube" / "config.yaml"
+
+    def test_follows_root_dir(self, tmp_path, monkeypatch):
+        """Test user config path follows CLAUDETUBE_ROOT."""
+        monkeypatch.setenv("CLAUDETUBE_ROOT", str(tmp_path / "custom"))
+        result = _get_user_config_path()
+        assert result == tmp_path / "custom" / "config.yaml"
 
 
 class TestGetDefaultCacheDir:
     """Tests for _get_default_cache_dir."""
 
-    def test_returns_expected_path(self):
-        """Test default cache dir is ~/.claude/video_cache."""
+    def test_returns_expected_path(self, monkeypatch):
+        """Test default cache dir is {root_dir}/cache."""
+        monkeypatch.delenv("CLAUDETUBE_ROOT", raising=False)
         result = _get_default_cache_dir()
-        assert result == Path.home() / ".claude" / "video_cache"
+        assert result == Path.home() / ".claudetube" / "cache"
+
+    def test_follows_root_dir(self, tmp_path, monkeypatch):
+        """Test default cache dir follows CLAUDETUBE_ROOT."""
+        monkeypatch.setenv("CLAUDETUBE_ROOT", str(tmp_path / "custom"))
+        result = _get_default_cache_dir()
+        assert result == tmp_path / "custom" / "cache"
 
 
 class TestResolveConfig:
@@ -218,13 +267,15 @@ class TestResolveConfig:
     def test_default_fallback(self, tmp_path, monkeypatch):
         """Test default is used when no other config is set."""
         monkeypatch.delenv("CLAUDETUBE_CACHE_DIR", raising=False)
+        monkeypatch.delenv("CLAUDETUBE_ROOT", raising=False)
         monkeypatch.chdir(tmp_path)
 
         with patch("claudetube.config.loader._get_user_config_path") as mock_user:
             mock_user.return_value = tmp_path / "nonexistent" / "config.yaml"
             result = _resolve_config()
 
-        assert result.cache_dir == Path.home() / ".claude" / "video_cache"
+        assert result.root_dir == Path.home() / ".claudetube"
+        assert result.cache_dir == Path.home() / ".claudetube" / "cache"
         assert result.source == ConfigSource.DEFAULT
 
 
@@ -234,6 +285,7 @@ class TestGetConfig:
     def test_returns_config(self, tmp_path, monkeypatch):
         """Test get_config returns a valid config."""
         monkeypatch.delenv("CLAUDETUBE_CACHE_DIR", raising=False)
+        monkeypatch.delenv("CLAUDETUBE_ROOT", raising=False)
         monkeypatch.chdir(tmp_path)
         clear_config_cache()
 
@@ -242,18 +294,20 @@ class TestGetConfig:
             config = get_config()
 
         assert isinstance(config, ClaudetubeConfig)
+        assert isinstance(config.root_dir, Path)
         assert isinstance(config.cache_dir, Path)
         assert isinstance(config.source, ConfigSource)
 
     def test_caches_result(self, tmp_path, monkeypatch):
         """Test get_config caches the result."""
         monkeypatch.delenv("CLAUDETUBE_CACHE_DIR", raising=False)
+        monkeypatch.delenv("CLAUDETUBE_ROOT", raising=False)
         monkeypatch.chdir(tmp_path)
         clear_config_cache()
 
         with patch("claudetube.config.loader._resolve_config") as mock_resolve:
             mock_resolve.return_value = ClaudetubeConfig(
-                cache_dir=Path("/cached"), source=ConfigSource.DEFAULT
+                root_dir=Path("/root"), cache_dir=Path("/cached"), source=ConfigSource.DEFAULT
             )
             config1 = get_config()
             config2 = get_config()
@@ -273,6 +327,53 @@ class TestGetCacheDir:
 
         result = get_cache_dir()
         assert result == Path(env_cache)
+
+
+class TestGetRootDirFunction:
+    """Tests for get_root_dir public function."""
+
+    def test_returns_path(self, tmp_path, monkeypatch):
+        """Test get_root_dir returns just the root_dir Path."""
+        monkeypatch.setenv("CLAUDETUBE_ROOT", str(tmp_path / "custom_root"))
+        clear_config_cache()
+
+        result = get_root_dir(ensure_exists=False)
+        assert result == tmp_path / "custom_root"
+
+    def test_creates_directory(self, tmp_path, monkeypatch):
+        """Test get_root_dir creates directory when ensure_exists=True."""
+        root_path = tmp_path / "new_root"
+        monkeypatch.setenv("CLAUDETUBE_ROOT", str(root_path))
+        clear_config_cache()
+
+        assert not root_path.exists()
+        result = get_root_dir(ensure_exists=True)
+        assert result == root_path
+        assert root_path.exists()
+
+
+class TestGetDbDir:
+    """Tests for get_db_dir."""
+
+    def test_returns_path(self, tmp_path, monkeypatch):
+        """Test get_db_dir returns {root_dir}/db."""
+        monkeypatch.setenv("CLAUDETUBE_ROOT", str(tmp_path / "custom_root"))
+        clear_config_cache()
+
+        result = get_db_dir(ensure_exists=False)
+        assert result == tmp_path / "custom_root" / "db"
+
+    def test_creates_directory(self, tmp_path, monkeypatch):
+        """Test get_db_dir creates directory when ensure_exists=True."""
+        root_path = tmp_path / "new_root"
+        monkeypatch.setenv("CLAUDETUBE_ROOT", str(root_path))
+        clear_config_cache()
+
+        db_path = root_path / "db"
+        assert not db_path.exists()
+        result = get_db_dir(ensure_exists=True)
+        assert result == db_path
+        assert db_path.exists()
 
 
 class TestClearConfigCache:

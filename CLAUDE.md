@@ -408,34 +408,50 @@
       pot_server_url: "http://127.0.0.1:4416"  # bgutil server (automated)
     ```
 
-    ## Cache Location
+    ## Data Location
 
-    Videos are cached at `~/.claude/video_cache/{video_id}/`
+    All claudetube data is stored under a single root directory.
 
-    Structure:
+    **Root directory:**
+    - Default: `~/.claudetube/` (macOS/Linux) or `%APPDATA%\claudetube\` (Windows)
+    - Override: `CLAUDETUBE_ROOT` environment variable
+
+    **Structure:**
     ```
-    ~/.claude/video_cache/
-    └── {video_id}/
-        ├── state.json           # Metadata (includes transcript_source)
-        ├── audio.mp3            # Audio track
-        ├── audio.srt            # Transcript with timestamps (SRT format)
-        ├── audio.txt            # Plain text transcript
-        ├── audio.ad.vtt         # Audio descriptions (accessibility, WebVTT)
-        ├── audio.ad.txt         # Audio descriptions (plain text)
-        ├── thumbnail.jpg        # Video thumbnail
-        ├── {video_id}.{lang}.srt # Raw YouTube subtitles (intermediate, see below)
-        ├── drill/               # Quick frames (480p)
-        ├── hq/                  # High-quality frames (1280p)
-        ├── scenes/              # Scene segmentation
-        │   ├── scenes.json
-        │   └── scene_NNN/       # Per-scene data
-        │       ├── keyframes/
-        │       ├── visual.json
-        │       ├── technical.json
-        │       └── entities.json
-        ├── entities/            # People tracking, knowledge graph
-        └── enrichment/          # Q&A history, observations
+    ~/.claudetube/
+    ├── config.yaml              # User config
+    ├── db/
+    │   ├── claudetube.db        # Metadata database
+    │   └── claudetube-vectors.db # Vector embeddings
+    ├── cache/
+    │   └── {video_id}/          # Per-video cache
+    │       ├── state.json           # Metadata (includes transcript_source)
+    │       ├── audio.mp3            # Audio track
+    │       ├── audio.srt            # Transcript with timestamps (SRT format)
+    │       ├── audio.txt            # Plain text transcript
+    │       ├── audio.ad.vtt         # Audio descriptions (WebVTT)
+    │       ├── audio.ad.txt         # Audio descriptions (plain text)
+    │       ├── thumbnail.jpg        # Video thumbnail
+    │       ├── {video_id}.{lang}.srt # Raw YouTube subtitles (intermediate)
+    │       ├── drill/               # Quick frames (480p)
+    │       ├── hq/                  # High-quality frames (1280p)
+    │       ├── scenes/              # Scene segmentation
+    │       │   ├── scenes.json
+    │       │   └── scene_NNN/       # Per-scene data
+    │       │       ├── keyframes/
+    │       │       ├── visual.json
+    │       │       ├── technical.json
+    │       │       └── entities.json
+    │       ├── entities/            # People tracking, knowledge graph
+    │       └── enrichment/          # Q&A history, observations
+    └── logs/                    # Application logs (future)
     ```
+
+    **Config priority:**
+    1. `CLAUDETUBE_CACHE_DIR` env var (cache override)
+    2. Project config (`.claudetube/config.yaml` in project root)
+    3. User config (`~/.claudetube/config.yaml`)
+    4. Default (`~/.claudetube/cache`)
 
     ### Transcript File Naming Convention
 

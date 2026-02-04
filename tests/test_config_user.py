@@ -1,5 +1,7 @@
 """
-Tests for user-level ~/.config/claudetube/config.yaml support.
+Tests for user-level config support.
+
+User config is now at {root_dir}/config.yaml (e.g., ~/.claudetube/config.yaml).
 """
 
 from pathlib import Path
@@ -9,32 +11,32 @@ class TestUserConfig:
     """Tests for user-level configuration."""
 
     def test_user_config_path_unix(self, monkeypatch):
-        """Should use ~/.config/claudetube on Unix systems."""
+        """Should use ~/.claudetube/config.yaml on Unix systems."""
         from claudetube.config.loader import _get_user_config_path
 
         monkeypatch.setattr("sys.platform", "darwin")
-        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        monkeypatch.delenv("CLAUDETUBE_ROOT", raising=False)
 
         result = _get_user_config_path()
 
-        assert result == Path.home() / ".config" / "claudetube" / "config.yaml"
+        assert result == Path.home() / ".claudetube" / "config.yaml"
 
-    def test_user_config_path_xdg(self, tmp_path, monkeypatch):
-        """Should respect XDG_CONFIG_HOME on Unix systems."""
+    def test_user_config_path_custom_root(self, tmp_path, monkeypatch):
+        """Should respect CLAUDETUBE_ROOT env var."""
         from claudetube.config.loader import _get_user_config_path
 
-        monkeypatch.setattr("sys.platform", "linux")
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv("CLAUDETUBE_ROOT", str(tmp_path / "custom"))
 
         result = _get_user_config_path()
 
-        assert result == tmp_path / "xdg" / "claudetube" / "config.yaml"
+        assert result == tmp_path / "custom" / "config.yaml"
 
     def test_user_config_path_windows(self, tmp_path, monkeypatch):
         """Should use APPDATA on Windows."""
         from claudetube.config.loader import _get_user_config_path
 
         monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.delenv("CLAUDETUBE_ROOT", raising=False)
         monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
 
         result = _get_user_config_path()
@@ -47,6 +49,7 @@ class TestUserConfig:
         from claudetube.config.loader import _get_user_config_path
 
         monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.delenv("CLAUDETUBE_ROOT", raising=False)
         monkeypatch.delenv("APPDATA", raising=False)
 
         result = _get_user_config_path()

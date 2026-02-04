@@ -2,22 +2,43 @@
 
 # Configuration Guide
 
-> How to configure claudetube's cache directory and other settings.
+> How to configure claudetube's data location and other settings.
+
+## Data Directory Structure
+
+All claudetube data is stored under a single **root directory**.
+
+**Default root:**
+- macOS/Linux: `~/.claudetube/`
+- Windows: `%APPDATA%\claudetube\`
+
+**Override root:** Set `CLAUDETUBE_ROOT` environment variable
+
+**Directory structure:**
+```
+~/.claudetube/
+├── config.yaml              # User config
+├── db/
+│   ├── claudetube.db        # Metadata database
+│   └── claudetube-vectors.db # Vector embeddings
+├── cache/
+│   └── {video_id}/          # Per-video cache
+└── logs/                    # Application logs (future)
+```
 
 ## Cache Directory Configuration
 
-By default, claudetube stores all cached data (videos, transcripts, frames) at `~/.claude/video_cache/`. You can change this location using several methods.
+The cache directory stores all video data (downloads, transcripts, frames). By default it's `{root_dir}/cache/`.
 
 ### Configuration Priority
 
 claudetube checks these sources in order (highest priority first):
 
 ```
-1. Environment variable  → CLAUDETUBE_CACHE_DIR
+1. Environment variable  → CLAUDETUBE_CACHE_DIR (cache override)
 2. Project config        → .claudetube/config.yaml
-3. User config           → ~/.config/claudetube/config.yaml (Linux/macOS)
-                         → %APPDATA%/claudetube/config.yaml (Windows)
-4. Default               → ~/.claude/video_cache
+3. User config           → ~/.claudetube/config.yaml
+4. Default               → ~/.claudetube/cache
 ```
 
 The first source that provides a value wins.
@@ -71,16 +92,16 @@ my-project/
 
 ## Method 3: User Config
 
-Create `~/.config/claudetube/config.yaml` for system-wide defaults:
+Create `~/.claudetube/config.yaml` for system-wide defaults:
 
 ```yaml
-# ~/.config/claudetube/config.yaml
+# ~/.claudetube/config.yaml
 cache_dir: ~/my-video-cache
 ```
 
-**Platform-specific paths:**
-- **Linux/macOS**: `~/.config/claudetube/config.yaml` (respects `$XDG_CONFIG_HOME`)
-- **Windows**: `%APPDATA%\claudetube\config.yaml`
+**Platform-specific root:**
+- **Linux/macOS**: `~/.claudetube/` (override with `CLAUDETUBE_ROOT`)
+- **Windows**: `%APPDATA%\claudetube\`
 
 ## Config File Format
 
@@ -284,11 +305,16 @@ VOLUME /data/cache
 Check which config source is active:
 
 ```python
-from claudetube.config.loader import get_config
+from claudetube.config.loader import get_config, get_root_dir, get_db_dir
 
 config = get_config()
+print(f"Root dir: {config.root_dir}")
 print(f"Cache dir: {config.cache_dir}")
 print(f"Source: {config.source.value}")  # 'env', 'project', 'user', or 'default'
+
+# Or use helper functions
+print(f"Root: {get_root_dir()}")
+print(f"DB dir: {get_db_dir()}")
 ```
 
 ## Performance Notes

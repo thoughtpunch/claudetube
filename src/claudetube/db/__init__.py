@@ -133,18 +133,18 @@ def close_database() -> None:
 
 def _default_db_path() -> Path:
     """Resolve the default database path from config."""
-    from claudetube.config.loader import get_cache_dir
+    from claudetube.config.loader import get_db_dir
 
-    cache_dir = get_cache_dir(ensure_exists=True)
-    return cache_dir / "claudetube.db"
+    db_dir = get_db_dir(ensure_exists=True)
+    return db_dir / "claudetube.db"
 
 
 def _default_vectors_db_path() -> Path:
     """Resolve the default vectors database path from config."""
-    from claudetube.config.loader import get_cache_dir
+    from claudetube.config.loader import get_db_dir
 
-    cache_dir = get_cache_dir(ensure_exists=True)
-    return cache_dir / "claudetube-vectors.db"
+    db_dir = get_db_dir(ensure_exists=True)
+    return db_dir / "claudetube-vectors.db"
 
 
 def get_vectors_database(db_path: str | Path | None = None) -> Database:
