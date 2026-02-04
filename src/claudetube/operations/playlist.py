@@ -36,9 +36,10 @@ def extract_playlist_metadata(playlist_url: str, timeout: int = 60) -> dict:
     """
     yt_dlp = YtDlpTool()
 
-    # Use flat extraction to get playlist info without downloading
+    # Use flat extraction with single JSON output for playlist metadata
+    # --dump-single-json gives us one JSON object with playlist info + entries array
     result = yt_dlp._run(
-        ["--flat-playlist", "--dump-json", "--no-download", playlist_url],
+        ["--flat-playlist", "--dump-single-json", "--no-download", playlist_url],
         timeout=timeout,
     )
 
@@ -50,26 +51,18 @@ def extract_playlist_metadata(playlist_url: str, timeout: int = 60) -> dict:
             error_msg = error_msg.split("ERROR:")[-1].strip()
         raise MetadataError(f"Playlist fetch failed: {error_msg[:500]}")
 
-    # Parse JSON lines output (one per video + playlist header)
-    videos = []
-    playlist_info = {}
+    # Parse single JSON object containing playlist metadata and entries
+    try:
+        playlist_info = json.loads(result.stdout.strip())
+    except json.JSONDecodeError as e:
+        from claudetube.exceptions import MetadataError
 
-    for line in result.stdout.strip().split("\n"):
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+        raise MetadataError(f"Invalid JSON response: {e}") from e
 
-        # Playlist-level entry has _type: playlist
-        if entry.get("_type") == "playlist":
-            playlist_info = entry
-        else:
-            # Video entry
-            videos.append(entry)
+    # Extract videos from entries array
+    videos = playlist_info.get("entries", [])
 
-    # Extract playlist ID from URL or info
+    # Extract playlist ID from info or URL
     playlist_id = playlist_info.get("id") or _extract_playlist_id(playlist_url)
 
     return {
