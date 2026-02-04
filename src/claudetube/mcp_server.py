@@ -1714,6 +1714,30 @@ async def describe_moment(
 
     prompt = " ".join(prompt_parts)
 
+    # Check if using claude-code provider (which delegates to host AI)
+    provider_name = vision.info.name if vision else None
+    is_claude_code = provider_name == "claude-code"
+
+    if is_claude_code:
+        # claude-code provider delegates to the host AI to analyze images.
+        # Return the frame paths so the calling AI can read them directly.
+        return json.dumps(
+            {
+                "video_id": video_id,
+                "timestamp": timestamp,
+                "frame_count": len(frames),
+                "frame_paths": [str(f) for f in frames],
+                "description": None,
+                "provider": "claude-code",
+                "requires_host_analysis": True,
+                "analysis_prompt": prompt,
+                "note": "Use the Read tool to view the frame images and generate the description. "
+                "The frame_paths contain the images to analyze.",
+            },
+            indent=2,
+        )
+
+    # Non-claude-code providers can analyze directly
     try:
         result = await vision.analyze_images(
             images=[Path(f) for f in frames],
@@ -1731,7 +1755,7 @@ async def describe_moment(
             "frame_count": len(frames),
             "frame_paths": [str(f) for f in frames],
             "description": description,
-            "provider": vision.info.name if vision else None,
+            "provider": provider_name,
         },
         indent=2,
     )
