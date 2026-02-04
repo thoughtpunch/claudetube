@@ -32,3 +32,4 @@ Investigated the reported bug where MCP tool calls returned "Video not found" wh
 - 2026-02-03 23:53 | claudetube-amqw [P0] | VERIFIED CLOSED - Bug was fixed in e1a1f29, confirmed MCP and direct Python both work
 - 2026-02-03 17:56 | claudetube-58qv [P1] | JSON parse error on URLs with playlist params
 2026-02-03 17:58:55 - claudetube-58qv: Verified fix already in main (6d85ec6), closed
+- 2026-02-03 17:59 | claudetube-8lw5 [P1] | extract_entities returns empty arrays - no actual vision analysis
