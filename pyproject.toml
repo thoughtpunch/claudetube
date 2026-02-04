@@ -147,6 +147,10 @@ ignore = [
     "B008",   # function call in default argument (needed for FastAPI/Pydantic)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# mcp_server.py has early startup logging before imports for debugging
+"src/claudetube/mcp_server.py" = ["E402"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["claudetube"]
 
