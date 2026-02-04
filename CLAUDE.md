@@ -415,12 +415,14 @@
     ```
     ~/.claude/video_cache/
     └── {video_id}/
-        ├── state.json           # Metadata
+        ├── state.json           # Metadata (includes transcript_source)
         ├── audio.mp3            # Audio track
-        ├── {video_id}.{lang}.srt # YouTube/provider subtitles (preferred)
-        ├── audio.srt            # Whisper transcript (fallback)
+        ├── audio.srt            # Transcript with timestamps (SRT format)
         ├── audio.txt            # Plain text transcript
+        ├── audio.ad.vtt         # Audio descriptions (accessibility, WebVTT)
+        ├── audio.ad.txt         # Audio descriptions (plain text)
         ├── thumbnail.jpg        # Video thumbnail
+        ├── {video_id}.{lang}.srt # Raw YouTube subtitles (intermediate, see below)
         ├── drill/               # Quick frames (480p)
         ├── hq/                  # High-quality frames (1280p)
         ├── scenes/              # Scene segmentation
@@ -434,17 +436,23 @@
         └── enrichment/          # Q&A history, observations
     ```
 
-    ### Transcript Naming Convention
+    ### Transcript File Naming Convention
 
-    Transcripts follow the **Cheap First** principle:
+    **Standard files** (always use these):
+    - `audio.srt` - Timestamped transcript (SRT format)
+    - `audio.txt` - Plain text transcript
 
-    | File Pattern | Source | Priority |
-    |-------------|--------|----------|
-    | `{video_id}.{lang}.srt` | YouTube/provider subtitles | 1 (preferred) |
-    | `audio.srt` | Whisper transcription | 2 (fallback) |
-    | `audio.txt` | Plain text (from any source) | - |
+    **Source tracking:**
+    The `state.json` file contains `transcript_source` which indicates the origin:
+    - `"youtube_auto"` - YouTube auto-generated captions
+    - `"youtube_manual"` - YouTube uploaded/manual subtitles
+    - `"whisper"` - Local Whisper transcription
 
-    **Priority order:** When reading transcripts, tools check for provider subtitles first (free, fast) before falling back to Whisper transcripts (expensive, slower).
+    **Raw YouTube files** (intermediate):
+    When yt-dlp downloads YouTube subtitles, it saves them as `{video_id}.{lang}.srt` (e.g., `abc123.en.srt`). During processing, these are converted and saved to `audio.srt`/`audio.txt`. The raw files may remain in the cache but are not used directly by tools.
+
+    **Fallback behavior:**
+    If `audio.srt`/`audio.txt` don't exist (incomplete processing), the `get_transcript` MCP tool will attempt to read raw YouTube subtitle files as a fallback.
 
     ## AI Provider System
 
