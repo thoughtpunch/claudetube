@@ -71,11 +71,12 @@
     ### Core Processing
 
     #### `process_video_tool`
-    Downloads and transcribes a video. Returns metadata, transcript, and file paths.
+    Downloads and transcribes a video. Returns metadata (including YouTube chapters if available), transcript, and file paths.
     ```
     url: Video URL, video ID, or local file path
     whisper_model: tiny (default), base, small, medium, large
     copy: For local files - copy instead of symlink (default: false)
+    force: Clear cache and re-process from scratch (default: false)
     ```
 
     #### `get_frames`

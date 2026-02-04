@@ -190,9 +190,30 @@ Nice-to-have improvements tracked for v1.0.x:
 - [x] ~~OCR vs Vision quality benchmarking~~ (done)
 - [ ] Local vision model support for visual transcripts
 
-### Recently Completed
+### Recently Completed (v1.0.0rc2 - February 3-4, 2026)
 
 The following were resolved after the initial RC build:
+
+**New Features:**
+- **`process_video_tool` force flag**: New `force: bool` parameter clears cache and re-processes from scratch
+- **YouTube chapters extraction**: Chapters are now extracted from yt-dlp metadata and included in VideoState
+- **Playlist metadata extraction**: Fixed `get_playlist` to correctly extract title, channel, and video count using `--dump-single-json`
+
+**Bug Fixes:**
+- **`watch_video_tool` answer synthesis**: Now extracts relevant sentences instead of first 200 chars, and ranks hypotheses by relevance (60%) + confidence (40%) - fixes issue where irrelevant content was returned
+- **YouTube subtitles**: Fixed to use YouTube-provided subtitles even when yt-dlp returns non-zero exit code
+- **`describe_moment` delegation**: Returns proper delegation response for claude-code provider with frame paths
+- **Long Whisper SRT segments**: Segments over 7 seconds are now split using word timestamps for better readability
+- **`index_video_to_graph_tool`**: Now warns when video has no entities/concepts to index instead of silently succeeding
+- **Major transition filtering**: Improved to use relative threshold (top 25%) instead of absolute threshold
+
+**CI/Code Quality:**
+- Fixed ruff formatting issues across 20+ files
+- Fixed lint errors (unused variables, nested ifs, import sorting)
+
+---
+
+### Previously Completed (v1.0.0rc1)
 
 - **YouTube SABR/403 fix**: Upgraded yt-dlp, added smart client fallback chain
 - **YouTube auth support**: PO tokens, cookies, bgutil plugin, auth diagnostics tool
