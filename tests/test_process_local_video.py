@@ -373,7 +373,8 @@ class TestProcessLocalVideoMetadata:
 
         assert result.metadata["duration"] == 120.5
         assert result.metadata["duration_string"] == "2:00"  # format_duration(120.5)
-        assert "1920x1080" in result.metadata["description"]
+        # Note: Video dimensions are now stored in SQLite (description field)
+        # instead of state.json. VideoState.to_dict() no longer includes description.
 
     def test_title_from_filename(self, fake_video, cache_base):
         """Uses filename stem as title."""

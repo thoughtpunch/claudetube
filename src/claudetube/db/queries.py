@@ -677,3 +677,124 @@ def get_knowledge_graph_stats_sql() -> dict[str, Any] | None:
     except Exception:
         logger.debug("SQL knowledge graph stats failed", exc_info=True)
         return None
+
+
+# ============================================================
+# VIDEO METADATA (queryable fields from SQLite)
+# ============================================================
+
+
+def get_video_metadata(video_id: str) -> dict[str, Any] | None:
+    """Get queryable video metadata from SQLite.
+
+    SQLite is the source of truth for queryable metadata fields (description,
+    view_count, like_count). This function retrieves them.
+
+    Args:
+        video_id: Natural key (e.g., YouTube video ID).
+
+    Returns:
+        Dict with queryable metadata, or None if video not found or DB unavailable.
+    """
+    db = _get_db()
+    if db is None:
+        return None
+
+    try:
+        cursor = db.execute(
+            """
+            SELECT
+                description,
+                view_count,
+                like_count
+            FROM videos
+            WHERE video_id = ?
+            """,
+            (video_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+
+        return {
+            "description": row["description"],
+            "view_count": row["view_count"],
+            "like_count": row["like_count"],
+        }
+    except Exception:
+        logger.debug("Failed to get video metadata from SQL", exc_info=True)
+        return None
+
+
+def get_video_tags(video_id: str) -> list[str] | None:
+    """Get video tags from SQLite.
+
+    SQLite is the source of truth for tags. This function retrieves them.
+
+    Args:
+        video_id: Natural key (e.g., YouTube video ID).
+
+    Returns:
+        List of tag strings, or None if video not found or DB unavailable.
+    """
+    db = _get_db()
+    if db is None:
+        return None
+
+    try:
+        from claudetube.db.repos.videos import VideoRepository
+
+        repo = VideoRepository(db)
+        video = repo.get_by_video_id(video_id)
+        if video is None:
+            return None
+
+        video_uuid = video["id"]
+
+        cursor = db.execute(
+            "SELECT tag FROM video_tags WHERE video_id = ? ORDER BY tag",
+            (video_uuid,),
+        )
+        return [row["tag"] for row in cursor.fetchall()]
+    except Exception:
+        logger.debug("Failed to get video tags from SQL", exc_info=True)
+        return None
+
+
+def get_full_video_metadata(video_id: str) -> dict[str, Any] | None:
+    """Get full video metadata from SQLite.
+
+    Combines all video table fields including queryable metadata.
+    Useful for MCP tools that need complete video info.
+
+    Args:
+        video_id: Natural key (e.g., YouTube video ID).
+
+    Returns:
+        Full video dict from database, or None if not found.
+    """
+    db = _get_db()
+    if db is None:
+        return None
+
+    try:
+        from claudetube.db.repos.videos import VideoRepository
+
+        repo = VideoRepository(db)
+        video = repo.get_by_video_id(video_id)
+        if video is None:
+            return None
+
+        # Also get tags
+        video_uuid = video["id"]
+        cursor = db.execute(
+            "SELECT tag FROM video_tags WHERE video_id = ?",
+            (video_uuid,),
+        )
+        tags = [row["tag"] for row in cursor.fetchall()]
+        video["tags"] = tags
+
+        return video
+    except Exception:
+        logger.debug("Failed to get full video metadata from SQL", exc_info=True)
+        return None

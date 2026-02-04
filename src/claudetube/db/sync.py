@@ -114,6 +114,10 @@ def sync_video(state: VideoState, cache_path: str) -> None:
     - If video doesn't exist, creates it
     - If video exists, fills NULL fields without overwriting existing data
 
+    Note: This syncs ONLY the fields present in VideoState. Queryable metadata
+    (description, categories, tags, view_count, like_count) should be synced
+    separately using sync_video_metadata() with the raw yt-dlp metadata dict.
+
     This is fire-and-forget: exceptions are caught and logged.
 
     Args:
@@ -136,7 +140,7 @@ def sync_video(state: VideoState, cache_path: str) -> None:
             parts = Path(cache_path).parts
             domain = parts[0] if parts else "unknown"
 
-        # Build metadata dict from VideoState
+        # Build metadata dict from VideoState (fast-access fields only)
         metadata: dict[str, Any] = {}
 
         if state.channel_id is not None:
@@ -157,14 +161,8 @@ def sync_video(state: VideoState, cache_path: str) -> None:
             metadata["channel_name"] = state.channel
         if state.upload_date is not None:
             metadata["upload_date"] = state.upload_date
-        if state.description is not None:
-            metadata["description"] = state.description
         if state.language is not None:
             metadata["language"] = state.language
-        if state.view_count is not None:
-            metadata["view_count"] = state.view_count
-        if state.like_count is not None:
-            metadata["like_count"] = state.like_count
         if state.source_type is not None:
             metadata["source_type"] = state.source_type
 
@@ -179,6 +177,173 @@ def sync_video(state: VideoState, cache_path: str) -> None:
     except Exception:
         # Fire-and-forget: log and continue
         logger.debug("Failed to sync video to SQLite", exc_info=True)
+
+
+def sync_video_metadata(video_id: str, raw_metadata: dict[str, Any]) -> None:
+    """Sync queryable metadata from raw yt-dlp metadata dict to SQLite.
+
+    This syncs fields that are NOT stored in VideoState (description, categories,
+    tags, view_count, like_count). SQLite is the source of truth for these fields.
+
+    Call this after creating a VideoState from metadata to ensure all queryable
+    fields are persisted to the database.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_id: Natural key (e.g., YouTube video ID).
+        raw_metadata: Raw yt-dlp metadata dict (or similar structure).
+    """
+    try:
+        db = _get_db()
+        if db is None:
+            return
+
+        from claudetube.db.repos.videos import VideoRepository
+
+        repo = VideoRepository(db)
+
+        # Check if video exists in DB
+        existing = repo.get_by_video_id(video_id)
+        if existing is None:
+            logger.debug(
+                "Cannot sync metadata for %s: video not in database", video_id
+            )
+            return
+
+        # Build queryable metadata dict
+        updates: dict[str, Any] = {}
+
+        description = raw_metadata.get("description")
+        if description is not None:
+            # Truncate description to reasonable length
+            updates["description"] = (description or "")[:1500]
+
+        view_count = raw_metadata.get("view_count")
+        if view_count is not None:
+            updates["view_count"] = view_count
+
+        like_count = raw_metadata.get("like_count")
+        if like_count is not None:
+            updates["like_count"] = like_count
+
+        if not updates:
+            return
+
+        # Update using raw SQL for simplicity (upsert only fills NULLs)
+        set_clauses = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [video_id]
+        db.execute(
+            f"UPDATE videos SET {set_clauses}, updated_at = datetime('now') WHERE video_id = ?",
+            tuple(values),
+        )
+        db.commit()
+        logger.debug("Synced queryable metadata for %s to SQLite", video_id)
+
+    except Exception:
+        # Fire-and-forget: log and continue
+        logger.debug("Failed to sync video metadata to SQLite", exc_info=True)
+
+
+def sync_video_tags(video_id: str, tags: list[str] | None) -> None:
+    """Sync video tags to SQLite (video_tags table).
+
+    Tags are NOT stored in VideoState. SQLite is the source of truth.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_id: Natural key (e.g., YouTube video ID).
+        tags: List of tag strings (truncated to first 15).
+    """
+    if not tags:
+        return
+
+    try:
+        db = _get_db()
+        if db is None:
+            return
+
+        from claudetube.db.repos.videos import VideoRepository
+
+        repo = VideoRepository(db)
+
+        # Get video UUID
+        existing = repo.get_by_video_id(video_id)
+        if existing is None:
+            logger.debug("Cannot sync tags for %s: video not in database", video_id)
+            return
+
+        video_uuid = existing["id"]
+
+        # Limit to first 15 tags
+        tags = tags[:15]
+
+        # Insert tags (ignore duplicates)
+        import uuid
+
+        for tag in tags:
+            if not tag or not tag.strip():
+                continue
+            with contextlib.suppress(Exception):
+                db.execute(
+                    "INSERT OR IGNORE INTO video_tags (id, video_id, tag) VALUES (?, ?, ?)",
+                    (str(uuid.uuid4()), video_uuid, tag.strip()),
+                )
+
+        db.commit()
+        logger.debug("Synced %d tags for %s to SQLite", len(tags), video_id)
+
+    except Exception:
+        # Fire-and-forget: log and continue
+        logger.debug("Failed to sync video tags to SQLite", exc_info=True)
+
+
+def sync_local_file_metadata(
+    video_id: str,
+    width: int | None = None,
+    height: int | None = None,
+    fps: float | None = None,
+    codec: str | None = None,
+) -> None:
+    """Sync local file metadata (dimensions, codec) to SQLite.
+
+    For local video files, stores video dimensions in the description field.
+
+    This is fire-and-forget: exceptions are caught and logged.
+
+    Args:
+        video_id: Natural key (e.g., generated video_id for local file).
+        width: Video width in pixels.
+        height: Video height in pixels.
+        fps: Frames per second.
+        codec: Video codec name.
+    """
+    if not width or not height:
+        return
+
+    try:
+        db = _get_db()
+        if db is None:
+            return
+
+        # Build dimensions string
+        dimensions = f"{width}x{height}"
+        if fps:
+            dimensions += f" @ {fps:.1f}fps"
+        if codec:
+            dimensions += f" ({codec})"
+
+        db.execute(
+            "UPDATE videos SET description = ?, updated_at = datetime('now') WHERE video_id = ?",
+            (dimensions, video_id),
+        )
+        db.commit()
+        logger.debug("Synced local file metadata for %s to SQLite", video_id)
+
+    except Exception:
+        # Fire-and-forget: log and continue
+        logger.debug("Failed to sync local file metadata to SQLite", exc_info=True)
 
 
 def enrich_video(video_id: str, metadata: dict[str, Any], cache_base: Path) -> None:

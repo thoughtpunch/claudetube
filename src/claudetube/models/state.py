@@ -19,7 +19,14 @@ def _sanitize_field(value: str) -> str:
 
 @dataclass
 class VideoState:
-    """Cached video state stored in state.json."""
+    """Cached video state stored in state.json.
+
+    This is a lean representation of video state for fast per-video reads.
+    Queryable metadata (description, categories, tags, view_count, like_count)
+    is stored in SQLite as the source of truth and is NOT duplicated here.
+
+    For detailed queryable metadata, use db/queries.py functions.
+    """
 
     video_id: str
     url: str | None = None
@@ -38,22 +45,18 @@ class VideoState:
     # Path to the cached source file (e.g., "source.mp4")
     cached_file: str | None = None
 
-    # Metadata from yt-dlp
+    # Metadata from yt-dlp (fast-access fields only)
     title: str | None = None
     duration: float | None = None
     duration_string: str | None = None
     uploader: str | None = None
     channel: str | None = None
     upload_date: str | None = None
-    description: str | None = None
-    categories: list[str] | None = None
-    tags: list[str] = field(default_factory=list)
     language: str | None = None
-    view_count: int | None = None
-    like_count: int | None = None
     thumbnail: str | None = None
 
     # YouTube chapters (if available) - list of {title, start_time, end_time}
+    # Kept in JSON for fast scene detection without DB query
     chapters: list[dict] | None = None
 
     # Processing state
@@ -80,7 +83,12 @@ class VideoState:
     technical_extraction_complete: bool = False
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization."""
+        """Convert to dictionary for JSON serialization.
+
+        Note: This produces a lean dict for state.json. Queryable metadata
+        (description, categories, tags, view_count, like_count) is NOT
+        included - that data lives in SQLite as the source of truth.
+        """
         return {
             "video_id": self.video_id,
             "url": self.url,
@@ -97,12 +105,7 @@ class VideoState:
             "uploader": self.uploader,
             "channel": self.channel,
             "upload_date": self.upload_date,
-            "description": self.description,
-            "categories": self.categories,
-            "tags": self.tags,
             "language": self.language,
-            "view_count": self.view_count,
-            "like_count": self.like_count,
             "thumbnail": self.thumbnail,
             "chapters": self.chapters,
             "transcript_complete": self.transcript_complete,
@@ -124,7 +127,12 @@ class VideoState:
 
     @classmethod
     def from_dict(cls, data: dict) -> VideoState:
-        """Create from dictionary (JSON deserialization)."""
+        """Create from dictionary (JSON deserialization).
+
+        Note: Old state.json files may contain deprecated fields (description,
+        categories, tags, view_count, like_count). These are silently ignored -
+        the canonical data lives in SQLite.
+        """
         return cls(
             video_id=data.get("video_id", ""),
             url=data.get("url"),
@@ -141,12 +149,7 @@ class VideoState:
             uploader=data.get("uploader"),
             channel=data.get("channel"),
             upload_date=data.get("upload_date"),
-            description=data.get("description"),
-            categories=data.get("categories"),
-            tags=data.get("tags", []),
             language=data.get("language"),
-            view_count=data.get("view_count"),
-            like_count=data.get("like_count"),
             thumbnail=data.get("thumbnail"),
             chapters=data.get("chapters"),
             transcript_complete=data.get("transcript_complete", False),
@@ -170,7 +173,13 @@ class VideoState:
 
     @classmethod
     def from_metadata(cls, video_id: str, url: str, meta: dict) -> VideoState:
-        """Create from yt-dlp metadata response."""
+        """Create from yt-dlp metadata response.
+
+        Note: Queryable fields (description, categories, tags, view_count,
+        like_count) are NOT stored in VideoState. They are synced to SQLite
+        as the authoritative source. Access sync_video_metadata() in db/sync.py
+        to sync these fields to SQLite after creating the VideoState.
+        """
         # Extract domain from URL hostname or extractor_key
         domain = cls._extract_domain(url, meta)
 
@@ -208,12 +217,7 @@ class VideoState:
             uploader=meta.get("uploader"),
             channel=meta.get("channel"),
             upload_date=meta.get("upload_date"),
-            description=(meta.get("description", "") or "")[:1500],
-            categories=meta.get("categories"),
-            tags=(meta.get("tags") or [])[:15],
             language=meta.get("language"),
-            view_count=meta.get("view_count"),
-            like_count=meta.get("like_count"),
             thumbnail=meta.get("thumbnail"),
             chapters=chapters,
         )
@@ -294,23 +298,27 @@ class VideoState:
     ) -> VideoState:
         """Create from a local file with optional ffprobe metadata.
 
+        Note: Video dimensions (width, height, fps, codec) are NOT stored in
+        state.json. Sync them to SQLite's videos.description field for queryable
+        access using sync_local_file_metadata() in db/sync.py.
+
         Args:
             video_id: Generated video_id from LocalFile.video_id
             source_path: Absolute path to the source file
             title: Optional title (defaults to filename stem)
             duration: Duration in seconds (from ffprobe)
             duration_string: Human-readable duration (e.g., "1:30")
-            width: Video width in pixels
-            height: Video height in pixels
-            fps: Frames per second
-            codec: Video codec name (e.g., "h264")
+            width: Video width in pixels (synced to SQLite, not state.json)
+            height: Video height in pixels (synced to SQLite, not state.json)
+            fps: Frames per second (synced to SQLite, not state.json)
+            codec: Video codec name (synced to SQLite, not state.json)
             creation_time: ISO timestamp of creation (if available)
         """
         from pathlib import Path
 
         path = Path(source_path)
 
-        state = cls(
+        return cls(
             video_id=video_id,
             url=None,
             source_type="local",
@@ -320,15 +328,3 @@ class VideoState:
             duration_string=duration_string,
             upload_date=creation_time,  # Map creation_time to upload_date
         )
-
-        # Store video dimensions and codec in description for now
-        # (VideoState doesn't have dedicated fields for these)
-        if width and height:
-            dimensions = f"{width}x{height}"
-            if fps:
-                dimensions += f" @ {fps:.1f}fps"
-            if codec:
-                dimensions += f" ({codec})"
-            state.description = dimensions
-
-        return state

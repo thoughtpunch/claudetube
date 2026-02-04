@@ -185,11 +185,24 @@ def process_video(
 
     # Sync video to SQLite with hierarchical cache_path
     try:
-        from claudetube.db.sync import sync_video
+        from claudetube.db.sync import (
+            sync_video,
+            sync_video_metadata,
+            sync_video_tags,
+        )
 
         # Build cache_path relative to cache_base
         cache_path_rel = str(cache_dir.relative_to(cache_base))
         sync_video(state, cache_path_rel)
+
+        # Sync queryable metadata (description, view_count, like_count)
+        # SQLite is the source of truth for these fields
+        sync_video_metadata(video_id, meta)
+
+        # Sync tags (stored only in SQLite)
+        tags = meta.get("tags")
+        if tags:
+            sync_video_tags(video_id, tags)
     except Exception:
         pass  # Fire-and-forget
 
@@ -581,6 +594,21 @@ def process_local_video(
     log_timed(
         f"Metadata: '{state.title}' ({state.duration_string or 'unknown duration'})", t0
     )
+
+    # Sync local file metadata (dimensions) to SQLite
+    # SQLite is the source of truth for description field
+    try:
+        from claudetube.db.sync import sync_local_file_metadata
+
+        sync_local_file_metadata(
+            video_id=video_id,
+            width=metadata.width,
+            height=metadata.height,
+            fps=metadata.fps,
+            codec=metadata.codec,
+        )
+    except Exception:
+        pass  # Fire-and-forget
 
     # STEP 3: Generate thumbnail from video
     if not thumbnail_path.exists() and local_file.is_video:
