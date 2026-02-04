@@ -30,7 +30,7 @@ class TestYtCommand:
     def test_yt_md_has_cache_location(self):
         """yt.md should document the cache location."""
         content = (COMMANDS_DIR / "yt.md").read_text()
-        assert "~/.claude/video_cache/" in content
+        assert "~/.claudetube/cache/" in content
         assert "state.json" in content
 
     def test_yt_md_has_skip_python_instruction(self):

@@ -18,7 +18,7 @@ Parse the arguments:
 ## Step 1: Check Cache First
 
 Before invoking Python, verify the video is cached:
-- Check if `~/.claude/video_cache/{VIDEO_ID}/state.json` exists
+- Check if `~/.claudetube/cache/{VIDEO_ID}/state.json` exists
 - If NOT cached, tell the user to run `/yt <url>` first and stop
 
 ## Step 2: Extract Frames (Only if Cached)
@@ -49,7 +49,7 @@ frames = get_frames_at(
     start_time=seconds,
     duration=duration,
     interval=2,
-    output_base=Path.home() / '.claude' / 'video_cache',
+    output_base=Path.home() / '.claudetube' / 'cache',
     quality='lowest',
 )
 print(f'QUALITY: lowest')
@@ -83,7 +83,7 @@ frames = get_frames_at(
     start_time=SECONDS,
     duration=DURATION,
     interval=2,
-    output_base=Path.home() / '.claude' / 'video_cache',
+    output_base=Path.home() / '.claudetube' / 'cache',
     quality='NEXT_QUALITY',
 )
 print(f'QUALITY: NEXT_QUALITY')

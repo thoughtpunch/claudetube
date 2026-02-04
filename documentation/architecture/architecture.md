@@ -158,31 +158,36 @@ URL → operations/processor.py
 ## Cache Structure
 
 ```
-~/.claude/video_cache/
-├── {video_id}/
-│   ├── state.json              # Metadata + processing state
-│   ├── audio.mp3               # Downloaded audio
-│   ├── audio.srt               # SRT transcript
-│   ├── audio.txt               # Plain text transcript
-│   ├── thumbnail.jpg           # Video thumbnail
-│   ├── drill_{quality}/        # Frames from get_frames (480p default)
-│   │   └── drill_MM-SS.jpg
-│   ├── hq/                     # Frames from get_hq_frames (1280px)
-│   │   └── hq_MM-SS.jpg
-│   ├── scenes/                 # Scene segmentation data
-│   │   ├── scenes.json         # Scene boundaries + metadata
-│   │   └── scene_NNN/          # Per-scene analysis
-│   │       ├── keyframes/      # Representative frames
-│   │       ├── visual.json     # Visual description
-│   │       ├── technical.json  # OCR, code detection
-│   │       └── entities.json   # Extracted entities
-│   ├── entities/               # Cross-scene data
-│   │   └── people.json         # People tracking results
-│   └── enrichment/             # Progressive learning data
-│       ├── qa_history.json     # Cached Q&A interactions
-│       └── observations.json   # Scene observations + boosts
-├── playlists/                  # Cached playlist metadata
-└── knowledge_graph.json        # Cross-video entity graph
+~/.claudetube/
+├── config.yaml                 # User configuration
+├── db/
+│   ├── claudetube.db           # Metadata database
+│   └── claudetube-vectors.db   # Vector embeddings
+├── cache/
+│   └── {video_id}/
+│       ├── state.json              # Metadata + processing state
+│       ├── audio.mp3               # Downloaded audio
+│       ├── audio.srt               # SRT transcript
+│       ├── audio.txt               # Plain text transcript
+│       ├── thumbnail.jpg           # Video thumbnail
+│       ├── drill_{quality}/        # Frames from get_frames (480p default)
+│       │   └── drill_MM-SS.jpg
+│       ├── hq/                     # Frames from get_hq_frames (1280px)
+│       │   └── hq_MM-SS.jpg
+│       ├── scenes/                 # Scene segmentation data
+│       │   ├── scenes.json         # Scene boundaries + metadata
+│       │   └── scene_NNN/          # Per-scene analysis
+│       │       ├── keyframes/      # Representative frames
+│       │       ├── visual.json     # Visual description
+│       │       ├── technical.json  # OCR, code detection
+│       │       └── entities.json   # Extracted entities
+│       ├── entities/               # Cross-scene data
+│       │   └── people.json         # People tracking results
+│       └── enrichment/             # Progressive learning data
+│           ├── qa_history.json     # Cached Q&A interactions
+│           └── observations.json   # Scene observations + boosts
+├── playlists/                      # Cached playlist metadata
+└── knowledge_graph.json            # Cross-video entity graph
 ```
 
 ### state.json

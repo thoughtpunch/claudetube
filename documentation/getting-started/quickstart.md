@@ -100,21 +100,28 @@ process_video("https://twitch.tv/videos/...")
 result = process_video("/path/to/video.mp4")
 ```
 
-## Cache Location
+## Data Location
 
-Processed videos are cached at:
+Processed videos are cached at `~/.claudetube/cache/`:
 ```
-~/.claude/video_cache/{video_id}/
-├── state.json      # Metadata
-├── audio.mp3       # Audio track
-├── audio.srt       # Timestamped transcript
-├── audio.txt       # Plain text transcript
-├── thumbnail.jpg   # Thumbnail
-├── drill/          # Quick frames
-└── hq/             # HQ frames
+~/.claudetube/
+├── config.yaml        # User configuration
+├── db/                # SQLite databases
+├── cache/
+│   └── {video_id}/
+│       ├── state.json      # Metadata
+│       ├── audio.mp3       # Audio track
+│       ├── audio.srt       # Timestamped transcript
+│       ├── audio.txt       # Plain text transcript
+│       ├── thumbnail.jpg   # Thumbnail
+│       ├── drill/          # Quick frames
+│       └── hq/             # HQ frames
+└── logs/              # Application logs (future)
 ```
 
 Second requests are instant—no re-downloading.
+
+**Custom location:** Set `CLAUDETUBE_ROOT` environment variable to change the root directory.
 
 ---
 

@@ -85,7 +85,7 @@ This means it works on:
 Everything is cached intelligently:
 
 ```
-~/.claude/video_cache/{video_id}/
+~/.claudetube/cache/{video_id}/
 ├── state.json          # Metadata, state
 ├── audio.mp3           # Audio track
 ├── audio.srt           # Timestamped transcript

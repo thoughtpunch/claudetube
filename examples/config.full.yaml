@@ -20,19 +20,29 @@
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CACHE DIRECTORY
+# DATA LOCATION
 # ──────────────────────────────────────────────────────────────────────────────
-# Where claudetube stores downloaded videos, audio, transcripts, and frames.
+# All claudetube data is stored under a root directory:
+#   - Default: ~/.claudetube/
+#   - Override root: CLAUDETUBE_ROOT environment variable
+#
+# Within the root:
+#   ~/.claudetube/
+#   ├── config.yaml              # User configuration
+#   ├── db/                      # SQLite databases
+#   ├── cache/                   # Video cache (override with cache_dir)
+#   └── logs/                    # Application logs (future)
+#
+# Cache directory:
+#   - Default: {root}/cache (e.g., ~/.claudetube/cache)
+#   - Override: CLAUDETUBE_CACHE_DIR environment variable or cache_dir below
 #
 # Supports:
 #   - ~ expansion: ~/my-cache → /Users/you/my-cache
 #   - Relative paths: ./cache → resolved from config file location
 #   - Absolute paths: /data/claudetube
-#
-# Default: ~/.claude/video_cache
-# Env override: CLAUDETUBE_CACHE_DIR
 
-# cache_dir: ~/.claude/video_cache
+# cache_dir: ~/.claudetube/cache
 
 
 # ──────────────────────────────────────────────────────────────────────────────

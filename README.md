@@ -137,35 +137,43 @@ hq_frames = get_hq_frames_at("VIDEO_ID", start_time=120, duration=5)
 
 1. **Download** -- Fetches lowest quality video (144p) for speed
 2. **Transcribe** -- Uses faster-whisper with batched inference
-3. **Cache** -- Stores everything at `~/.claude/video_cache/{VIDEO_ID}/`
+3. **Cache** -- Stores everything at `~/.claudetube/cache/{VIDEO_ID}/`
 4. **Drill-in** -- Extract frames on-demand when visual context is needed
 
-### Cache Structure
+### Data Location
+
+All claudetube data is stored under `~/.claudetube/` by default:
 
 ```
-~/.claude/video_cache/
-└── dYP2V_nK8o0/
-    ├── state.json     # Metadata (title, description, tags, etc.)
-    ├── audio.mp3      # Extracted audio
-    ├── audio.srt      # Timestamped transcript
-    ├── audio.txt      # Plain text transcript
-    ├── thumbnail.jpg  # Video thumbnail
-    ├── drill/         # Quick frames (480p)
-    ├── hq/            # High-quality frames (1280p)
-    ├── scenes/        # Scene segmentation data
-    │   ├── scenes.json
-    │   └── scene_NNN/ # Per-scene keyframes, visual.json, entities.json
-    └── entities/      # People tracking, knowledge graph data
+~/.claudetube/
+├── config.yaml              # User configuration
+├── db/
+│   ├── claudetube.db        # Metadata database
+│   └── claudetube-vectors.db # Vector embeddings
+├── cache/
+│   └── {video_id}/          # Per-video cache
+│       ├── state.json       # Metadata (title, description, tags)
+│       ├── audio.mp3        # Extracted audio
+│       ├── audio.srt        # Timestamped transcript
+│       ├── audio.txt        # Plain text transcript
+│       ├── thumbnail.jpg    # Video thumbnail
+│       ├── drill/           # Quick frames (480p)
+│       ├── hq/              # High-quality frames (1280p)
+│       ├── scenes/          # Scene segmentation data
+│       └── entities/        # People tracking, knowledge graph
+└── logs/                    # Application logs (future)
 ```
 
 ### Configuration
 
-The cache directory is configurable. Priority order (highest first):
+**Override the root directory:** Set `CLAUDETUBE_ROOT` environment variable
+
+**Override just the cache directory:** Configuration priority (highest first):
 
 1. **Environment variable**: `CLAUDETUBE_CACHE_DIR=/path/to/cache`
 2. **Project config**: `.claudetube/config.yaml` in your project
-3. **User config**: `~/.config/claudetube/config.yaml`
-4. **Default**: `~/.claude/video_cache`
+3. **User config**: `~/.claudetube/config.yaml`
+4. **Default**: `~/.claudetube/cache`
 
 Example project config:
 

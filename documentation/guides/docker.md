@@ -28,11 +28,11 @@ Mount a volume so processed videos persist across container restarts:
 
 ```bash
 docker run -i \
-  -v ~/.claude/video_cache:/home/claudetube/.claude/video_cache \
+  -v ~/.claudetube:/home/claudetube/.claudetube \
   claudetube-mcp
 ```
 
-This shares the same cache directory used by native installs and slash commands.
+This shares the same data directory used by native installs and slash commands.
 
 ## Configuring Claude Desktop
 
@@ -45,7 +45,7 @@ Add to `claude_desktop_config.json`:
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
-        "-v", "/Users/YOU/.claude/video_cache:/home/claudetube/.claude/video_cache",
+        "-v", "/Users/YOU/.claudetube:/home/claudetube/.claudetube",
         "claudetube-mcp"
       ]
     }
@@ -59,7 +59,7 @@ Replace `/Users/YOU` with your home directory.
 
 ```bash
 claude mcp add claudetube -- docker run -i --rm \
-  -v ~/.claude/video_cache:/home/claudetube/.claude/video_cache \
+  -v ~/.claudetube:/home/claudetube/.claudetube \
   claudetube-mcp
 ```
 
@@ -83,7 +83,7 @@ Use Windows-style paths for the volume mount:
 
 ```powershell
 docker run -i --rm `
-  -v "${env:USERPROFILE}\.claude\video_cache:/home/claudetube/.claude/video_cache" `
+  -v "${env:USERPROFILE}\.claudetube:/home/claudetube/.claudetube" `
   claudetube-mcp
 ```
 

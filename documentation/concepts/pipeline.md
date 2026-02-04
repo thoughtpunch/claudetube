@@ -90,7 +90,7 @@ This stage:
 
 ```python
 audio_path = download_audio(url, output_dir)
-# → ~/.claude/video_cache/{video_id}/audio.mp3
+# → ~/.claudetube/cache/{video_id}/audio.mp3
 ```
 
 Configuration:
@@ -117,7 +117,7 @@ transcript = transcribe_audio(audio_path, model="small")
 All outputs are persisted:
 
 ```
-~/.claude/video_cache/{video_id}/
+~/.claudetube/cache/{video_id}/
 ├── state.json      # Metadata + processing state
 ├── audio.mp3       # Audio track
 ├── audio.srt       # Timestamped transcript

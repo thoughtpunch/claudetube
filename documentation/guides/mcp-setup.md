@@ -78,15 +78,24 @@ Replace `/Users/YOU` with your home directory path.
 | `list_cached_videos` | List all videos that have been processed and cached. |
 | `get_transcript` | Get the full transcript for a cached video (no character cap). Supports txt and srt formats. |
 
-## Cache Location
+## Data Location
 
-All processed videos are cached at `~/.claude/video_cache/`. Each video gets a directory named by its YouTube video ID containing:
+All claudetube data is stored under `~/.claudetube/`:
 
-- `state.json` — metadata and processing state
-- `audio.txt` — plain text transcript
-- `audio.srt` — SRT subtitle file
-- `thumbnail.jpg` — video thumbnail
-- `drill_*/` — extracted frame directories
+```
+~/.claudetube/
+├── config.yaml              # User configuration
+├── db/                      # SQLite databases
+└── cache/
+    └── {video_id}/          # Per-video cache
+        ├── state.json       # Metadata and processing state
+        ├── audio.txt        # Plain text transcript
+        ├── audio.srt        # SRT subtitle file
+        ├── thumbnail.jpg    # Video thumbnail
+        └── drill/           # Extracted frame directories
+```
+
+**Custom location:** Set `CLAUDETUBE_ROOT` environment variable to change the root directory.
 
 ## Running Manually
 

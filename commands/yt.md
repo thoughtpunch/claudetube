@@ -22,13 +22,13 @@ Extract the video ID from the URL and check if it's already cached:
 - `youtu.be/VIDEO_ID` → extract VIDEO_ID after `/`
 - `youtube.com/embed/VIDEO_ID` → extract VIDEO_ID after `/embed/`
 
-**Cache location:** `~/.claude/video_cache/{VIDEO_ID}/`
+**Cache location:** `~/.claudetube/cache/{VIDEO_ID}/`
 
-**If `~/.claude/video_cache/{VIDEO_ID}/state.json` exists:**
+**If `~/.claudetube/cache/{VIDEO_ID}/state.json` exists:**
 - Skip Python entirely
 - Read the cached files directly:
-  - `~/.claude/video_cache/{VIDEO_ID}/state.json` (metadata)
-  - `~/.claude/video_cache/{VIDEO_ID}/audio.srt` (transcript)
+  - `~/.claudetube/cache/{VIDEO_ID}/state.json` (metadata)
+  - `~/.claudetube/cache/{VIDEO_ID}/audio.srt` (transcript)
 - Jump to Step 3
 
 **If NOT cached**, proceed to Step 2.
@@ -81,7 +81,7 @@ frames = get_frames_at(
     start_time=SECONDS,   # Timestamp in seconds (e.g., "5:30" = 330)
     duration=10,          # How many seconds to capture
     interval=2,           # Seconds between frames
-    output_base=Path.home() / '.claude' / 'video_cache'
+    output_base=Path.home() / '.claudetube' / 'cache'
 )
 for f in frames: print(f)
 PYTHON
@@ -98,7 +98,7 @@ frames = get_hq_frames_at(
     start_time=SECONDS,   # Timestamp in seconds
     duration=10,
     interval=5,
-    output_base=Path.home() / '.claude' / 'video_cache'
+    output_base=Path.home() / '.claudetube' / 'cache'
 )
 for f in frames: print(f)
 PYTHON

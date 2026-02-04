@@ -10,7 +10,7 @@
 #
 # Full reference: see config.full.yaml
 
-# Cache directory (optional - defaults to ~/.claude/video_cache)
+# Cache directory (optional - defaults to ~/.claudetube/cache)
 # cache_dir: ~/my-video-cache
 
 # YouTube authentication (recommended - prevents 403 errors)

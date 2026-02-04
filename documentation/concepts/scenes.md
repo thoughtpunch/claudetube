@@ -82,7 +82,7 @@ class ScenesData:
 ## Cache Structure
 
 ```
-~/.claude/video_cache/{video_id}/
+~/.claudetube/cache/{video_id}/
 ├── scenes/
 │   ├── scenes.json           # Scene boundaries + metadata
 │   ├── scene_000/            # First scene

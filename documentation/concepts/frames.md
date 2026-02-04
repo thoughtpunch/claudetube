@@ -75,7 +75,7 @@ If a quality tier fails (e.g., video not available in 1080p), it falls back to t
 └──────┬───────┘
        ↓
 ┌──────────────┐
-│  Cache &     │  → ~/.claude/video_cache/{id}/drill/
+│  Cache &     │  → ~/.claudetube/cache/{id}/drill/
 │  Return      │
 └──────────────┘
 ```
@@ -85,7 +85,7 @@ If a quality tier fails (e.g., video not available in 1080p), it falls back to t
 Frames are cached by timestamp range:
 
 ```
-~/.claude/video_cache/{video_id}/
+~/.claudetube/cache/{video_id}/
 ├── drill/                    # Quick frames (480px)
 │   ├── drill_02-00.jpg       # Frame at 2:00
 │   ├── drill_02-01.jpg       # Frame at 2:01
