@@ -63,7 +63,9 @@ def examine_scene_quick(scene: dict, question: str) -> list[dict]:
             phrase in transcript_lower
             for phrase in _extract_key_phrases(question_lower)
         ):
-            # Include a preview of the relevant transcript
+            # Extract the most relevant sentence(s) from transcript
+            relevant_content = _extract_relevant_content(transcript, question)
+            # Preview for description (first 200 chars)
             preview = transcript[:200].strip()
             if len(transcript) > 200:
                 preview += "..."
@@ -71,7 +73,7 @@ def examine_scene_quick(scene: dict, question: str) -> list[dict]:
                 {
                     "type": "transcript_match",
                     "description": f"Transcript mentions relevant content: {preview}",
-                    "claim": preview,
+                    "claim": relevant_content,
                     "timestamp": scene.get("start_time", 0),
                     "scene_id": scene.get("scene_id", 0),
                     "initial_confidence": 0.5,
@@ -172,6 +174,13 @@ def examine_scene_deep(
         frames = []
 
     if frames:
+        # Extract relevant content for the claim instead of raw preview
+        transcript = scene.get("transcript_text", "")
+        claim_content = (
+            _extract_relevant_content(transcript, question)
+            if transcript
+            else "Visual content examined"
+        )
         findings.append(
             {
                 "type": "deep_analysis",
@@ -180,8 +189,7 @@ def examine_scene_deep(
                     f"{scene.get('scene_id')} ({format_timestamp(start_time)}-"
                     f"{format_timestamp(end_time)})"
                 ),
-                "claim": scene.get("transcript_text", "")[:200]
-                or "Visual content examined",
+                "claim": claim_content,
                 "timestamp": start_time,
                 "scene_id": scene.get("scene_id", 0),
                 "frame_paths": [str(f) for f in frames],
@@ -192,11 +200,12 @@ def examine_scene_deep(
     # Also include transcript findings from deep examination
     transcript = scene.get("transcript_text", "")
     if transcript:
+        relevant_content = _extract_relevant_content(transcript, question)
         findings.append(
             {
                 "type": "deep_transcript",
                 "description": f"Full transcript examined: {transcript[:300]}",
-                "claim": transcript[:300],
+                "claim": relevant_content,
                 "timestamp": start_time,
                 "scene_id": scene.get("scene_id", 0),
                 "initial_confidence": 0.6,
@@ -473,3 +482,111 @@ def _extract_key_phrases(text: str) -> list[str]:
     for i in range(len(words) - 2):
         phrases.append(f"{words[i]} {words[i + 1]} {words[i + 2]}")
     return phrases
+
+
+def _extract_relevant_content(transcript: str, question: str) -> str:
+    """Extract the most relevant sentence(s) from transcript for a question.
+
+    Rather than returning the first 200 chars (which may be irrelevant),
+    finds the sentence(s) with the highest overlap with question keywords.
+
+    Args:
+        transcript: Full transcript text.
+        question: User's question.
+
+    Returns:
+        Most relevant sentence(s) from transcript, up to ~300 chars.
+    """
+    import re
+
+    # Split into sentences (simple heuristic)
+    sentences = re.split(r"(?<=[.!?])\s+", transcript)
+    if not sentences:
+        return transcript[:200]
+
+    # Score each sentence by keyword overlap
+    question_lower = question.lower()
+    question_words = set(question_lower.split())
+    # Remove common stop words for better matching
+    stop_words = {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "can",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "and",
+        "or",
+        "but",
+        "if",
+        "it",
+        "this",
+        "that",
+        "what",
+        "how",
+        "when",
+        "where",
+        "who",
+        "which",
+        "why",
+    }
+    question_words -= stop_words
+
+    scored = []
+    for i, sentence in enumerate(sentences):
+        sentence_lower = sentence.lower()
+        sentence_words = set(sentence_lower.split()) - stop_words
+        overlap = len(question_words & sentence_words)
+        # Bonus for key question phrases appearing in sentence
+        phrase_bonus = 0
+        for phrase in _extract_key_phrases(question_lower):
+            if phrase in sentence_lower:
+                phrase_bonus += 1
+        scored.append((overlap + phrase_bonus, i, sentence))
+
+    # Sort by score descending
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    # Take best sentence(s) up to ~300 chars
+    result = []
+    total_len = 0
+    for score, idx, sentence in scored:
+        if score == 0:
+            break  # No more relevant sentences
+        if total_len + len(sentence) > 300 and result:
+            break
+        result.append((idx, sentence))
+        total_len += len(sentence) + 1
+
+    if not result:
+        # Fall back to first 200 chars if no relevant sentences found
+        return transcript[:200]
+
+    # Return in original order for coherence
+    result.sort(key=lambda x: x[0])
+    return " ".join(s for _, s in result).strip()

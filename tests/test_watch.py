@@ -413,3 +413,66 @@ class TestExtractKeyPhrases:
     def test_empty_string(self):
         phrases = _extract_key_phrases("")
         assert phrases == []
+
+
+# --- _extract_relevant_content tests ---
+
+
+class TestExtractRelevantContent:
+    """Tests for relevant content extraction from transcripts."""
+
+    def test_extracts_relevant_sentence(self):
+        from claudetube.operations.watch import _extract_relevant_content
+
+        transcript = (
+            "This video is about training data. "
+            "For a human to read the GPT-3 training data, "
+            "it would take over 2600 years. "
+            "That's an incredible amount of text."
+        )
+        question = "How long would it take a human to read the training data?"
+        result = _extract_relevant_content(transcript, question)
+        # Should find the sentence with "2600 years"
+        assert "2600 years" in result
+
+    def test_prefers_sentences_with_key_phrases(self):
+        from claudetube.operations.watch import _extract_relevant_content
+
+        transcript = (
+            "Movie scripts are interesting. "
+            "The training data is massive. "
+            "Reading the training data would take a human over 2600 years."
+        )
+        question = "How long to read training data?"
+        result = _extract_relevant_content(transcript, question)
+        assert "2600 years" in result
+        # Should not prioritize the irrelevant first sentence
+        assert result.startswith("Movie scripts") is False
+
+    def test_falls_back_to_preview_when_no_match(self):
+        from claudetube.operations.watch import _extract_relevant_content
+
+        transcript = "This is completely unrelated content about cooking recipes."
+        question = "What is the authentication bug?"
+        result = _extract_relevant_content(transcript, question)
+        # Should fall back to first 200 chars since no keywords match
+        assert result == transcript[:200]
+
+    def test_limits_result_length(self):
+        from claudetube.operations.watch import _extract_relevant_content
+
+        # Create a long transcript with multiple relevant sentences
+        transcript = (
+            "The bug is in the authentication module. " * 5
+            + "Fix the authentication by updating the config. " * 5
+        )
+        question = "authentication bug"
+        result = _extract_relevant_content(transcript, question)
+        # Should not exceed ~300 chars
+        assert len(result) <= 350  # Allow some margin for sentence boundaries
+
+    def test_empty_transcript(self):
+        from claudetube.operations.watch import _extract_relevant_content
+
+        result = _extract_relevant_content("", "any question")
+        assert result == ""

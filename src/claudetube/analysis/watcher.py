@@ -548,6 +548,11 @@ class ActiveVideoWatcher:
     def formulate_answer(self) -> dict:
         """Generate answer from hypotheses.
 
+        Ranks hypotheses by a combined score of confidence AND relevance
+        to the original question. This prevents high-confidence but
+        irrelevant hypotheses from winning over lower-confidence but
+        more relevant ones.
+
         Returns:
             Dict with:
             - main_answer: Best hypothesis claim
@@ -556,13 +561,7 @@ class ActiveVideoWatcher:
             - alternative_interpretations: Other plausible hypotheses
             - scenes_examined: Number of scenes looked at
         """
-        ranked = sorted(
-            self.hypotheses,
-            key=lambda h: h.confidence,
-            reverse=True,
-        )
-
-        if not ranked:
+        if not self.hypotheses:
             return {
                 "main_answer": "Unable to determine from video content",
                 "confidence": 0.0,
@@ -570,6 +569,19 @@ class ActiveVideoWatcher:
                 "alternative_interpretations": [],
                 "scenes_examined": len(self.examined),
             }
+
+        # Score hypotheses by combined confidence and relevance
+        scored = []
+        for hyp in self.hypotheses:
+            relevance = self._calculate_relevance(hyp.claim)
+            # Combined score: weight relevance heavily to prefer answers
+            # that actually address the question
+            combined = (hyp.confidence * 0.4) + (relevance * 0.6)
+            scored.append((combined, relevance, hyp))
+
+        # Sort by combined score descending
+        scored.sort(key=lambda x: x[0], reverse=True)
+        ranked = [item[2] for item in scored]
 
         best = ranked[0]
         return {
@@ -586,6 +598,94 @@ class ActiveVideoWatcher:
             "alternative_interpretations": [h.claim for h in ranked[1:3]],
             "scenes_examined": len(self.examined),
         }
+
+    def _calculate_relevance(self, claim: str) -> float:
+        """Calculate how relevant a claim is to the user's goal.
+
+        Uses keyword overlap and phrase matching.
+
+        Args:
+            claim: The hypothesis claim text.
+
+        Returns:
+            Relevance score from 0.0 to 1.0.
+        """
+        if not claim:
+            return 0.0
+
+        claim_lower = claim.lower()
+        claim_words = set(claim_lower.split())
+
+        # Filter common words for better matching
+        stop_words = {
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "can",
+            "to",
+            "of",
+            "in",
+            "for",
+            "on",
+            "with",
+            "at",
+            "by",
+            "from",
+            "as",
+            "and",
+            "or",
+            "but",
+            "if",
+            "it",
+            "this",
+            "that",
+            "what",
+            "how",
+            "when",
+            "where",
+            "who",
+            "which",
+            "why",
+        }
+        goal_words = self._goal_words - stop_words
+        claim_words -= stop_words
+
+        if not goal_words:
+            return 0.5  # Neutral if no keywords
+
+        # Calculate word overlap ratio
+        overlap = len(goal_words & claim_words)
+        overlap_ratio = overlap / len(goal_words) if goal_words else 0
+
+        # Bonus for containing key phrases from the goal
+        goal_lower = self.user_goal.lower()
+        phrase_bonus = 0.0
+        goal_words_list = goal_lower.split()
+        for i in range(len(goal_words_list) - 1):
+            phrase = f"{goal_words_list[i]} {goal_words_list[i + 1]}"
+            if phrase in claim_lower:
+                phrase_bonus += 0.15
+
+        # Score from 0 to 1
+        score = min(1.0, overlap_ratio * 0.7 + phrase_bonus)
+        return score
 
     def get_state(self) -> dict:
         """Get current watcher state for serialization.

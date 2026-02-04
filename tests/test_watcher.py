@@ -378,6 +378,43 @@ class TestActiveVideoWatcher:
         assert answer["alternative_interpretations"] == ["Alternative interpretation"]
         assert answer["scenes_examined"] == 2
 
+    def test_formulate_answer_prefers_relevant_over_confident(self, sample_scenes):
+        """Test that formulate_answer prefers relevant hypotheses over confident ones."""
+        watcher = ActiveVideoWatcher(
+            video_id="test123",
+            user_goal="How long to read GPT-3 training data?",
+            scenes=sample_scenes,
+        )
+        watcher.examined = {0, 1, 2}
+
+        # High confidence but irrelevant to the question
+        watcher.hypotheses.append(
+            Hypothesis(
+                claim="Movie scripts are interesting entertainment",
+                evidence=[
+                    {"description": "Scene shows movies", "scene_id": 0},
+                    {"description": "More movie content", "scene_id": 0},
+                    {"description": "Still movies", "scene_id": 0},
+                ],
+                confidence=0.8,
+            )
+        )
+
+        # Lower confidence but directly answers the question
+        watcher.hypotheses.append(
+            Hypothesis(
+                claim="Reading GPT-3 training data would take over 2600 years",
+                evidence=[{"description": "Time estimate given", "scene_id": 2}],
+                confidence=0.5,
+            )
+        )
+
+        answer = watcher.formulate_answer()
+        # Should prefer the relevant answer about "training data" and "2600 years"
+        # over the high-confidence but irrelevant one about "movie scripts"
+        assert "2600 years" in answer["main_answer"]
+        assert "movie" not in answer["main_answer"].lower()
+
     def test_get_state(self, sample_scenes):
         watcher = ActiveVideoWatcher(
             video_id="test123",
