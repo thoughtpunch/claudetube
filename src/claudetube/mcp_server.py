@@ -44,6 +44,7 @@ _import_start = datetime.now()
 
 # Import search functionality
 from claudetube.analysis.search import find_moments, format_timestamp
+from claudetube.analysis.visual_criticality import assess_visual_criticality
 from claudetube.cache.enrichment import (
     get_enrichment_stats,
     get_scene_context,
@@ -294,6 +295,29 @@ async def process_video_tool(
     # Check if this video is part of any cached playlist
     playlist_context = _get_playlist_context_for_video(result.video_id)
 
+    # Assess visual criticality for this video
+    visual_analysis = None
+    try:
+        metadata = result.metadata or {}
+        assessment = await assess_visual_criticality(
+            title=metadata.get("title", ""),
+            channel=metadata.get("channel", metadata.get("uploader", "")),
+            description=metadata.get("description", "")[:500] if metadata else "",
+            transcript_excerpt=transcript_text[:2000] if transcript_text else "",
+            task="general understanding",
+        )
+        visual_analysis = {
+            "score": assessment.score,
+            "recommended": assessment.visuals_needed,
+            "strongly_recommended": assessment.visuals_required,
+            "reasoning": assessment.reasoning,
+            "likely_elements": assessment.likely_elements,
+            "recommended_action": assessment.recommended_action,
+        }
+    except Exception as e:
+        # Don't fail video processing if assessment fails
+        logger.warning(f"Visual criticality assessment failed: {e}")
+
     response = {
         "video_id": result.video_id,
         "metadata": result.metadata,
@@ -310,6 +334,9 @@ async def process_video_tool(
 
     if playlist_context:
         response["playlist_context"] = playlist_context
+
+    if visual_analysis:
+        response["visual_analysis"] = visual_analysis
 
     return json.dumps(response, indent=2)
 
