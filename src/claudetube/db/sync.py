@@ -206,9 +206,7 @@ def sync_video_metadata(video_id: str, raw_metadata: dict[str, Any]) -> None:
         # Check if video exists in DB
         existing = repo.get_by_video_id(video_id)
         if existing is None:
-            logger.debug(
-                "Cannot sync metadata for %s: video not in database", video_id
-            )
+            logger.debug("Cannot sync metadata for %s: video not in database", video_id)
             return
 
         # Build queryable metadata dict

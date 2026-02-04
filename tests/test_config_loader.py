@@ -307,7 +307,9 @@ class TestGetConfig:
 
         with patch("claudetube.config.loader._resolve_config") as mock_resolve:
             mock_resolve.return_value = ClaudetubeConfig(
-                root_dir=Path("/root"), cache_dir=Path("/cached"), source=ConfigSource.DEFAULT
+                root_dir=Path("/root"),
+                cache_dir=Path("/cached"),
+                source=ConfigSource.DEFAULT,
             )
             config1 = get_config()
             config2 = get_config()

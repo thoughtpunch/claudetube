@@ -194,7 +194,9 @@ def _resolve_config() -> ClaudetubeConfig:
     if env_cache_dir:
         cache_dir = Path(env_cache_dir).expanduser().resolve()
         logger.info(f"Using cache_dir from CLAUDETUBE_CACHE_DIR: {cache_dir}")
-        return ClaudetubeConfig(root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.ENV)
+        return ClaudetubeConfig(
+            root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.ENV
+        )
 
     # 2. Check project config
     project_config_path = _find_project_config()
@@ -205,7 +207,9 @@ def _resolve_config() -> ClaudetubeConfig:
             logger.info(
                 f"Using cache_dir from project config {project_config_path}: {cache_dir}"
             )
-            return ClaudetubeConfig(root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.PROJECT)
+            return ClaudetubeConfig(
+                root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.PROJECT
+            )
 
     # 3. Check user config
     user_config_path = _get_user_config_path()
@@ -213,12 +217,16 @@ def _resolve_config() -> ClaudetubeConfig:
     cache_dir = _get_cache_dir_from_yaml(user_config, user_config_path)
     if cache_dir:
         logger.info(f"Using cache_dir from user config {user_config_path}: {cache_dir}")
-        return ClaudetubeConfig(root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.USER)
+        return ClaudetubeConfig(
+            root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.USER
+        )
 
     # 4. Fall back to default
     cache_dir = _get_default_cache_dir()
     logger.debug(f"Using default cache_dir: {cache_dir}")
-    return ClaudetubeConfig(root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.DEFAULT)
+    return ClaudetubeConfig(
+        root_dir=root_dir, cache_dir=cache_dir, source=ConfigSource.DEFAULT
+    )
 
 
 @lru_cache(maxsize=1)

@@ -93,7 +93,9 @@ class TestVideoStateSlim:
             "channel": "TestChannel",
         }
 
-        state = VideoState.from_metadata("test123", "https://example.com/v/test123", meta)
+        state = VideoState.from_metadata(
+            "test123", "https://example.com/v/test123", meta
+        )
 
         # Should have basic metadata
         assert state.video_id == "test123"

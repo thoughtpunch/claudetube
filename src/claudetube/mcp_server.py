@@ -18,10 +18,12 @@ _early_log_dir = Path.home() / "Library" / "Logs" / "Claude"
 _early_log_dir.mkdir(parents=True, exist_ok=True)
 _startup_log = _early_log_dir / "claudetube-mcp-startup.log"
 
+
 def _log_startup(msg: str):
     """Write to startup log file immediately."""
     with open(_startup_log, "a") as f:
         f.write(f"{datetime.now().isoformat()} {msg}\n")
+
 
 _log_startup("=== MCP SERVER STARTING ===")
 _log_startup(f"Python: {sys.executable}")
@@ -30,6 +32,7 @@ _log_startup(f"CWD: {Path.cwd()}")
 
 try:
     from mcp.server.fastmcp import FastMCP
+
     _log_startup("FastMCP imported successfully")
 except Exception as e:
     _log_startup(f"FATAL: FastMCP import failed: {e}")
@@ -95,7 +98,7 @@ _import_duration = (datetime.now() - _import_start).total_seconds()
 _log_startup(f"All imports complete in {_import_duration:.2f}s")
 
 mcp = FastMCP("claudetube")
-_log_startup(f"FastMCP('claudetube') created")
+_log_startup("FastMCP('claudetube') created")
 
 
 def _resolve_cache_dir(video_id: str) -> "Path":
@@ -2472,6 +2475,7 @@ def main():
     try:
         # Read first byte to see if there's input
         import select
+
         readable, _, _ = select.select([sys.stdin], [], [], 0.1)
         _log_startup(f"stdin readable: {bool(readable)}")
     except Exception as e:
