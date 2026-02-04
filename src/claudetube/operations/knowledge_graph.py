@@ -14,8 +14,6 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-
 from claudetube.config.loader import get_cache_dir
 
 if TYPE_CHECKING:
@@ -43,6 +41,8 @@ def extract_topic_keywords(texts: list[str], top_n: int = 15) -> list[dict]:
         return []
 
     try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+
         vectorizer = TfidfVectorizer(
             stop_words="english",
             max_features=100,

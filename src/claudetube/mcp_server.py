@@ -9,9 +9,35 @@ import json
 import logging
 import logging.handlers
 import sys
+import traceback
+from datetime import datetime
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+# Early logging setup for startup diagnostics
+_early_log_dir = Path.home() / "Library" / "Logs" / "Claude"
+_early_log_dir.mkdir(parents=True, exist_ok=True)
+_startup_log = _early_log_dir / "claudetube-mcp-startup.log"
+
+def _log_startup(msg: str):
+    """Write to startup log file immediately."""
+    with open(_startup_log, "a") as f:
+        f.write(f"{datetime.now().isoformat()} {msg}\n")
+
+_log_startup("=== MCP SERVER STARTING ===")
+_log_startup(f"Python: {sys.executable}")
+_log_startup(f"Version: {sys.version}")
+_log_startup(f"CWD: {Path.cwd()}")
+
+try:
+    from mcp.server.fastmcp import FastMCP
+    _log_startup("FastMCP imported successfully")
+except Exception as e:
+    _log_startup(f"FATAL: FastMCP import failed: {e}")
+    _log_startup(traceback.format_exc())
+    raise
+
+_log_startup("Importing claudetube modules...")
+_import_start = datetime.now()
 
 # Import search functionality
 from claudetube.analysis.search import find_moments, format_timestamp
@@ -65,7 +91,11 @@ logger = logging.getLogger(__name__)
 
 TRANSCRIPT_INLINE_CAP = 50_000
 
+_import_duration = (datetime.now() - _import_start).total_seconds()
+_log_startup(f"All imports complete in {_import_duration:.2f}s")
+
 mcp = FastMCP("claudetube")
+_log_startup(f"FastMCP('claudetube') created")
 
 
 def _resolve_cache_dir(video_id: str) -> "Path":
@@ -2434,8 +2464,27 @@ async def get_playlist_video_context_tool(
 
 def main():
     """Entry point for the claudetube-mcp command."""
-    mcp.run()
+    _log_startup("main() called - about to run mcp.run()")
+    _log_startup(f"stdin.isatty(): {sys.stdin.isatty()}")
+    _log_startup(f"stdin.closed: {sys.stdin.closed}")
+    _log_startup(f"stdout.isatty(): {sys.stdout.isatty()}")
+    _log_startup(f"stdout.closed: {sys.stdout.closed}")
+    try:
+        # Read first byte to see if there's input
+        import select
+        readable, _, _ = select.select([sys.stdin], [], [], 0.1)
+        _log_startup(f"stdin readable: {bool(readable)}")
+    except Exception as e:
+        _log_startup(f"select error: {e}")
+    try:
+        mcp.run()
+        _log_startup("mcp.run() returned normally")
+    except Exception as e:
+        _log_startup(f"mcp.run() raised exception: {e}")
+        _log_startup(traceback.format_exc())
+        raise
 
 
 if __name__ == "__main__":
+    _log_startup("__main__ block executing")
     main()
