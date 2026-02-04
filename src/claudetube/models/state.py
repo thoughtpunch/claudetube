@@ -53,6 +53,9 @@ class VideoState:
     like_count: int | None = None
     thumbnail: str | None = None
 
+    # YouTube chapters (if available) - list of {title, start_time, end_time}
+    chapters: list[dict] | None = None
+
     # Processing state
     transcript_complete: bool = False
     transcript_source: str | None = None  # "whisper", "uploaded", "auto-generated"
@@ -101,6 +104,7 @@ class VideoState:
             "view_count": self.view_count,
             "like_count": self.like_count,
             "thumbnail": self.thumbnail,
+            "chapters": self.chapters,
             "transcript_complete": self.transcript_complete,
             "transcript_source": self.transcript_source,
             "whisper_model": self.whisper_model,
@@ -144,6 +148,7 @@ class VideoState:
             view_count=data.get("view_count"),
             like_count=data.get("like_count"),
             thumbnail=data.get("thumbnail"),
+            chapters=data.get("chapters"),
             transcript_complete=data.get("transcript_complete", False),
             transcript_source=data.get("transcript_source"),
             whisper_model=data.get("whisper_model"),
@@ -175,6 +180,21 @@ class VideoState:
         # Extract playlist_id from yt-dlp metadata
         playlist_id = cls._extract_playlist_id(meta)
 
+        # Extract chapters from yt-dlp metadata
+        # Each chapter: {title, start_time, end_time}
+        raw_chapters = meta.get("chapters")
+        chapters = None
+        if raw_chapters:
+            chapters = [
+                {
+                    "title": ch.get("title"),
+                    "start_time": ch.get("start_time"),
+                    "end_time": ch.get("end_time"),
+                }
+                for ch in raw_chapters
+                if ch.get("start_time") is not None
+            ]
+
         return cls(
             video_id=video_id,
             url=url,
@@ -195,6 +215,7 @@ class VideoState:
             view_count=meta.get("view_count"),
             like_count=meta.get("like_count"),
             thumbnail=meta.get("thumbnail"),
+            chapters=chapters,
         )
 
     @staticmethod
