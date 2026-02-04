@@ -415,23 +415,36 @@
     ```
     ~/.claude/video_cache/
     └── {video_id}/
-        ├── state.json     # Metadata
-        ├── audio.mp3      # Audio track
-        ├── audio.srt      # Timestamped transcript
-        ├── audio.txt      # Plain text transcript
-        ├── thumbnail.jpg  # Video thumbnail
-        ├── drill/         # Quick frames (480p)
-        ├── hq/            # High-quality frames (1280p)
-        ├── scenes/        # Scene segmentation
+        ├── state.json           # Metadata
+        ├── audio.mp3            # Audio track
+        ├── {video_id}.{lang}.srt # YouTube/provider subtitles (preferred)
+        ├── audio.srt            # Whisper transcript (fallback)
+        ├── audio.txt            # Plain text transcript
+        ├── thumbnail.jpg        # Video thumbnail
+        ├── drill/               # Quick frames (480p)
+        ├── hq/                  # High-quality frames (1280p)
+        ├── scenes/              # Scene segmentation
         │   ├── scenes.json
-        │   └── scene_NNN/ # Per-scene data
+        │   └── scene_NNN/       # Per-scene data
         │       ├── keyframes/
         │       ├── visual.json
         │       ├── technical.json
         │       └── entities.json
-        ├── entities/      # People tracking, knowledge graph
-        └── enrichment/    # Q&A history, observations
+        ├── entities/            # People tracking, knowledge graph
+        └── enrichment/          # Q&A history, observations
     ```
+
+    ### Transcript Naming Convention
+
+    Transcripts follow the **Cheap First** principle:
+
+    | File Pattern | Source | Priority |
+    |-------------|--------|----------|
+    | `{video_id}.{lang}.srt` | YouTube/provider subtitles | 1 (preferred) |
+    | `audio.srt` | Whisper transcription | 2 (fallback) |
+    | `audio.txt` | Plain text (from any source) | - |
+
+    **Priority order:** When reading transcripts, tools check for provider subtitles first (free, fast) before falling back to Whisper transcripts (expensive, slower).
 
     ## AI Provider System
 
