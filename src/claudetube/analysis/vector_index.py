@@ -48,7 +48,7 @@ class SearchResult:
 
 
 def _get_db():
-    """Get the database instance.
+    """Get the main metadata database instance.
 
     Returns:
         Database instance or None if unavailable.
@@ -62,24 +62,39 @@ def _get_db():
         return None
 
 
-def _get_vec_store(db=None):
+def _get_vectors_db():
+    """Get the vectors database instance.
+
+    Returns:
+        Vectors Database instance or None if unavailable.
+    """
+    try:
+        from claudetube.db import get_vectors_database
+
+        return get_vectors_database()
+    except Exception:
+        logger.debug("Vectors database unavailable", exc_info=True)
+        return None
+
+
+def _get_vec_store(vec_db=None):
     """Get a VecStore instance.
 
     Args:
-        db: Optional database instance. Uses singleton if None.
+        vec_db: Optional vectors database instance. Uses singleton if None.
 
     Returns:
         VecStore instance or None if unavailable.
     """
-    if db is None:
-        db = _get_db()
-    if db is None:
+    if vec_db is None:
+        vec_db = _get_vectors_db()
+    if vec_db is None:
         return None
 
     try:
         from claudetube.db.vec import VecStore
 
-        return VecStore(db)
+        return VecStore(vec_db)
     except Exception:
         logger.debug("VecStore unavailable", exc_info=True)
         return None
@@ -101,13 +116,14 @@ def has_vector_index(cache_dir: Path) -> bool:
     video_id = cache_dir.name
 
     db = _get_db()
-    if db is None:
+    vec_db = _get_vectors_db()
+    if db is None or vec_db is None:
         # Fall back to checking for legacy ChromaDB index
         chroma_path = cache_dir / "embeddings" / "chroma"
         return chroma_path.exists() and (chroma_path / "chroma.sqlite3").exists()
 
     try:
-        # Check if video exists in DB
+        # Check if video exists in main DB
         from claudetube.db.repos.videos import VideoRepository
 
         video_repo = VideoRepository(db)
@@ -115,8 +131,8 @@ def has_vector_index(cache_dir: Path) -> bool:
         if video is None:
             return False
 
-        # Check if there are embeddings for this video
-        cursor = db.execute(
+        # Check if there are embeddings for this video in vectors DB
+        cursor = vec_db.execute(
             """
             SELECT COUNT(*) as cnt FROM vec_metadata
             WHERE video_id = ?
@@ -162,7 +178,8 @@ def build_scene_index(
         video_id = cache_dir.name
 
     db = _get_db()
-    if db is None:
+    vec_db = _get_vectors_db()
+    if db is None or vec_db is None:
         logger.warning("Database unavailable, cannot build vector index")
         return 0
 
@@ -180,7 +197,7 @@ def build_scene_index(
             return 0
 
         video_uuid = video["id"]
-        vec_store = VecStore(db)
+        vec_store = VecStore(vec_db)
 
         if not vec_store.is_available():
             logger.warning("sqlite-vec extension not available")
@@ -210,7 +227,7 @@ def build_scene_index(
             # Store embedding directly without re-computing
             try:
                 _store_embedding_direct(
-                    db=db,
+                    vec_db=vec_db,
                     vec_store=vec_store,
                     video_uuid=video_uuid,
                     scene_id=scene_id,
@@ -235,7 +252,7 @@ def build_scene_index(
 
 
 def _store_embedding_direct(
-    db,
+    vec_db,
     vec_store,
     video_uuid: str,
     scene_id: int,
@@ -246,7 +263,7 @@ def _store_embedding_direct(
     """Store a pre-computed embedding directly.
 
     Args:
-        db: Database connection.
+        vec_db: Vectors database connection.
         vec_store: VecStore instance.
         video_uuid: Video UUID.
         scene_id: Scene ID.
@@ -265,7 +282,7 @@ def _store_embedding_direct(
 
     try:
         # Delete existing entry if present (for rebuilds)
-        db.execute(
+        vec_db.execute(
             """
             DELETE FROM vec_metadata
             WHERE video_id = ? AND scene_id = ? AND source = ?
@@ -274,7 +291,7 @@ def _store_embedding_direct(
         )
 
         # Insert metadata
-        db.execute(
+        vec_db.execute(
             """
             INSERT INTO vec_metadata
                 (id, video_id, scene_id, start_time, end_time, source)
@@ -282,10 +299,10 @@ def _store_embedding_direct(
             """,
             (metadata_id, video_uuid, scene_id, start_time, end_time, source),
         )
-        db.commit()
+        vec_db.commit()
 
         # Get the rowid
-        cursor = db.execute(
+        cursor = vec_db.execute(
             "SELECT rowid FROM vec_metadata WHERE id = ?", (metadata_id,)
         )
         row = cursor.fetchone()
@@ -302,11 +319,11 @@ def _store_embedding_direct(
             logger.warning("Cannot create vec_embeddings table")
             return metadata_id
 
-        db.execute(
+        vec_db.execute(
             "INSERT OR REPLACE INTO vec_embeddings (rowid, embedding) VALUES (?, ?)",
             (rowid, embedding_bytes),
         )
-        db.commit()
+        vec_db.commit()
 
         return metadata_id
     except Exception as e:
@@ -351,7 +368,8 @@ def search_scenes(
     video_id = cache_dir.name
 
     db = _get_db()
-    if db is None:
+    vec_db = _get_vectors_db()
+    if db is None or vec_db is None:
         raise ValueError(
             f"Database unavailable. Cannot search vector index for {cache_dir}."
         )
@@ -369,7 +387,7 @@ def search_scenes(
 
         video_uuid = video["id"]
 
-        vec_store = _get_vec_store(db)
+        vec_store = _get_vec_store(vec_db)
         if vec_store is None or not vec_store.is_available():
             raise ValueError("sqlite-vec extension not available")
 
@@ -385,7 +403,7 @@ def search_scenes(
             if scene_id is None:
                 continue
 
-            # Get scene data for transcript preview
+            # Get scene data for transcript preview (from main db)
             transcript_preview = ""
             visual_description = ""
 
@@ -398,7 +416,7 @@ def search_scenes(
                     :MAX_TRANSCRIPT_PREVIEW
                 ]
 
-            # Get visual description if available
+            # Get visual description if available (from main db)
             from claudetube.db.repos.visual_descriptions import (
                 VisualDescriptionRepository,
             )
@@ -484,10 +502,11 @@ def search_similar_cross_video(
         List of SearchResult objects from any video, sorted by similarity.
     """
     db = _get_db()
-    if db is None:
+    vec_db = _get_vectors_db()
+    if db is None or vec_db is None:
         return []
 
-    vec_store = _get_vec_store(db)
+    vec_store = _get_vec_store(vec_db)
     if vec_store is None or not vec_store.is_available():
         return []
 
@@ -522,14 +541,14 @@ def search_similar_cross_video(
         if video_uuid is None or scene_id is None:
             continue
 
-        # Get video natural ID
+        # Get video natural ID (from main db)
         from claudetube.db.repos.videos import VideoRepository
 
         video_repo = VideoRepository(db)
         video = video_repo.get_by_uuid(video_uuid)
         video_natural_id = video["video_id"] if video else None
 
-        # Get scene data
+        # Get scene data (from main db)
         transcript_preview = ""
         visual_description = ""
 
@@ -571,7 +590,8 @@ def delete_scene_index(cache_dir: Path) -> bool:
     video_id = cache_dir.name
 
     db = _get_db()
-    if db is not None:
+    vec_db = _get_vectors_db()
+    if db is not None and vec_db is not None:
         try:
             from claudetube.db.repos.videos import VideoRepository
             from claudetube.db.vec import VecStore
@@ -580,7 +600,7 @@ def delete_scene_index(cache_dir: Path) -> bool:
             video = video_repo.get_by_video_id(video_id)
 
             if video:
-                vec_store = VecStore(db)
+                vec_store = VecStore(vec_db)
                 count = vec_store.delete_video_embeddings(video["id"])
                 if count > 0:
                     logger.info("Deleted %d embeddings for video %s", count, video_id)
@@ -610,7 +630,8 @@ def get_index_stats(cache_dir: Path) -> dict | None:
     video_id = cache_dir.name
 
     db = _get_db()
-    if db is None:
+    vec_db = _get_vectors_db()
+    if db is None or vec_db is None:
         return None
 
     try:
@@ -624,8 +645,8 @@ def get_index_stats(cache_dir: Path) -> dict | None:
 
         video_uuid = video["id"]
 
-        # Count embeddings for this video
-        cursor = db.execute(
+        # Count embeddings for this video (from vectors db)
+        cursor = vec_db.execute(
             """
             SELECT COUNT(*) as cnt FROM vec_metadata
             WHERE video_id = ?
@@ -642,7 +663,7 @@ def get_index_stats(cache_dir: Path) -> dict | None:
             "num_scenes": count,
             "video_id": video_id,
             "storage": "sqlite-vec",
-            "path": "SQLite database",
+            "path": "SQLite vectors database",
         }
 
     except Exception:

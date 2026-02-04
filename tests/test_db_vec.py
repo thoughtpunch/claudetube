@@ -1,4 +1,9 @@
-"""Tests for sqlite-vec integration (db/vec.py)."""
+"""Tests for sqlite-vec integration (db/vec.py).
+
+Note: The vectors database (claudetube-vectors.db) is separate from the main
+metadata database (claudetube.db). The vec_metadata table lives in the vectors
+database, not the main database.
+"""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -24,29 +29,18 @@ from claudetube.db.vec import (
 
 @pytest.fixture
 def db():
-    """Create an in-memory database with the vec_metadata table."""
+    """Create an in-memory vectors database with the vec_metadata table.
+
+    Note: This simulates the vectors database (claudetube-vectors.db),
+    not the main metadata database. The vec_metadata table lives here.
+    """
     database = Database(":memory:")
-    # Create the vec_metadata table (from 001_initial.sql)
-    database.execute("""
-        CREATE TABLE videos (
-            id TEXT PRIMARY KEY CHECK(length(id) = 36),
-            video_id TEXT NOT NULL UNIQUE CHECK(length(video_id) > 0),
-            domain TEXT NOT NULL CHECK(domain GLOB '[a-z]*'),
-            channel TEXT,
-            playlist TEXT,
-            cache_path TEXT NOT NULL CHECK(length(cache_path) > 0),
-            url TEXT,
-            title TEXT,
-            duration REAL,
-            source_type TEXT NOT NULL DEFAULT 'url',
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-    """)
+    # Create the vec_metadata table (from 001_initial.vec.sql)
+    # Note: no foreign key to videos since they're in different databases
     database.execute("""
         CREATE TABLE vec_metadata (
             id         TEXT PRIMARY KEY CHECK(length(id) = 36),
-            video_id   TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+            video_id   TEXT NOT NULL CHECK(length(video_id) = 36),
             scene_id   INTEGER CHECK(scene_id IS NULL OR scene_id >= 0),
             start_time REAL CHECK(start_time IS NULL OR start_time >= 0),
             end_time   REAL CHECK(end_time IS NULL OR end_time > start_time),
@@ -63,16 +57,13 @@ def db():
 
 
 @pytest.fixture
-def video_uuid(db):
-    """Insert a test video and return its UUID."""
-    vid_uuid = str(uuid.uuid4())
-    db.execute(
-        """INSERT INTO videos (id, video_id, domain, cache_path)
-           VALUES (?, 'test_vid_123', 'youtube', 'youtube/test/test_vid_123')""",
-        (vid_uuid,),
-    )
-    db.commit()
-    return vid_uuid
+def video_uuid():
+    """Return a test video UUID.
+
+    Note: The video would exist in the main database, not the vectors database.
+    For tests, we just need a valid UUID format.
+    """
+    return str(uuid.uuid4())
 
 
 @pytest.fixture

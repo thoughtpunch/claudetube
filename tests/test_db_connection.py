@@ -641,3 +641,129 @@ class TestGetDatabase:
         # All threads should get the same instance
         assert all(i is instances[0] for i in instances)
         close_database()
+
+
+class TestGetVectorsDatabase:
+    """Tests for the vectors database singleton functions."""
+
+    def test_get_vectors_database_in_memory(self):
+        """Test get_vectors_database with explicit :memory: path."""
+        from claudetube.db import (
+            close_database,
+            get_vectors_database,
+            reset_database,
+        )
+
+        reset_database()
+        vec_db = get_vectors_database(":memory:")
+        assert vec_db is not None
+
+        # Should return same instance
+        vec_db2 = get_vectors_database()
+        assert vec_db is vec_db2
+
+        close_database()
+
+    def test_get_vectors_database_creates_file(self, tmp_path):
+        """Test get_vectors_database creates the database file."""
+        from claudetube.db import (
+            close_database,
+            get_vectors_database,
+            reset_database,
+        )
+
+        reset_database()
+        db_path = tmp_path / "vectors.db"
+        get_vectors_database(db_path)
+        assert db_path.exists()
+        close_database()
+
+    def test_main_and_vectors_databases_are_separate(self):
+        """Test that main db and vectors db are different instances."""
+        from claudetube.db import (
+            close_database,
+            get_database,
+            get_vectors_database,
+            reset_database,
+        )
+
+        reset_database()
+        db = get_database(":memory:")
+        vec_db = get_vectors_database(":memory:")
+
+        # They should be different instances
+        assert db is not vec_db
+
+        close_database()
+
+    def test_vectors_database_has_vec_metadata_table(self):
+        """Test that vectors database has vec_metadata table after migrations."""
+        from claudetube.db import (
+            close_database,
+            get_vectors_database,
+            reset_database,
+        )
+
+        reset_database()
+        vec_db = get_vectors_database(":memory:")
+
+        # vec_metadata table should exist
+        cursor = vec_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='vec_metadata'"
+        )
+        assert cursor.fetchone() is not None
+
+        close_database()
+
+    def test_main_database_does_not_have_vec_metadata(self):
+        """Test that main database does NOT have vec_metadata table."""
+        from claudetube.db import close_database, get_database, reset_database
+
+        reset_database()
+        db = get_database(":memory:")
+
+        # vec_metadata table should NOT exist in main db
+        cursor = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='vec_metadata'"
+        )
+        assert cursor.fetchone() is None
+
+        close_database()
+
+    def test_default_vectors_path_resolution(self, tmp_path, monkeypatch):
+        """Test that default vectors path is {cache_dir}/claudetube-vectors.db."""
+        from claudetube.db import _default_vectors_db_path
+
+        monkeypatch.setenv("CLAUDETUBE_CACHE_DIR", str(tmp_path))
+
+        from claudetube.config.loader import clear_config_cache
+
+        clear_config_cache()
+
+        path = _default_vectors_db_path()
+        assert path == tmp_path / "claudetube-vectors.db"
+
+    def test_close_database_closes_both(self):
+        """Test close_database closes both main and vectors databases."""
+        from claudetube.db import (
+            close_database,
+            get_database,
+            get_vectors_database,
+            reset_database,
+        )
+
+        reset_database()
+        db = get_database(":memory:")
+        vec_db = get_vectors_database(":memory:")
+
+        close_database()
+
+        # After close, both should create new instances
+        reset_database()  # Clear the closed state
+        db2 = get_database(":memory:")
+        vec_db2 = get_vectors_database(":memory:")
+
+        assert db is not db2
+        assert vec_db is not vec_db2
+
+        close_database()

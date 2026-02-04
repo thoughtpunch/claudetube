@@ -7,12 +7,16 @@ embeddings.
 The vec0 virtual table is created at runtime after loading the extension.
 If the extension cannot be loaded, all operations degrade gracefully.
 
+IMPORTANT: Vector data is stored in a separate database (claudetube-vectors.db)
+from the main metadata database (claudetube.db). This allows the main database
+to be opened with standard SQLite tools without requiring the sqlite-vec extension.
+
 Example:
-    from claudetube.db import get_database
+    from claudetube.db import get_vectors_database
     from claudetube.db.vec import VecStore
 
-    db = get_database()
-    vec = VecStore(db)
+    vec_db = get_vectors_database()
+    vec = VecStore(vec_db)
 
     # Embed and store
     await vec.embed_text(video_id, scene_id, "scene_transcript", "Hello world")
@@ -522,14 +526,14 @@ async def embed_text(
 ) -> str | None:
     """Embed text and store in vec0 + vec_metadata.
 
-    Convenience function that uses the singleton database.
+    Convenience function that uses the singleton vectors database.
 
     Args:
-        video_uuid: UUID of the video (videos.id).
+        video_uuid: UUID of the video (videos.id from main db).
         scene_id: Scene index, or None for video-level.
         source: Content source type.
         text: Text to embed.
-        db: Optional database connection (uses singleton if None).
+        db: Optional vectors database connection (uses singleton if None).
         start_time: Optional start timestamp.
         end_time: Optional end timestamp.
 
@@ -537,9 +541,9 @@ async def embed_text(
         UUID of the vec_metadata row, or None if failed.
     """
     if db is None:
-        from claudetube.db import get_database
+        from claudetube.db import get_vectors_database
 
-        db = get_database()
+        db = get_vectors_database()
 
     vec = VecStore(db)
     return await vec.embed_text(
@@ -555,21 +559,21 @@ async def search_similar(
 ) -> list[dict]:
     """Search for similar embeddings.
 
-    Convenience function that uses the singleton database.
+    Convenience function that uses the singleton vectors database.
 
     Args:
         query_embedding: Pre-computed query embedding vector.
         top_k: Maximum results.
         video_uuid: Optional video filter.
-        db: Optional database connection (uses singleton if None).
+        db: Optional vectors database connection (uses singleton if None).
 
     Returns:
         List of result dicts.
     """
     if db is None:
-        from claudetube.db import get_database
+        from claudetube.db import get_vectors_database
 
-        db = get_database()
+        db = get_vectors_database()
 
     vec = VecStore(db)
     return vec.search_by_embedding(query_embedding, top_k, video_uuid)

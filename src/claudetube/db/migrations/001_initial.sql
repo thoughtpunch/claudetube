@@ -2,7 +2,11 @@
 -- Initial schema: videos, audio_tracks, transcriptions, scenes, frames (incl.
 -- thumbnails), visual_descriptions, technical_content, audio_descriptions,
 -- narrative_structures, code_evolutions, entities, qa, observations, playlists,
--- pipeline_steps, vec_metadata, FTS5, video_processing_status view.
+-- pipeline_steps, FTS5, video_processing_status view.
+--
+-- Note: vec_metadata and vec_embeddings are in the separate vectors database
+-- (claudetube-vectors.db) to allow this database to be opened with standard
+-- SQLite tools without requiring the sqlite-vec extension.
 
 -- ============================================================
 -- VIDEOS (metadata only -- processing state in pipeline_steps)
@@ -356,27 +360,6 @@ CREATE INDEX idx_pipeline_type ON pipeline_steps(step_type);
 CREATE INDEX idx_pipeline_status ON pipeline_steps(status);
 CREATE INDEX idx_pipeline_video_type ON pipeline_steps(video_id, step_type);
 CREATE INDEX idx_pipeline_video_scene ON pipeline_steps(video_id, scene_id);
-
--- ============================================================
--- VECTOR EMBEDDINGS (sqlite-vec)
--- ============================================================
--- The vec0 virtual table is created at runtime after loading
--- the sqlite-vec extension. This metadata table maps rowids
--- to video/scene identifiers and tracks embedding source.
-CREATE TABLE vec_metadata (
-    id         TEXT PRIMARY KEY CHECK(length(id) = 36),
-    video_id   TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
-    scene_id   INTEGER CHECK(scene_id IS NULL OR scene_id >= 0),
-    start_time REAL CHECK(start_time IS NULL OR start_time >= 0),
-    end_time   REAL CHECK(end_time IS NULL OR end_time > start_time),
-    source     TEXT NOT NULL CHECK(source IN (
-        'transcription', 'scene_transcript', 'visual', 'technical',
-        'entity', 'qa', 'observation', 'audio_description'
-    )),
-    UNIQUE(video_id, scene_id, source)
-);
-CREATE INDEX idx_vec_video ON vec_metadata(video_id);
-CREATE INDEX idx_vec_source ON vec_metadata(source);
 
 -- ============================================================
 -- FTS5 VIRTUAL TABLES + SYNC TRIGGERS
