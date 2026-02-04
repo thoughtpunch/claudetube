@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "claudetube"
 version = "1.0.0rc1"
 description = "Let Claude watch YouTube videos - transcripts + on-demand frame extraction"
+# MCP Registry identifier for server verification
+# mcp-name: io.github.dmarx/claudetube
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

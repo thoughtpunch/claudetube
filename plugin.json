@@ -1,0 +1,41 @@
+{
+  "$schema": "https://code.claude.com/schemas/plugin.json",
+  "name": "claudetube",
+  "version": "1.0.0",
+  "displayName": "ClaudeTube - YouTube Video Analysis",
+  "description": "Process and analyze YouTube videos with transcripts, frame extraction, scene detection, and intelligent video Q&A. Supports 1500+ video sites via yt-dlp.",
+  "author": "Daniel Barrett",
+  "license": "MIT",
+  "repository": "https://github.com/dmarx/claudetube",
+  "homepage": "https://github.com/dmarx/claudetube",
+  "keywords": [
+    "youtube",
+    "video",
+    "transcription",
+    "analysis",
+    "mcp",
+    "whisper",
+    "ai"
+  ],
+  "capabilities": {
+    "mcp": true,
+    "skills": true
+  },
+  "mcpServers": {
+    "claudetube": {
+      "type": "stdio",
+      "command": "claudetube-mcp",
+      "args": [],
+      "env": {}
+    }
+  },
+  "skills": {
+    "directory": "commands"
+  },
+  "requirements": {
+    "python": ">=3.10"
+  },
+  "installation": {
+    "pip": "claudetube[mcp]"
+  }
+}

@@ -65,8 +65,37 @@ cd claudetube
 Or via pip (once published):
 
 ```bash
-pip install claudetube
+pip install claudetube[mcp]
 ```
+
+### Install as MCP Server (Claude Code)
+
+Add claudetube directly to Claude Code as an MCP server:
+
+```bash
+# Install the package first
+pip install claudetube[mcp]
+
+# Register with Claude Code
+claude mcp add --transport stdio claudetube -- claudetube-mcp
+```
+
+Or add to your `.mcp.json` / `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "claudetube": {
+      "type": "stdio",
+      "command": "claudetube-mcp"
+    }
+  }
+}
+```
+
+Then restart Claude Code. All 40+ MCP tools will be available automatically.
+
+### Traditional Install
 
 The installer does three things:
 1. Creates a Python venv at `~/.claudetube/venv/`

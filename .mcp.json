@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "claudetube": {
+      "type": "stdio",
+      "command": "claudetube-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
