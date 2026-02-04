@@ -41,3 +41,4 @@ Investigated the reported bug where MCP tool calls returned "Video not found" wh
 - 2026-02-04 08:08 | claudetube-0na5 [P1] | Split vector DB from metadata DB
 - 2026-02-04 08:24 | claudetube-4ikn [P1] | Consolidate data root to ~/.claudetube
 - 2026-02-04 08:33 | claudetube-imjz [P2] | Make SQLite authoritative source of truth
+- 2026-02-04 08:47 | claudetube-rjhy [P2] | Document new storage architecture
