@@ -470,10 +470,11 @@ class TestProcessVideoPlaylistIdFromUrl:
 
     def test_cache_hit_updates_playlist_id_from_url(self, temp_cache_dir: Path):
         """Cache hit should update state.playlist_id if URL has playlist but state doesn't."""
+        from unittest.mock import MagicMock, patch
+
         from claudetube.cache.storage import load_state, save_state
         from claudetube.models.state import VideoState
         from claudetube.operations.processor import process_video
-        from unittest.mock import patch, MagicMock
 
         # Setup: create cached video WITHOUT playlist_id
         video_id = "testvidXYZ"
@@ -497,9 +498,15 @@ class TestProcessVideoPlaylistIdFromUrl:
         mock_cache = MagicMock()
         mock_cache.get_cache_dir.return_value = cache_dir
 
-        with patch(
-            "claudetube.operations.processor.CacheManager", return_value=mock_cache
-        ), patch("claudetube.operations.processor.get_cache_dir", return_value=temp_cache_dir):
+        with (
+            patch(
+                "claudetube.operations.processor.CacheManager", return_value=mock_cache
+            ),
+            patch(
+                "claudetube.operations.processor.get_cache_dir",
+                return_value=temp_cache_dir,
+            ),
+        ):
             # Process video with playlist URL
             result = process_video(
                 "https://youtube.com/watch?v=testvidXYZ&list=PLtestplaylist123",
@@ -520,16 +527,15 @@ class TestProcessVideoPlaylistIdFromUrl:
         self, temp_cache_dir: Path
     ):
         """Cache hit should NOT overwrite existing playlist_id with URL playlist."""
+        from unittest.mock import MagicMock, patch
+
         from claudetube.cache.storage import load_state, save_state
         from claudetube.models.state import VideoState
         from claudetube.operations.processor import process_video
-        from unittest.mock import patch, MagicMock
 
         # Setup: create cached video WITH existing playlist_id
         video_id = "testvidABC"
-        cache_dir = (
-            temp_cache_dir / "youtube" / "no_channel" / "PLoriginal" / video_id
-        )
+        cache_dir = temp_cache_dir / "youtube" / "no_channel" / "PLoriginal" / video_id
         cache_dir.mkdir(parents=True)
 
         state = VideoState(
@@ -548,9 +554,15 @@ class TestProcessVideoPlaylistIdFromUrl:
         mock_cache = MagicMock()
         mock_cache.get_cache_dir.return_value = cache_dir
 
-        with patch(
-            "claudetube.operations.processor.CacheManager", return_value=mock_cache
-        ), patch("claudetube.operations.processor.get_cache_dir", return_value=temp_cache_dir):
+        with (
+            patch(
+                "claudetube.operations.processor.CacheManager", return_value=mock_cache
+            ),
+            patch(
+                "claudetube.operations.processor.get_cache_dir",
+                return_value=temp_cache_dir,
+            ),
+        ):
             # Process video with DIFFERENT playlist URL
             result = process_video(
                 "https://youtube.com/watch?v=testvidABC&list=PLdifferent",
@@ -567,15 +579,14 @@ class TestProcessVideoPlaylistIdFromUrl:
         self, temp_cache_dir: Path
     ):
         """Cache hit without playlist in URL should not change state."""
+        from unittest.mock import MagicMock, patch
+
         from claudetube.cache.storage import load_state, save_state
         from claudetube.models.state import VideoState
         from claudetube.operations.processor import process_video
-        from unittest.mock import patch, MagicMock
 
         video_id = "testvidNoChange"
-        cache_dir = (
-            temp_cache_dir / "youtube" / "no_channel" / "no_playlist" / video_id
-        )
+        cache_dir = temp_cache_dir / "youtube" / "no_channel" / "no_playlist" / video_id
         cache_dir.mkdir(parents=True)
 
         state = VideoState(
@@ -593,9 +604,15 @@ class TestProcessVideoPlaylistIdFromUrl:
         mock_cache = MagicMock()
         mock_cache.get_cache_dir.return_value = cache_dir
 
-        with patch(
-            "claudetube.operations.processor.CacheManager", return_value=mock_cache
-        ), patch("claudetube.operations.processor.get_cache_dir", return_value=temp_cache_dir):
+        with (
+            patch(
+                "claudetube.operations.processor.CacheManager", return_value=mock_cache
+            ),
+            patch(
+                "claudetube.operations.processor.get_cache_dir",
+                return_value=temp_cache_dir,
+            ),
+        ):
             # Process video WITHOUT playlist in URL
             result = process_video(
                 "https://youtube.com/watch?v=testvidNoChange",

@@ -44,6 +44,7 @@ class PlaylistDownloadResult:
     video_ids: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
+
 logger = logging.getLogger(__name__)
 
 # Re-export progress types for callers
@@ -111,7 +112,9 @@ def download_audio(
         DownloadError: If download fails
     """
     tool = _get_yt_dlp()
-    return tool.download_audio(url, output_path, quality=quality, on_progress=on_progress)
+    return tool.download_audio(
+        url, output_path, quality=quality, on_progress=on_progress
+    )
 
 
 def download_thumbnail(

@@ -556,7 +556,6 @@ class TestAutoEmbedding:
 
     def test_embed_transcription_calls_helper(self, in_memory_db):
         """embed_transcription() calls the async helper correctly."""
-        from claudetube.db.sync import embed_transcription
 
         with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
             embed_transcription("video-uuid", "Hello world transcript", 120.5)
@@ -571,7 +570,6 @@ class TestAutoEmbedding:
 
     def test_embed_scene_transcript_calls_helper(self, in_memory_db):
         """embed_scene_transcript() calls the async helper correctly."""
-        from claudetube.db.sync import embed_scene_transcript
 
         with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
             embed_scene_transcript(
@@ -588,7 +586,6 @@ class TestAutoEmbedding:
 
     def test_embed_visual_description_calls_helper(self, in_memory_db):
         """embed_visual_description() calls the async helper correctly."""
-        from claudetube.db.sync import embed_visual_description
 
         with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
             embed_visual_description("video-uuid", 3, "Visual description text")
@@ -603,7 +600,6 @@ class TestAutoEmbedding:
 
     def test_embed_technical_content_calls_helper(self, in_memory_db):
         """embed_technical_content() calls the async helper correctly."""
-        from claudetube.db.sync import embed_technical_content
 
         with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
             embed_technical_content("video-uuid", 2, "OCR text content")
@@ -618,7 +614,6 @@ class TestAutoEmbedding:
 
     def test_embed_qa_combines_question_answer(self, in_memory_db):
         """embed_qa() combines question and answer before embedding."""
-        from claudetube.db.sync import embed_qa
 
         with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
             embed_qa("video-uuid", "What happens?", "Something happens.")
@@ -631,7 +626,6 @@ class TestAutoEmbedding:
 
     def test_embed_observation_calls_helper(self, in_memory_db):
         """embed_observation() calls the async helper correctly."""
-        from claudetube.db.sync import embed_observation
 
         with patch("claudetube.db.sync._embed_async_fire_and_forget") as mock_embed:
             embed_observation("video-uuid", 1, "Observation content")
@@ -646,7 +640,6 @@ class TestAutoEmbedding:
 
     def test_embed_helper_skips_empty_text(self, in_memory_db):
         """_embed_async_fire_and_forget() skips empty text."""
-        from claudetube.db.sync import _embed_async_fire_and_forget
 
         # Should not raise, should skip silently
         _embed_async_fire_and_forget("video-uuid", None, "transcription", "")
@@ -655,7 +648,6 @@ class TestAutoEmbedding:
 
     def test_embed_helper_fire_and_forget_on_error(self, in_memory_db):
         """_embed_async_fire_and_forget() does not raise on errors."""
-        from claudetube.db.sync import _embed_async_fire_and_forget
 
         # Patch vec.embed_text to raise an error
         with patch(

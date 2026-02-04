@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import io
 
-import pytest
-
 from claudetube.tools.progress import (
     ConsoleProgressReporter,
     SilentProgressReporter,
@@ -142,7 +140,9 @@ class TestConsoleProgressReporter:
         # Finished
         output.truncate(0)
         output.seek(0)
-        reporter(DownloadProgress(status="finished", postprocessor="FFmpegExtractAudio"))
+        reporter(
+            DownloadProgress(status="finished", postprocessor="FFmpegExtractAudio")
+        )
         assert "done" in output.getvalue()
 
     def test_prefix(self):

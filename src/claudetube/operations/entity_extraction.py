@@ -431,7 +431,9 @@ class EntityExtractionOperation:
         if has_reasoner:
             if isinstance(results[idx], list):
                 concepts = results[idx]
-            elif isinstance(results[idx], dict) and results[idx].get("_delegate_to_host"):
+            elif isinstance(results[idx], dict) and results[idx].get(
+                "_delegate_to_host"
+            ):
                 # Reasoner delegation - return it
                 results[idx]["scene_id"] = scene_id
                 return results[idx]
@@ -445,7 +447,9 @@ class EntityExtractionOperation:
             try:
                 visual_data = await self._extract_visual_entities(keyframes, scene)
                 # Check for delegation after fallback
-                if isinstance(visual_data, dict) and visual_data.get("_delegate_to_host"):
+                if isinstance(visual_data, dict) and visual_data.get(
+                    "_delegate_to_host"
+                ):
                     visual_data["scene_id"] = scene_id
                     return visual_data
             except Exception as e:

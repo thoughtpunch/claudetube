@@ -164,9 +164,9 @@ class TestCacheResolution:
         result = await _run_tool(mcp_tools["list_cached_videos"])
 
         video_ids = [v["video_id"] for v in result.get("videos", [])]
-        assert (
-            TEST_VIDEO_ID in video_ids
-        ), f"Video not found in list. Found: {video_ids}"
+        assert TEST_VIDEO_ID in video_ids, (
+            f"Video not found in list. Found: {video_ids}"
+        )
 
     @pytest.mark.asyncio
     async def test_get_transcript_works(self, processed_video, mcp_tools):
@@ -192,12 +192,12 @@ class TestCacheResolution:
 
         # Should not have "not found" error
         if "error" in result:
-            assert (
-                "not found" not in result["error"].lower()
-            ), f"Video not found error: {result['error']}"
-            assert (
-                "not cached" not in result["error"].lower()
-            ), f"Video not cached error: {result['error']}"
+            assert "not found" not in result["error"].lower(), (
+                f"Video not found error: {result['error']}"
+            )
+            assert "not cached" not in result["error"].lower(), (
+                f"Video not cached error: {result['error']}"
+            )
 
 
 @pytest.mark.integration
@@ -278,9 +278,9 @@ class TestChangeDetection:
             # Check structure of first change
             change = changes[0]
             # Should have timestamp info
-            assert (
-                "from_scene" in change or "scene_id" in change
-            ), "Missing scene identifier"
+            assert "from_scene" in change or "scene_id" in change, (
+                "Missing scene identifier"
+            )
 
 
 @pytest.mark.integration
@@ -298,9 +298,9 @@ class TestQAPipeline:
             answer="This is a sample test video.",
         )
 
-        assert (
-            "error" not in record_result
-        ), f"Record failed: {record_result.get('error')}"
+        assert "error" not in record_result, (
+            f"Record failed: {record_result.get('error')}"
+        )
         assert record_result.get("cached", False), "Q&A was not cached"
 
         # Search for it
@@ -308,9 +308,9 @@ class TestQAPipeline:
             mcp_tools["search_qa_history_tool"], TEST_VIDEO_ID, query="sample"
         )
 
-        assert (
-            "error" not in search_result
-        ), f"Search failed: {search_result.get('error')}"
+        assert "error" not in search_result, (
+            f"Search failed: {search_result.get('error')}"
+        )
         assert search_result.get("match_count", 0) > 0, "No Q&A matches found"
 
         # Verify the match content
@@ -327,18 +327,18 @@ class TestToolsPipeline:
         """Process -> Scenes -> Status should all work together."""
         # Get scenes
         scenes_result = await _run_tool(mcp_tools["get_scenes"], TEST_VIDEO_ID)
-        assert (
-            "error" not in scenes_result
-        ), f"get_scenes failed: {scenes_result.get('error')}"
+        assert "error" not in scenes_result, (
+            f"get_scenes failed: {scenes_result.get('error')}"
+        )
         assert scenes_result.get("scene_count", 0) > 0
 
         # Get status
         status_result = await _run_tool(
             mcp_tools["get_analysis_status_tool"], TEST_VIDEO_ID
         )
-        assert (
-            "error" not in status_result
-        ), f"get_analysis_status failed: {status_result.get('error')}"
+        assert "error" not in status_result, (
+            f"get_analysis_status failed: {status_result.get('error')}"
+        )
 
         # scene_count is at the top level, not in summary
         assert status_result.get("scene_count", 0) > 0, "Status shows no scenes"
@@ -422,16 +422,16 @@ class TestVisionProvider:
         if result.get("errors"):
             for err in result["errors"]:
                 error_msg = err.get("error", "")
-                assert (
-                    "Expecting value" not in error_msg
-                ), f"JSON parse error still occurring: {error_msg}"
+                assert "Expecting value" not in error_msg, (
+                    f"JSON parse error still occurring: {error_msg}"
+                )
 
         # Should have generated or skipped something
         generated = result.get("generated", 0)
         skipped = result.get("skipped", 0)
-        assert (
-            generated > 0 or skipped > 0 or "error" not in result
-        ), "Neither generated nor skipped any scenes"
+        assert generated > 0 or skipped > 0 or "error" not in result, (
+            "Neither generated nor skipped any scenes"
+        )
 
 
 # ---------------------------------------------------------------------------

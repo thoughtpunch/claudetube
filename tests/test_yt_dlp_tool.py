@@ -1149,10 +1149,12 @@ class TestRunWithProgress:
             progress_updates.append(progress)
 
         # Mock Popen to return progress lines
-        mock_stdout = iter([
-            '{"status":"downloading","percent":"50%"}\n',
-            '{"status":"finished","percent":"100%"}\n',
-        ])
+        mock_stdout = iter(
+            [
+                '{"status":"downloading","percent":"50%"}\n',
+                '{"status":"finished","percent":"100%"}\n',
+            ]
+        )
 
         mock_process = MagicMock()
         mock_process.stdout = mock_stdout
@@ -1177,11 +1179,13 @@ class TestRunWithProgress:
         def on_progress(progress) -> None:
             progress_updates.append(progress)
 
-        mock_stdout = iter([
-            "[download] Downloading video\n",
-            '{"status":"downloading","percent":"25%"}\n',
-            "[download] Complete\n",
-        ])
+        mock_stdout = iter(
+            [
+                "[download] Downloading video\n",
+                '{"status":"downloading","percent":"25%"}\n',
+                "[download] Complete\n",
+            ]
+        )
 
         mock_process = MagicMock()
         mock_process.stdout = mock_stdout
@@ -1211,10 +1215,12 @@ class TestRunWithProgress:
             call_count += 1
             raise RuntimeError("Callback error!")
 
-        mock_stdout = iter([
-            '{"status":"downloading","percent":"50%"}\n',
-            '{"status":"finished","percent":"100%"}\n',
-        ])
+        mock_stdout = iter(
+            [
+                '{"status":"downloading","percent":"50%"}\n',
+                '{"status":"finished","percent":"100%"}\n',
+            ]
+        )
 
         mock_process = MagicMock()
         mock_process.stdout = mock_stdout
@@ -1234,9 +1240,11 @@ class TestRunWithProgress:
 
     def test_without_callback(self, tool):
         """Works without callback (progress lines still collected)."""
-        mock_stdout = iter([
-            '{"status":"downloading","percent":"100%"}\n',
-        ])
+        mock_stdout = iter(
+            [
+                '{"status":"downloading","percent":"100%"}\n',
+            ]
+        )
 
         mock_process = MagicMock()
         mock_process.stdout = mock_stdout
@@ -1294,7 +1302,12 @@ class TestFullErrorOutput:
                 return_value=type(
                     "R",
                     (),
-                    {"success": False, "stdout": "", "stderr": long_error, "returncode": 1},
+                    {
+                        "success": False,
+                        "stdout": "",
+                        "stderr": long_error,
+                        "returncode": 1,
+                    },
                 )(),
             ),
         ):

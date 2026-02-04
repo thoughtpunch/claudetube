@@ -12,12 +12,6 @@ from claudetube.config.loader import (
     get_cache_dir,
     get_config,
 )
-from claudetube.config.providers import VIDEO_PROVIDERS, get_provider_count
-from claudetube.config.quality import (
-    QUALITY_LADDER,
-    QUALITY_TIERS,
-    next_quality,
-)
 from claudetube.config.output_templates import (
     NO_CHANNEL,
     NO_PLAYLIST,
@@ -27,6 +21,12 @@ from claudetube.config.output_templates import (
     build_cli_args,
     build_outtmpl_dict,
     get_output_path,
+)
+from claudetube.config.providers import VIDEO_PROVIDERS, get_provider_count
+from claudetube.config.quality import (
+    QUALITY_LADDER,
+    QUALITY_TIERS,
+    next_quality,
 )
 
 __all__ = [

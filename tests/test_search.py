@@ -2,7 +2,6 @@
 Tests for temporal grounding search module.
 """
 
-import numpy as np
 import pytest
 
 

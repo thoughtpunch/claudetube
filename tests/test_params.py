@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from claudetube.parsing.params import extract_query_params, parse_timestamp
 
 

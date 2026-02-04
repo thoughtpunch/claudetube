@@ -964,8 +964,8 @@ class TestGetDefaultProviders:
         mock_router = MagicMock()
         # get_video_analyzer returns None (doesn't raise)
         mock_router.get_video_analyzer.return_value = None
-        mock_router.get_vision_analyzer_for_structured_output.side_effect = NoProviderError(
-            Capability.VISION
+        mock_router.get_vision_analyzer_for_structured_output.side_effect = (
+            NoProviderError(Capability.VISION)
         )
         mock_router.get_reasoner_for_structured_output.side_effect = NoProviderError(
             Capability.REASON

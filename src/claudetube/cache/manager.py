@@ -95,7 +95,9 @@ class CacheManager:
                 _resolution_cache[video_id] = cache_path
                 return sqlite_dir
             # SQLite has stale data - continue to other resolution methods
-            logger.debug("SQLite path %s has no state.json, continuing resolution", cache_path)
+            logger.debug(
+                "SQLite path %s has no state.json, continuing resolution", cache_path
+            )
 
         # 3. Check flat legacy path
         flat_path = self.cache_base / video_id

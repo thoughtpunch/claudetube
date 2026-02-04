@@ -42,7 +42,9 @@ class TestOutputTemplates:
         templates = OutputTemplates.default()
         for name in ["audio", "video", "thumbnail", "subtitle", "infojson"]:
             template = getattr(templates, name)
-            assert template.startswith("%(extractor)s/"), f"{name} should start with extractor"
+            assert template.startswith("%(extractor)s/"), (
+                f"{name} should start with extractor"
+            )
 
     def test_templates_contain_channel_fallback(self):
         """Test templates have channel_id with fallback."""
@@ -196,7 +198,9 @@ class TestBuildOuttmplDict:
         cache_base = Path("/custom/cache/path")
         result = build_outtmpl_dict(cache_base)
         for key, path in result.items():
-            assert path.startswith("/custom/cache/path/"), f"{key} should use cache_base"
+            assert path.startswith("/custom/cache/path/"), (
+                f"{key} should use cache_base"
+            )
 
 
 class TestTemplateHierarchy:

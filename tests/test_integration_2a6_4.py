@@ -1,7 +1,7 @@
 """Smoke tests for claudetube-2a6.4 success criteria."""
 
-from claudetube.models.video_url import VideoURL
 from claudetube.models.state import VideoState
+from claudetube.models.video_url import VideoURL
 
 
 def test_query_params_merged_into_provider_data():

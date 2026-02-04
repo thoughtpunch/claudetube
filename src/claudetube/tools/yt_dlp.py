@@ -62,7 +62,9 @@ class DownloadProgress:
     fragment_count: int | None = None
     filename: str | None = None
     # Postprocessor-specific fields
-    postprocessor: str | None = None  # Name of postprocessor, e.g., "FFmpegExtractAudio"
+    postprocessor: str | None = (
+        None  # Name of postprocessor, e.g., "FFmpegExtractAudio"
+    )
     info_dict: dict | None = None  # For accessing other fields like title
 
     @classmethod
@@ -237,7 +239,9 @@ _ERROR_PATTERNS: list[tuple[re.Pattern, str, Callable[[re.Match], dict] | None]]
     ),
     # Network errors
     (
-        re.compile(r"Connection reset|Connection refused|Connection timed out", re.IGNORECASE),
+        re.compile(
+            r"Connection reset|Connection refused|Connection timed out", re.IGNORECASE
+        ),
         "network",
         None,
     ),
@@ -273,7 +277,9 @@ _ERROR_PATTERNS: list[tuple[re.Pattern, str, Callable[[re.Match], dict] | None]]
 
 # Patterns for extracting warnings and diagnostic info
 _WARNING_PATTERN = re.compile(r"WARNING:\s*(.+?)(?:\n|$)", re.IGNORECASE)
-_CLIENT_PATTERN = re.compile(r"\[youtube\].*?Extracting.*?client:\s*(\w+)", re.IGNORECASE)
+_CLIENT_PATTERN = re.compile(
+    r"\[youtube\].*?Extracting.*?client:\s*(\w+)", re.IGNORECASE
+)
 _SABR_PATTERN = re.compile(r"SABR|Server ABR|serverAbrStreamingUrl", re.IGNORECASE)
 _PO_TOKEN_WARNING_PATTERN = re.compile(
     r"(?:PO Token|po_token|Proof of Origin).*?(?:required|needed|missing|invalid)",
@@ -1406,7 +1412,11 @@ class YtDlpTool(VideoTool):
             # Get auth status for YouTube errors
             auth_status = None
             clients_tried = ["default", "mweb"]
-            if is_youtube and parsed_error.category in ("auth", "http_error", "po_token"):
+            if is_youtube and parsed_error.category in (
+                "auth",
+                "http_error",
+                "po_token",
+            ):
                 with contextlib.suppress(Exception):
                     auth_status = self.check_youtube_auth_status()
 
@@ -1676,7 +1686,11 @@ class YtDlpTool(VideoTool):
             is_youtube = self._is_youtube_url(url)
 
             auth_status = None
-            if is_youtube and parsed_error.category in ("auth", "http_error", "po_token"):
+            if is_youtube and parsed_error.category in (
+                "auth",
+                "http_error",
+                "po_token",
+            ):
                 with contextlib.suppress(Exception):
                     auth_status = self.check_youtube_auth_status()
 

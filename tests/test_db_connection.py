@@ -2,8 +2,6 @@
 
 import sqlite3
 import threading
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -14,7 +12,6 @@ from claudetube.db.migrate import (
     _get_applied_versions,
     run_migrations,
 )
-
 
 # ============================================================
 # Database class tests
@@ -208,10 +205,9 @@ class TestDatabaseTransactions:
             db.execute("INSERT INTO t VALUES (1)")
 
         # Second block should fail and rollback
-        with pytest.raises(sqlite3.IntegrityError):
-            with db:
-                db.execute("INSERT INTO t VALUES (2)")
-                db.execute("INSERT INTO t VALUES (2)")  # Duplicate PK
+        with pytest.raises(sqlite3.IntegrityError), db:
+            db.execute("INSERT INTO t VALUES (2)")
+            db.execute("INSERT INTO t VALUES (2)")  # Duplicate PK
 
         # Only the first row should exist
         cursor = db.execute("SELECT COUNT(*) AS cnt FROM t")
@@ -508,7 +504,7 @@ class TestRunMigrations:
 
         # First migration should succeed
         # Second should fail
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - testing migration failure
             run_migrations(db, tmp_path)
 
         # First migration should have been applied
@@ -569,7 +565,7 @@ class TestGetDatabase:
 
         reset_database()
         db_path = tmp_path / "test.db"
-        db = get_database(db_path)
+        get_database(db_path)  # Creates the database file
         assert db_path.exists()
         close_database()
 

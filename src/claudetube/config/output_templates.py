@@ -106,7 +106,9 @@ def get_output_path(
 
     if template_type not in template_map:
         valid = ", ".join(sorted(template_map.keys()))
-        raise ValueError(f"Unknown template type: {template_type!r}. Valid types: {valid}")
+        raise ValueError(
+            f"Unknown template type: {template_type!r}. Valid types: {valid}"
+        )
 
     relative_template = template_map[template_type]
     return str(cache_base / relative_template)
@@ -263,14 +265,19 @@ def build_audio_download_args(
     )
 
     # Audio extraction settings
-    args.extend([
-        "-f", "ba",              # Best audio format
-        "-x",                    # Extract audio
-        "--audio-format", "mp3",
-        "--audio-quality", quality,
-        "--no-playlist",
-        "--no-warnings",
-    ])
+    args.extend(
+        [
+            "-f",
+            "ba",  # Best audio format
+            "-x",  # Extract audio
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            quality,
+            "--no-playlist",
+            "--no-warnings",
+        ]
+    )
 
     # Add the URL last
     args.append(url)

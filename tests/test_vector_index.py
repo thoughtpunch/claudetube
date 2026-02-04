@@ -434,6 +434,9 @@ class TestSearchScenesByTextProvider:
                 for alias in node.names:
                     if "chromadb" in alias.name:
                         pytest.fail("chromadb still imported - should use sqlite-vec")
-            if isinstance(node, ast.ImportFrom):
-                if node.module and "chromadb" in node.module:
-                    pytest.fail("chromadb still imported - should use sqlite-vec")
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and "chromadb" in node.module
+            ):
+                pytest.fail("chromadb still imported - should use sqlite-vec")

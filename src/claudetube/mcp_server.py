@@ -465,7 +465,7 @@ def _find_youtube_subtitle(video_dir: Path, video_id: str) -> Path | None:
     # Look for subtitle files matching video_id
     patterns = [
         f"{video_id}.*.srt",  # e.g., video_id.en.srt, video_id.en-auto.srt
-        f"{video_id}.srt",    # Plain SRT
+        f"{video_id}.srt",  # Plain SRT
     ]
     for pattern in patterns:
         matches = list(video_dir.glob(pattern))
@@ -573,10 +573,12 @@ async def get_transcript(
                         indent=2,
                     )
 
-            return json.dumps({
-                "error": "No transcript file found. Run process_video or transcribe_video first.",
-                "video_id": video_id,
-            })
+            return json.dumps(
+                {
+                    "error": "No transcript file found. Run process_video or transcribe_video first.",
+                    "video_id": video_id,
+                }
+            )
 
     text = transcript_path.read_text()
     return json.dumps(

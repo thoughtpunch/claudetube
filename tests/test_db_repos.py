@@ -181,7 +181,7 @@ class TestVideoRepositoryUpsert:
 
     def test_upsert_creates_new_video(self, video_repo):
         """Test upsert creates a new video when none exists."""
-        uuid_ = video_repo.upsert(
+        video_repo.upsert(
             video_id="newvideo123",
             domain="youtube",
             cache_path="/cache/new",
@@ -2471,7 +2471,7 @@ class TestVisualDescriptionRepositoryInsert:
             cache_path="/cache/mv",
         )
 
-        vd_uuid = visual_description_repo.insert(
+        visual_description_repo.insert(
             video_uuid=video_uuid,
             scene_id=0,
             description="Test description",
@@ -2746,7 +2746,7 @@ class TestVisualDescriptionRepositoryDelete:
             cache_path="/cache/cv",
         )
 
-        vd_uuid = visual_description_repo.insert(
+        visual_description_repo.insert(
             video_uuid=video_uuid,
             scene_id=0,
             description="Test",
@@ -2798,7 +2798,7 @@ class TestTechnicalContentRepositoryInsert:
             cache_path="/cache/mt",
         )
 
-        tc_uuid = technical_content_repo.insert(
+        technical_content_repo.insert(
             video_uuid=video_uuid,
             scene_id=0,
             has_code=False,
@@ -3307,7 +3307,7 @@ class TestNarrativeRepositoryInsert:
             cache_path="/cache/mn",
         )
 
-        ns_uuid = narrative_repo.insert(video_uuid=video_uuid)
+        narrative_repo.insert(video_uuid=video_uuid)
 
         ns = narrative_repo.get_by_video(video_uuid)
         assert ns is not None
@@ -3546,7 +3546,7 @@ class TestCodeEvolutionRepositoryInsert:
             cache_path="/cache/mce",
         )
 
-        ce_uuid = code_evolution_repo.insert(video_uuid=video_uuid)
+        code_evolution_repo.insert(video_uuid=video_uuid)
 
         ce = code_evolution_repo.get_by_video(video_uuid)
         assert ce is not None
@@ -4645,7 +4645,7 @@ class TestPlaylistRepositoryUpsert:
 
     def test_upsert_creates_new(self, playlist_repo):
         """Test upsert creates new playlist when none exists."""
-        uuid_ = playlist_repo.upsert("PLnew", "youtube", title="New Playlist")
+        playlist_repo.upsert("PLnew", "youtube", title="New Playlist")
         playlist = playlist_repo.get_by_playlist_id("PLnew")
         assert playlist is not None
         assert playlist["title"] == "New Playlist"
@@ -4654,7 +4654,7 @@ class TestPlaylistRepositoryUpsert:
         """Test upsert fills NULL fields without overwriting."""
         playlist_repo.insert("PLenrich", "youtube")
 
-        uuid_ = playlist_repo.upsert(
+        playlist_repo.upsert(
             "PLenrich",
             "youtube",
             title="Enriched Title",
@@ -4929,7 +4929,7 @@ class TestPipelineRepositoryRecordStep:
         """Test all valid statuses can be recorded."""
         video_uuid = video_repo.insert("allstatus", "youtube", "/c/as")
         statuses = ["pending", "running", "completed", "failed", "skipped"]
-        for i, status in enumerate(statuses):
+        for status in statuses:
             step_uuid = pipeline_repo.record_step(video_uuid, "download", status)
             step = pipeline_repo.get_by_uuid(step_uuid)
             assert step["status"] == status

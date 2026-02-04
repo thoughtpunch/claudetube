@@ -465,7 +465,9 @@ class TestGetDefaultVisionAnalyzer:
         mock_provider = self._make_vision_mock()
 
         mock_router = MagicMock()
-        mock_router.get_vision_analyzer_for_structured_output.return_value = mock_provider
+        mock_router.get_vision_analyzer_for_structured_output.return_value = (
+            mock_provider
+        )
 
         with patch(
             "claudetube.providers.router.ProviderRouter",
@@ -480,8 +482,8 @@ class TestGetDefaultVisionAnalyzer:
         from claudetube.providers.router import NoProviderError
 
         mock_router = MagicMock()
-        mock_router.get_vision_analyzer_for_structured_output.side_effect = NoProviderError(
-            Capability.VISION
+        mock_router.get_vision_analyzer_for_structured_output.side_effect = (
+            NoProviderError(Capability.VISION)
         )
 
         with (
@@ -505,7 +507,9 @@ class TestGetDefaultVisionAnalyzer:
                 "claudetube.providers.router.ProviderRouter",
                 return_value=mock_router,
             ),
-            pytest.raises(RuntimeError, match="No vision provider with structured output"),
+            pytest.raises(
+                RuntimeError, match="No vision provider with structured output"
+            ),
         ):
             _get_default_vision_analyzer()
 

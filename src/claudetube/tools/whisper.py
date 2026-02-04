@@ -104,11 +104,13 @@ class WhisperTool(VideoTool):
             if chunk_duration >= SRT_TARGET_SEGMENT_DURATION and current_words:
                 chunk_text = " ".join(current_words).strip()
                 if chunk_text:
-                    chunks.append({
-                        "start": chunk_start,
-                        "end": word_end,
-                        "text": chunk_text,
-                    })
+                    chunks.append(
+                        {
+                            "start": chunk_start,
+                            "end": word_end,
+                            "text": chunk_text,
+                        }
+                    )
                 current_words = []
                 chunk_start = None
 
@@ -117,13 +119,19 @@ class WhisperTool(VideoTool):
             last_word = seg.words[-1]
             chunk_text = " ".join(current_words).strip()
             if chunk_text:
-                chunks.append({
-                    "start": chunk_start or seg.start,
-                    "end": last_word.end if hasattr(last_word, "end") else seg.end,
-                    "text": chunk_text,
-                })
+                chunks.append(
+                    {
+                        "start": chunk_start or seg.start,
+                        "end": last_word.end if hasattr(last_word, "end") else seg.end,
+                        "text": chunk_text,
+                    }
+                )
 
-        return chunks if chunks else [{"start": seg.start, "end": seg.end, "text": seg.text.strip()}]
+        return (
+            chunks
+            if chunks
+            else [{"start": seg.start, "end": seg.end, "text": seg.text.strip()}]
+        )
 
     def _collect_segments(self, segments) -> dict:
         """Collect transcription segments into SRT and TXT format.

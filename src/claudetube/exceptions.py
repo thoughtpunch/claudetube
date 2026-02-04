@@ -151,7 +151,9 @@ class RateLimitError(DownloadError):
         stderr: str = "",
         details: dict[str, Any] | None = None,
     ):
-        suggestion = "Wait a few minutes before retrying. The server is rate limiting requests."
+        suggestion = (
+            "Wait a few minutes before retrying. The server is rate limiting requests."
+        )
         super().__init__(
             message,
             category="rate_limited",
