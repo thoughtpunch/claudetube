@@ -2465,6 +2465,296 @@ async def get_playlist_video_context_tool(
     return json.dumps(result, indent=2, default=str)
 
 
+# ============================================================================
+# NAVIGATION TOOLS - Playlist-aware video navigation
+# ============================================================================
+
+
+@mcp.tool()
+async def watch_next(
+    playlist_id: str,
+    auto_process: bool = True,
+) -> str:
+    """Navigate to and process the next video in a playlist.
+
+    Automatically processes the next video in sequence, updating progress
+    tracking. Shows current position ("Video 4 of 12") and remaining videos.
+
+    Args:
+        playlist_id: The playlist to navigate within.
+        auto_process: Whether to automatically process the video (default: True).
+
+    Returns:
+        JSON with video metadata, transcript, and progress status.
+    """
+    from claudetube.navigation.context import PlaylistContext
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    next_video = context.next_video
+    if next_video is None:
+        return json.dumps(
+            {
+                "status": "complete",
+                "message": "You've reached the end of the playlist!",
+                "progress": context.get_progress_summary(),
+            }
+        )
+
+    video_id = next_video.get("video_id")
+    video_url = next_video.get("url", "")
+
+    if auto_process:
+        # Process the video
+        try:
+            result = await process_video_tool(video_url)
+            result_data = json.loads(result)
+        except Exception as e:
+            return json.dumps(
+                {
+                    "error": f"Failed to process video: {e}",
+                    "video_id": video_id,
+                    "video_title": next_video.get("title"),
+                }
+            )
+
+        # Mark as watched and update context
+        context.mark_watched(video_id)
+
+        return json.dumps(
+            {
+                "status": "processed",
+                "video": result_data,
+                "progress": context.get_progress_summary(),
+                "next_available": context.next_video is not None,
+            }
+        )
+
+    # Just return info without processing
+    return json.dumps(
+        {
+            "status": "ready",
+            "next_video": {
+                "video_id": video_id,
+                "title": next_video.get("title"),
+                "duration": next_video.get("duration"),
+                "position": next_video.get("position"),
+                "url": video_url,
+            },
+            "progress": context.get_progress_summary(),
+        }
+    )
+
+
+@mcp.tool()
+async def watch_video_in_playlist(
+    playlist_id: str,
+    video_id: str | None = None,
+    position: int | None = None,
+) -> str:
+    """Navigate to a specific video in a playlist by ID or position.
+
+    Jump to any video in the playlist - by video ID or by position number.
+    Updates progress tracking to set this as the current video.
+
+    Args:
+        playlist_id: The playlist containing the video.
+        video_id: Video ID to navigate to (optional if position provided).
+        position: 1-indexed position in playlist (optional if video_id provided).
+
+    Returns:
+        JSON with video metadata, transcript, and progress status.
+    """
+    from claudetube.navigation.context import PlaylistContext
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    # Resolve video from position if needed
+    target_video = None
+    if video_id:
+        target_video = context.get_video_by_id(video_id)
+    elif position is not None:
+        # Convert 1-indexed to 0-indexed
+        target_video = context.get_video_at_position(position - 1)
+
+    if target_video is None:
+        return json.dumps(
+            {
+                "error": "Video not found in playlist.",
+                "hint": "Provide either video_id or position (1-indexed).",
+                "total_videos": context.total_videos,
+            }
+        )
+
+    video_id = target_video.get("video_id")
+    video_url = target_video.get("url", "")
+
+    # Process the video
+    try:
+        result = await process_video_tool(video_url)
+        result_data = json.loads(result)
+    except Exception as e:
+        return json.dumps(
+            {
+                "error": f"Failed to process video: {e}",
+                "video_id": video_id,
+                "video_title": target_video.get("title"),
+            }
+        )
+
+    # Mark as watched and update context
+    context.mark_watched(video_id)
+
+    return json.dumps(
+        {
+            "status": "processed",
+            "video": result_data,
+            "progress": context.get_progress_summary(),
+            "next_available": context.next_video is not None,
+        }
+    )
+
+
+@mcp.tool()
+async def get_playlist_progress(
+    playlist_id: str,
+) -> str:
+    """Get learning progress for a playlist.
+
+    Shows completion status, watched videos, current position, and
+    recommendations for what to watch next.
+
+    Args:
+        playlist_id: Playlist ID to get progress for.
+
+    Returns:
+        JSON with progress statistics and recommendations.
+    """
+    from claudetube.navigation.context import PlaylistContext
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    # Build watched videos list with metadata
+    watched = []
+    for vid in context.progress.watched_videos:
+        video_meta = context.get_video_by_id(vid)
+        if video_meta:
+            watched.append(
+                {
+                    "video_id": vid,
+                    "title": video_meta.get("title"),
+                    "position": video_meta.get("position", 0) + 1,  # 1-indexed
+                    "watched_at": context.progress.watch_times.get(vid),
+                }
+            )
+
+    # Get next video recommendation
+    next_video = context.next_video
+    next_recommendation = None
+    if next_video:
+        next_recommendation = {
+            "video_id": next_video.get("video_id"),
+            "title": next_video.get("title"),
+            "position": next_video.get("position", 0) + 1,
+        }
+
+    return json.dumps(
+        {
+            "playlist_id": playlist_id,
+            "title": context.title,
+            "playlist_type": context.playlist_type,
+            "progress": context.get_progress_summary(),
+            "watched_videos": watched,
+            "current_video": context.current_video_id,
+            "next_video": next_recommendation,
+            "unwatched_count": len(context.get_unwatched_videos()),
+            "bookmarks": context.progress.bookmarks,
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def set_playlist_position(
+    playlist_id: str,
+    video_id: str,
+    timestamp: float | None = None,
+) -> str:
+    """Set current position in a playlist without processing.
+
+    Marks a video as the current position (and optionally watched) without
+    downloading or processing it. Useful for resuming from a known position.
+
+    Args:
+        playlist_id: Playlist ID.
+        video_id: Video ID to set as current.
+        timestamp: Optional timestamp in seconds to resume from.
+
+    Returns:
+        JSON with updated progress status.
+    """
+    from claudetube.navigation.context import PlaylistContext
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    # Verify video is in playlist
+    video_meta = context.get_video_by_id(video_id)
+    if video_meta is None:
+        return json.dumps(
+            {
+                "error": f"Video '{video_id}' not found in playlist.",
+                "playlist_id": playlist_id,
+            }
+        )
+
+    # Update position
+    context.progress.current_video = video_id
+    context.current_position = context._get_video_position(video_id)
+
+    if timestamp is not None:
+        context.progress.current_timestamp = timestamp
+
+    context.progress.save()
+
+    return json.dumps(
+        {
+            "status": "position_set",
+            "video_id": video_id,
+            "title": video_meta.get("title"),
+            "timestamp": timestamp,
+            "progress": context.get_progress_summary(),
+        }
+    )
+
+
 def main():
     """Entry point for the claudetube-mcp command."""
     _log_startup("main() called - about to run mcp.run()")
