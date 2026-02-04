@@ -378,9 +378,50 @@
     ## Workflow Tips
 
     1. **Start with `process_video_tool`** - This fetches metadata and transcript
-    2. **Read the transcript** - Answer most questions from the transcript alone
-    3. **Extract frames when needed** - Only when visual context is required
-    4. **Use HQ frames for text/code** - When you need to read text, code, or diagrams
+    2. **Check `visual_analysis`** - Response includes visual criticality assessment
+    3. **Read the transcript** - Answer most questions from the transcript alone
+    4. **Extract frames when needed** - Only when visual context is required
+    5. **Use HQ frames for text/code** - When you need to read text, code, or diagrams
+
+    ## Visual Understanding Protocol
+
+    When processing video content, Claude MUST assess visual understanding needs.
+    The `process_video_tool` response includes a `visual_analysis` field with:
+    - `score`: 0-10 visual criticality rating
+    - `recommended`: whether visual analysis is suggested
+    - `strongly_recommended`: whether visual analysis is required
+    - `reasoning`: explanation of the assessment
+    - `likely_elements`: expected visual content (diagrams, code, etc.)
+
+    ### Automatic Visual Analysis Required
+
+    Extract frames WITHOUT asking when ANY of these apply:
+    - **Source is visual-first**: 3Blue1Brown, Veritasium, Numberphile, Kurzgesagt, Welch Labs
+    - **Content type**: educational, tutorial, technical explanation, how-it-works
+    - **Task involves**: learning synthesis, educational content creation, comprehensive summary
+    - **`visual_analysis.strongly_recommended`** is true in tool response
+
+    ### Visual Analysis Recommended
+
+    Extract frames UNLESS time-constrained when:
+    - Transcript contains 10+ visual reference phrases
+    - Topic involves geometry, physics, mathematics, or spatial concepts
+    - **`visual_analysis.recommended`** is true in tool response
+
+    ### Visual Reference Phrases (trigger words)
+
+    When you see these in transcripts, the visual IS the explanation:
+    - "as you can see", "look at this", "notice how"
+    - "diagram", "chart", "graph", "animation"
+    - Color references: "the blue vector", "green arrows"
+    - Spatial language: "left", "right", "above", "below"
+
+    ### Self-Check Question
+
+    Before synthesizing content from video, ask yourself:
+    > "Would a human researcher look at the visuals here?"
+
+    If yes, use `get_frames` or `get_hq_frames` to extract visual context.
 
     ## Authentication Notes
 
