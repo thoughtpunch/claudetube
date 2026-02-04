@@ -307,9 +307,10 @@ class TestProcessVideoWhisperPath:
                 return_value={"srt": "s", "txt": "t"},
             ) as mock_transcribe,
         ):
-            mock_dl_audio.side_effect = lambda url, path: path.parent.mkdir(
-                parents=True, exist_ok=True
-            ) or path.write_bytes(b"audio")
+            mock_dl_audio.side_effect = lambda url, path: (
+                path.parent.mkdir(parents=True, exist_ok=True)
+                or path.write_bytes(b"audio")
+            )
 
             process_video(FAKE_URL, output_base=cache_base, whisper_model="medium")
 
@@ -340,9 +341,10 @@ class TestProcessVideoWhisperPath:
                 return_value={"srt": "s", "txt": "t"},
             ),
         ):
-            mock_dl_audio.side_effect = lambda url, path: path.parent.mkdir(
-                parents=True, exist_ok=True
-            ) or path.write_bytes(b"audio")
+            mock_dl_audio.side_effect = lambda url, path: (
+                path.parent.mkdir(parents=True, exist_ok=True)
+                or path.write_bytes(b"audio")
+            )
 
             result = process_video(FAKE_URL, output_base=cache_base)
 
@@ -555,9 +557,10 @@ class TestProcessVideoErrors:
                 side_effect=RuntimeError("Whisper OOM"),
             ),
         ):
-            mock_dl_audio.side_effect = lambda url, path: path.parent.mkdir(
-                parents=True, exist_ok=True
-            ) or path.write_bytes(b"audio")
+            mock_dl_audio.side_effect = lambda url, path: (
+                path.parent.mkdir(parents=True, exist_ok=True)
+                or path.write_bytes(b"audio")
+            )
 
             result = process_video(FAKE_URL, output_base=cache_base)
 
@@ -707,9 +710,10 @@ class TestProcessVideoFrames:
                 return_value={"srt": "s", "txt": "t"},
             ),
         ):
-            mock_dl_audio.side_effect = lambda url, path: path.parent.mkdir(
-                parents=True, exist_ok=True
-            ) or path.write_bytes(b"audio")
+            mock_dl_audio.side_effect = lambda url, path: (
+                path.parent.mkdir(parents=True, exist_ok=True)
+                or path.write_bytes(b"audio")
+            )
 
             result = process_video(FAKE_URL, output_base=cache_base)
 
@@ -747,9 +751,10 @@ class TestProcessVideoFrames:
                 "claudetube.operations.processor.FFmpegTool",
             ) as mock_ffmpeg_cls,
         ):
-            mock_dl_audio.side_effect = lambda url, path: path.parent.mkdir(
-                parents=True, exist_ok=True
-            ) or path.write_bytes(b"audio")
+            mock_dl_audio.side_effect = lambda url, path: (
+                path.parent.mkdir(parents=True, exist_ok=True)
+                or path.write_bytes(b"audio")
+            )
 
             # Simulate video download creating the file
             def _fake_video_download(**kwargs):
