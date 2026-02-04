@@ -94,6 +94,10 @@ from claudetube.analysis.visual import (
 from claudetube.analysis.vocabulary import (
     detect_vocabulary_shifts,
 )
+from claudetube.analysis.visual_criticality import (
+    VisualAssessment,
+    assess_visual_criticality,
+)
 from claudetube.analysis.watcher import (
     ActiveVideoWatcher,
     Hypothesis,
@@ -172,4 +176,7 @@ __all__ = [
     "ActiveVideoWatcher",
     "Hypothesis",
     "WatcherAction",
+    # Visual criticality assessment
+    "VisualAssessment",
+    "assess_visual_criticality",
 ]
