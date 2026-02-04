@@ -39,9 +39,9 @@ class TestClaudeCodeProviderInfo:
         assert not provider.info.can(Capability.EMBED)
 
     def test_info_structured_output(self):
-        """ClaudeCodeProvider cannot return structured output - only formats content."""
+        """ClaudeCodeProvider supports structured output via delegation to host."""
         provider = ClaudeCodeProvider()
-        assert provider.info.supports_structured_output is False
+        assert provider.info.supports_structured_output is True
 
     def test_info_no_streaming(self):
         provider = ClaudeCodeProvider()
@@ -142,8 +142,8 @@ class TestAnalyzeImages:
         assert "Describe nothing" in result
 
     @pytest.mark.asyncio
-    async def test_with_schema_raises_not_implemented(self, tmp_path):
-        """Schema parameter raises NotImplementedError (can't return structured data)."""
+    async def test_with_schema_returns_delegation_dict(self, tmp_path):
+        """Schema parameter returns a delegation dict for the MCP tool to handle."""
         img = tmp_path / "frame.jpg"
         img.write_bytes(b"fake image")
 
@@ -155,15 +155,19 @@ class TestAnalyzeImages:
                 objects: list[str] = Field(default_factory=list)
 
             provider = ClaudeCodeProvider()
-            with pytest.raises(NotImplementedError) as exc_info:
-                await provider.analyze_images(
-                    [img], "Extract objects", schema=TestSchema
-                )
-
-            assert "ClaudeCodeProvider cannot return structured output" in str(
-                exc_info.value
+            result = await provider.analyze_images(
+                [img], "Extract objects", schema=TestSchema
             )
-            assert "vision provider with API access" in str(exc_info.value)
+
+            # Should return a delegation dict, not raise
+            assert isinstance(result, dict)
+            assert result.get("_delegate_to_host") is True
+            assert "images" in result
+            assert "prompt" in result
+            assert "schema" in result
+            assert "schema_name" in result
+            assert result["schema_name"] == "TestSchema"
+            assert len(result["images"]) == 1
         except ImportError:
             pytest.skip("pydantic not installed")
 
@@ -281,8 +285,8 @@ class TestReason:
         assert "[Previous response]" not in result
 
     @pytest.mark.asyncio
-    async def test_with_schema_raises_not_implemented(self):
-        """Schema parameter raises NotImplementedError (can't return structured data)."""
+    async def test_with_schema_returns_delegation_dict(self):
+        """Schema parameter returns a delegation dict for the MCP tool to handle."""
         try:
             from pydantic import BaseModel, Field
 
@@ -291,16 +295,18 @@ class TestReason:
                 key_points: list[str] = Field(default_factory=list)
 
             provider = ClaudeCodeProvider()
-            with pytest.raises(NotImplementedError) as exc_info:
-                await provider.reason(
-                    [{"role": "user", "content": "Summarize"}],
-                    schema=Summary,
-                )
-
-            assert "ClaudeCodeProvider cannot return structured output" in str(
-                exc_info.value
+            result = await provider.reason(
+                [{"role": "user", "content": "Summarize"}],
+                schema=Summary,
             )
-            assert "provider with API access" in str(exc_info.value)
+
+            # Should return a delegation dict, not raise
+            assert isinstance(result, dict)
+            assert result.get("_delegate_to_host") is True
+            assert "messages" in result
+            assert "schema" in result
+            assert "schema_name" in result
+            assert result["schema_name"] == "Summary"
         except ImportError:
             pytest.skip("pydantic not installed")
 

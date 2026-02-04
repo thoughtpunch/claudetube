@@ -289,6 +289,7 @@ class EntityExtractionOperation:
 
         Returns:
             Dict with objects, people, text_on_screen, code_snippets keys.
+            May contain _delegate_to_host marker if using claude-code provider.
         """
         if not self.vision or not keyframes:
             return {}
@@ -305,6 +306,11 @@ class EntityExtractionOperation:
         )
 
         data = result if isinstance(result, dict) else json.loads(result)
+
+        # Check for claude-code delegation marker - pass it through
+        if isinstance(data, dict) and data.get("_delegate_to_host"):
+            return data
+
         return data
 
     async def _extract_semantic_concepts(
@@ -353,7 +359,7 @@ class EntityExtractionOperation:
         keyframes: list[Path],
         scene: SceneBoundary,
         video_path: Path | None = None,
-    ) -> EntityExtractionSceneResult:
+    ) -> EntityExtractionSceneResult | dict:
         """Extract entities from a scene using available providers.
 
         Tries VideoAnalyzer first (native video, most efficient), falls back
@@ -368,6 +374,8 @@ class EntityExtractionOperation:
 
         Returns:
             EntityExtractionSceneResult with all extracted entities.
+            If using claude-code provider, may return a dict with
+            _delegate_to_host marker for the MCP tool to handle.
         """
         # Run visual and semantic extraction concurrently
         tasks = []
@@ -397,6 +405,10 @@ class EntityExtractionOperation:
         if use_video:
             if isinstance(results[idx], dict):
                 visual_data = results[idx]
+                # Check for claude-code delegation marker
+                if visual_data.get("_delegate_to_host"):
+                    visual_data["scene_id"] = scene_id
+                    return visual_data
             elif isinstance(results[idx], Exception):
                 logger.warning(
                     f"Scene {scene_id}: video entity extraction failed, "
@@ -407,6 +419,10 @@ class EntityExtractionOperation:
         elif use_visual:
             if isinstance(results[idx], dict):
                 visual_data = results[idx]
+                # Check for claude-code delegation marker
+                if visual_data.get("_delegate_to_host"):
+                    visual_data["scene_id"] = scene_id
+                    return visual_data
             elif isinstance(results[idx], Exception):
                 logger.warning(
                     f"Scene {scene_id}: visual extraction failed: {results[idx]}"
@@ -415,6 +431,10 @@ class EntityExtractionOperation:
         if has_reasoner:
             if isinstance(results[idx], list):
                 concepts = results[idx]
+            elif isinstance(results[idx], dict) and results[idx].get("_delegate_to_host"):
+                # Reasoner delegation - return it
+                results[idx]["scene_id"] = scene_id
+                return results[idx]
             elif isinstance(results[idx], Exception):
                 logger.warning(
                     f"Scene {scene_id}: concept extraction failed: {results[idx]}"
@@ -424,6 +444,10 @@ class EntityExtractionOperation:
         if video_failed and has_visual:
             try:
                 visual_data = await self._extract_visual_entities(keyframes, scene)
+                # Check for delegation after fallback
+                if isinstance(visual_data, dict) and visual_data.get("_delegate_to_host"):
+                    visual_data["scene_id"] = scene_id
+                    return visual_data
             except Exception as e:
                 logger.warning(f"Scene {scene_id}: vision fallback also failed: {e}")
 
@@ -684,6 +708,19 @@ def extract_entities_for_video(
             logger.error(f"Scene {scene.scene_id}: entity extraction failed: {e}")
             errors.append({"scene_id": scene.scene_id, "error": str(e)})
             continue
+
+        # Check for claude-code delegation response
+        if isinstance(entity_result, dict) and entity_result.get("_delegate_to_host"):
+            # Return delegation info for MCP tool to handle
+            return {
+                "video_id": video_id,
+                "_delegate_to_host": True,
+                "delegation": entity_result,
+                "message": (
+                    "Entity extraction requires analyzing images. "
+                    "The images and prompt are provided for analysis."
+                ),
+            }
 
         # Save entities.json to cache
         entities_path.parent.mkdir(parents=True, exist_ok=True)

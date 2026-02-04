@@ -5,6 +5,16 @@ This provider is unique: it doesn't make external API calls. Instead, it
 formats content (images, messages) for the host Claude instance to process
 within the ongoing conversation context.
 
+When structured output is requested (schema parameter), this provider returns
+a special dict with:
+- "_delegate_to_host": True marker
+- "images": list of image paths for the host Claude to analyze
+- "prompt": the analysis prompt
+- "schema": the JSON schema for structured output
+
+The MCP tool should recognize this marker and return the images + prompt
+to the host Claude in a format that allows direct image analysis.
+
 Example:
     >>> provider = ClaudeCodeProvider()
     >>> provider.is_available()
@@ -70,8 +80,8 @@ class ClaudeCodeProvider(Provider, VisionAnalyzer, Reasoner):
         """Format images for host AI to analyze.
 
         When schema is provided (structured output requested), this provider
-        cannot fulfill the request because it only formats content for display -
-        it cannot get a response from Claude. In this case, raises an error.
+        returns a special delegation dict that tells the MCP tool to present
+        the images and prompt to the host Claude for analysis.
 
         For unstructured prompts, returns a formatted string with image
         references that could be displayed in a conversation.
@@ -83,29 +93,34 @@ class ClaudeCodeProvider(Provider, VisionAnalyzer, Reasoner):
             **kwargs: Ignored (no provider-specific options).
 
         Returns:
-            Formatted string with image references and prompt (when no schema).
-
-        Raises:
-            NotImplementedError: When schema is provided, since this provider
-                cannot return structured data.
+            For unstructured: Formatted string with image references and prompt.
+            For structured: Dict with _delegate_to_host marker, images, prompt, schema.
         """
-        if schema:
-            # ClaudeCodeProvider formats content for display but cannot get
-            # a response from Claude. For structured output (entity extraction,
-            # visual transcripts), a real API provider is required.
-            raise NotImplementedError(
-                "ClaudeCodeProvider cannot return structured output. "
-                "For entity extraction and visual transcripts, configure a "
-                "vision provider with API access (anthropic, openai, or google). "
-                "See documentation/guides/configuration.md for setup instructions."
-            )
-
-        image_refs = []
+        # Resolve and validate image paths
+        image_paths = []
         for img in images:
             abs_path = img.resolve()
             if abs_path.exists():
-                image_refs.append(f"[Image: {abs_path}]")
-            else:
+                image_paths.append(str(abs_path))
+
+        if schema:
+            # Return a delegation marker that tells the MCP tool to present
+            # these images to the host Claude for structured analysis.
+            # The host Claude can see images directly and respond with JSON.
+            schema_json = self._get_schema_json(schema)
+            return {
+                "_delegate_to_host": True,
+                "images": image_paths,
+                "prompt": prompt,
+                "schema": schema_json,
+                "schema_name": getattr(schema, "__name__", "StructuredOutput"),
+            }
+
+        # Unstructured output: return formatted string
+        image_refs = [f"[Image: {p}]" for p in image_paths]
+        for img in images:
+            abs_path = img.resolve()
+            if not abs_path.exists():
                 image_refs.append(f"[Image not found: {abs_path}]")
 
         content = "\n".join(image_refs)
@@ -122,7 +137,7 @@ class ClaudeCodeProvider(Provider, VisionAnalyzer, Reasoner):
         """Format messages for host AI to process.
 
         When schema is provided (structured output requested), this provider
-        cannot fulfill the request because it only formats content for display.
+        returns a delegation dict for the MCP tool to handle.
 
         Args:
             messages: List of message dicts with "role" and "content" keys.
@@ -130,19 +145,18 @@ class ClaudeCodeProvider(Provider, VisionAnalyzer, Reasoner):
             **kwargs: Ignored (no provider-specific options).
 
         Returns:
-            Formatted string with role-labeled messages (when no schema).
-
-        Raises:
-            NotImplementedError: When schema is provided, since this provider
-                cannot return structured data.
+            For unstructured: Formatted string with role-labeled messages.
+            For structured: Dict with _delegate_to_host marker, messages, schema.
         """
         if schema:
-            raise NotImplementedError(
-                "ClaudeCodeProvider cannot return structured output. "
-                "For reasoning with structured responses, configure a "
-                "provider with API access (anthropic, openai, or google). "
-                "See documentation/guides/configuration.md for setup instructions."
-            )
+            # Return a delegation marker for reasoning tasks with structured output
+            schema_json = self._get_schema_json(schema)
+            return {
+                "_delegate_to_host": True,
+                "messages": messages,
+                "schema": schema_json,
+                "schema_name": getattr(schema, "__name__", "StructuredOutput"),
+            }
 
         formatted_parts = []
         for msg in messages:

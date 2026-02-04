@@ -270,7 +270,7 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
     "claude-code": ProviderInfo(
         name="claude-code",
         capabilities=frozenset({Capability.VISION, Capability.REASON}),
-        supports_structured_output=False,  # Cannot return structured JSON - only formats content for display
+        supports_structured_output=True,  # Returns delegation dict for MCP tool to handle
         supports_streaming=False,  # Operates through MCP, not streaming
         max_images_per_request=20,  # Same as Anthropic
         cost_per_1m_input_tokens=0,  # Included with Claude Code subscription

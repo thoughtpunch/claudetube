@@ -876,6 +876,36 @@ async def extract_entities_tool(
         reasoner=reasoner,
     )
 
+    # Handle claude-code delegation response
+    if isinstance(result, dict) and result.get("_delegate_to_host"):
+        delegation = result.get("delegation", {})
+        images = delegation.get("images", [])
+        prompt = delegation.get("prompt", "")
+        schema = delegation.get("schema", "")
+        schema_name = delegation.get("schema_name", "EntityExtractionResult")
+        scene_id_extracted = delegation.get("scene_id", scene_id)
+
+        # Format response for host Claude to analyze images directly
+        # The host Claude will see this output and can read the images
+        return json.dumps(
+            {
+                "video_id": video_id,
+                "scene_id": scene_id_extracted,
+                "requires_vision_analysis": True,
+                "images": images,
+                "prompt": prompt,
+                "expected_schema": schema_name,
+                "schema": schema,
+                "instructions": (
+                    "No external vision provider is configured. "
+                    "Please analyze the images listed above and return the extracted entities "
+                    f"as JSON matching the {schema_name} schema. "
+                    "The images are frame captures from the video scene."
+                ),
+            },
+            indent=2,
+        )
+
     return json.dumps(result, indent=2)
 
 
