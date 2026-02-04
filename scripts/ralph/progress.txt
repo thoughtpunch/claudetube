@@ -39,3 +39,4 @@ Investigated the reported bug where MCP tool calls returned "Video not found" wh
 - 2026-02-03 18:21 | claudetube-isum [P2] | watch_video_tool answer synthesis fails to extract correct info
 2026-02-03 18:45 - claudetube-isum CLOSED - Fixed answer synthesis to extract relevant content and prefer relevant answers
 - 2026-02-04 08:08 | claudetube-0na5 [P1] | Split vector DB from metadata DB
+- 2026-02-04 08:24 | claudetube-4ikn [P1] | Consolidate data root to ~/.claudetube
