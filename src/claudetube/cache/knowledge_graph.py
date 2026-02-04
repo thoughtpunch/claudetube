@@ -647,6 +647,19 @@ def index_video_to_graph(
     # Get concept terms
     concept_terms = list(concepts_data.keys())
 
+    # Check if there's anything to index
+    total_entities = sum(len(v) for v in entities.values())
+    if total_entities == 0 and len(concept_terms) == 0:
+        return {
+            "video_id": video_id,
+            "status": "no_data",
+            "warning": "Video has no entities or concepts to index. "
+            "Run extract_entities_tool first to extract entities from scenes, "
+            "then index again.",
+            "entities_count": 0,
+            "concepts_count": 0,
+        }
+
     # Add to graph
     graph.add_video(
         video_id=video_id,

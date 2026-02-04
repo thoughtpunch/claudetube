@@ -414,11 +414,18 @@ class TestIndexVideoToGraph:
         assert graph.video_count == 1
 
     def test_skips_already_indexed(self, tmp_path: Path):
-        # Create mock video cache
+        # Create mock video cache with entities
         video_dir = tmp_path / "vid456"
         video_dir.mkdir()
         (video_dir / "state.json").write_text(
             json.dumps({"video_id": "vid456", "title": "Test"})
+        )
+
+        # Add entity data to avoid no_data status
+        entities_dir = video_dir / "entities"
+        entities_dir.mkdir()
+        (entities_dir / "concepts.json").write_text(
+            json.dumps({"concepts": {"python": {"term": "python", "mentions": []}}})
         )
 
         # Index once
@@ -431,11 +438,18 @@ class TestIndexVideoToGraph:
         assert result2["from_cache"] is True
 
     def test_force_reindexes(self, tmp_path: Path):
-        # Create mock video cache
+        # Create mock video cache with entities
         video_dir = tmp_path / "vid789"
         video_dir.mkdir()
         (video_dir / "state.json").write_text(
             json.dumps({"video_id": "vid789", "title": "Original"})
+        )
+
+        # Add entity data to avoid no_data status
+        entities_dir = video_dir / "entities"
+        entities_dir.mkdir()
+        (entities_dir / "concepts.json").write_text(
+            json.dumps({"concepts": {"coding": {"term": "coding", "mentions": []}}})
         )
 
         # Index once
@@ -454,3 +468,23 @@ class TestIndexVideoToGraph:
         graph = get_knowledge_graph(tmp_path)
         video = graph.get_video("vid789")
         assert video.title == "Updated"
+
+    def test_warns_when_no_entities(self, tmp_path: Path):
+        # Create mock video cache WITHOUT entities
+        video_dir = tmp_path / "vid_empty"
+        video_dir.mkdir()
+        (video_dir / "state.json").write_text(
+            json.dumps({"video_id": "vid_empty", "title": "No Entities"})
+        )
+
+        # Index should return no_data status
+        result = index_video_to_graph("vid_empty", video_dir, tmp_path)
+        assert result["status"] == "no_data"
+        assert "warning" in result
+        assert "extract_entities_tool" in result["warning"]
+        assert result["entities_count"] == 0
+        assert result["concepts_count"] == 0
+
+        # Verify video was NOT added to graph
+        graph = get_knowledge_graph(tmp_path)
+        assert graph.get_video("vid_empty") is None
