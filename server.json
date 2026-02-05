@@ -1,21 +1,22 @@
 {
-  "$schema": "https://registry.modelcontextprotocol.io/schemas/server.json",
-  "name": "io.github.dmarx/claudetube",
-  "description": "Process and analyze YouTube videos - transcripts, frame extraction, scene detection, and intelligent Q&A. Supports 1500+ video sites via yt-dlp.",
-  "version": "1.0.0",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.thoughtpunch/claudetube",
+  "description": "Watch YouTube videos via transcripts and frame extraction. Supports 1500+ sites.",
   "repository": {
-    "type": "git",
-    "url": "https://github.com/dmarx/claudetube"
+    "url": "https://github.com/thoughtpunch/claudetube",
+    "source": "github"
   },
-  "license": "MIT",
-  "author": {
-    "name": "Daniel Barrett"
-  },
+  "version": "1.0.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "claudetube",
-      "command": "claudetube-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtime": "python",
+      "runtimeArgs": ["-m", "claudetube.mcp"],
       "environmentVariables": []
     }
   ],
@@ -49,34 +50,9 @@
       "description": "Actively watch and reason about a video to answer questions"
     },
     {
-      "name": "get_playlist",
-      "description": "Get playlist metadata and video list"
-    },
-    {
-      "name": "extract_entities_tool",
-      "description": "Extract entities (objects, people, concepts) from video scenes"
-    },
-    {
-      "name": "track_people_tool",
-      "description": "Track people across scenes in a video"
-    },
-    {
-      "name": "detect_narrative_structure_tool",
-      "description": "Detect video narrative structure (intro, main, conclusion)"
-    },
-    {
-      "name": "track_code_evolution_tool",
-      "description": "Track code changes across scenes in coding tutorials"
-    },
-    {
-      "name": "get_descriptions",
-      "description": "Get visual descriptions for accessibility"
+      "name": "ask_video",
+      "description": "Single-call video Q&A - provide URL and question, get answer"
     }
   ],
-  "serverInstructions": "Use claudetube when users share video URLs (YouTube, Vimeo, TikTok, etc.) and want to understand video content, extract information, or answer questions about what happens in videos. Start with process_video_tool, then use get_transcript for text content or get_frames/get_hq_frames for visual content.",
-  "categories": [
-    "media",
-    "productivity",
-    "accessibility"
-  ]
+  "serverInstructions": "Use claudetube when users share video URLs (YouTube, Vimeo, TikTok, etc.) and want to understand video content, extract information, or answer questions about what happens in videos. Start with process_video_tool, then use get_transcript for text content or get_frames/get_hq_frames for visual content."
 }
