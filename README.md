@@ -116,16 +116,16 @@ Then restart Claude Code. All 40+ MCP tools will be available automatically.
 
 ### Traditional Install
 
-The installer does three things:
+The installer does two things:
 1. Creates a Python venv at `~/.claudetube/venv/`
 2. Installs the `claudetube` package + dependencies (yt-dlp, faster-whisper)
-3. Copies slash commands to `~/.claude/commands/` (global to all Claude Code sessions)
 
-Restart Claude Code after installing.
+Then register the MCP server:
+```bash
+claude mcp add claudetube ~/.claudetube/venv/bin/claudetube-mcp
+```
 
-### Works from any Claude Code session
-
-The installer puts slash commands in `~/.claude/commands/`, which is the global commands directory. Every Claude Code instance on your machine will have `/yt` available -- no per-project setup needed.
+Restart Claude Code after registering.
 
 ### Why not a pre-built binary?
 
@@ -133,34 +133,34 @@ claudetube depends on faster-whisper (C++ transcription engine) and ffmpeg (syst
 
 ## Usage with Claude Code
 
+Just talk naturally:
+
 ```
-/yt https://youtube.com/watch?v=abc123 how did they make the sprites?
-/yt https://vimeo.com/123456789 summarize the key points
-/yt https://twitter.com/user/status/123 what is this video about?
+"Summarize this video: https://youtube.com/watch?v=abc123"
+"What happens at minute 5?"
+"How did they implement the auth flow?"
+"Show me the code at 3:42"
 ```
 
-Claude will:
+Claude will use the appropriate MCP tools automatically:
 1. Download and transcribe the video (~60s first time, cached after)
 2. Read the transcript
 3. If needed, extract frames to "see" specific moments
 4. Answer your question
 
-### Commands
+### Key MCP Tools
 
-| Command | Purpose |
-|---------|---------|
-| `/yt <url> [question]` | Analyze a video |
-| `/yt:ask <url> <question>` | **Simplest way** - auto-processes and answers |
-| `/yt:see <id> <timestamp>` | Quick frames (general visuals) |
-| `/yt:hq <id> <timestamp>` | HQ frames (code, text, diagrams) |
-| `/yt:transcribe <id> [model]` | Transcribe with Whisper (or return cached) |
-| `/yt:transcript <id>` | Read cached transcript |
-| `/yt:scenes <id>` | Get scene structure and boundaries |
-| `/yt:find <id> <query>` | Find moments matching a query |
-| `/yt:watch <id> <question>` | Actively watch and reason about a video |
-| `/yt:deep <id>` | Deep analysis (OCR, entities, code detection) |
-| `/yt:focus <id> <start> <end>` | Exhaustive frame-by-frame analysis of a section |
-| `/yt:list` | List all cached videos |
+| Tool | Purpose |
+|------|---------|
+| `ask_video` | **Simplest** - URL + question → answer (handles everything) |
+| `process_video_tool` | Download and transcribe a video |
+| `get_frames` | Extract frames at a timestamp |
+| `get_hq_frames` | HQ frames for code/text/diagrams |
+| `watch_video_tool` | Deep analysis with evidence gathering |
+| `find_moments_tool` | Find moments matching a query |
+| `get_scenes` | Get scene structure and boundaries |
+
+All 40+ tools are auto-discovered by Claude when the MCP server is registered.
 
 ## Python API
 

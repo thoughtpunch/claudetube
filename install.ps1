@@ -1,12 +1,11 @@
 # claudetube installer (Windows)
-# Installs Python package into a stable venv + Claude Code slash commands + MCP server
+# Installs Python package into a stable venv + registers MCP server
 
 $ErrorActionPreference = "Stop"
 
 $RepoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $InstallDir = Join-Path $HOME ".claudetube"
 $VenvDir = Join-Path $InstallDir "venv"
-$ClaudeCommandsDir = Join-Path $HOME ".claude" "commands"
 
 Write-Host "Installing claudetube..." -ForegroundColor Cyan
 Write-Host ""
@@ -54,47 +53,21 @@ Write-Host "Installing Python package (with MCP support)..."
 Write-Host "Installing faster-whisper..."
 & $PipExe install faster-whisper -q
 
-# 4. Install Claude Code commands
-Write-Host "Installing Claude Code slash commands..."
-New-Item -ItemType Directory -Force -Path $ClaudeCommandsDir | Out-Null
-
-$YtCmd = Join-Path $RepoDir "commands" "yt.md"
-if (Test-Path $YtCmd) {
-    Copy-Item $YtCmd (Join-Path $ClaudeCommandsDir "yt.md") -Force
-    Write-Host "  Installed /yt"
-}
-
-$YtSubDir = Join-Path $RepoDir "commands" "yt"
-if (Test-Path $YtSubDir) {
-    $DestYtDir = Join-Path $ClaudeCommandsDir "yt"
-    if (Test-Path $DestYtDir) { Remove-Item -Recurse -Force $DestYtDir }
-    Copy-Item -Recurse $YtSubDir $DestYtDir
-    Get-ChildItem (Join-Path $DestYtDir "*.md") | ForEach-Object {
-        $name = $_.BaseName
-        Write-Host "  Installed /yt:$name"
-    }
-}
-
 Write-Host ""
 Write-Host "=== Installation complete ===" -ForegroundColor Green
 Write-Host ""
 Write-Host "Installed to: $InstallDir"
 Write-Host "Python venv:  $VenvDir"
 Write-Host ""
-Write-Host "Slash commands (in ANY Claude Code session):"
-Write-Host "  /yt <url> [question]          - Analyze a YouTube video"
-Write-Host "  /yt:see <id> <timestamp>      - Extract frames at timestamp"
-Write-Host "  /yt:hq <id> <timestamp>       - Extract high-quality frames"
-Write-Host "  /yt:transcript <id>           - Show cached transcript"
-Write-Host "  /yt:list                      - List cached videos"
+Write-Host "=== Register MCP Server ===" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "=== MCP Server Setup (optional) ===" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "To add claudetube as an MCP server for Claude Code:"
+Write-Host "Add claudetube to Claude Code:"
 Write-Host ""
 Write-Host "  claude mcp add claudetube $McpExe"
 Write-Host ""
-Write-Host "Or start it manually:"
+Write-Host "Then restart Claude Code. All 40+ tools will be available."
 Write-Host ""
-Write-Host "  $McpExe"
+Write-Host "Example usage (just talk to Claude):"
+Write-Host "  'Summarize this video: https://youtube.com/watch?v=...'"
+Write-Host "  'What happens at minute 5 in video abc123?'"
 Write-Host ""

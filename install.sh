@@ -2,12 +2,11 @@
 set -e
 
 # claudetube installer (macOS / Linux)
-# Installs Python package into a stable venv + Claude Code slash commands + MCP server
+# Installs Python package into a stable venv + registers MCP server
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="$HOME/.claudetube"
 VENV_DIR="$INSTALL_DIR/venv"
-CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
 
 echo "Installing claudetube..."
 echo ""
@@ -83,46 +82,21 @@ echo "Installing Python package (with MCP support)..."
 echo "Installing faster-whisper..."
 "$VENV_DIR/bin/pip" install faster-whisper -q
 
-# 4. Install Claude Code commands
-echo "Installing Claude Code slash commands..."
-mkdir -p "$CLAUDE_COMMANDS_DIR"
-
-# Install main command
-if [ -f "$REPO_DIR/commands/yt.md" ]; then
-    cp "$REPO_DIR/commands/yt.md" "$CLAUDE_COMMANDS_DIR/yt.md"
-    echo "  Installed /yt"
-fi
-
-# Install subcommands
-if [ -d "$REPO_DIR/commands/yt" ]; then
-    rm -rf "$CLAUDE_COMMANDS_DIR/yt"
-    cp -r "$REPO_DIR/commands/yt" "$CLAUDE_COMMANDS_DIR/yt"
-    for cmd in "$CLAUDE_COMMANDS_DIR/yt"/*.md; do
-        name=$(basename "$cmd" .md)
-        echo "  Installed /yt:$name"
-    done
-fi
-
 echo ""
 echo "=== Installation complete ==="
 echo ""
 echo "Installed to: $INSTALL_DIR"
 echo "Python venv:  $VENV_DIR"
 echo ""
-echo "Slash commands (in ANY Claude Code session):"
-echo "  /yt <url> [question]          - Analyze a YouTube video"
-echo "  /yt:see <id> <timestamp>      - Extract frames at timestamp"
-echo "  /yt:hq <id> <timestamp>       - Extract high-quality frames"
-echo "  /yt:transcript <id>           - Show cached transcript"
-echo "  /yt:list                      - List cached videos"
+echo "=== Register MCP Server ==="
 echo ""
-echo "=== MCP Server Setup (optional) ==="
-echo ""
-echo "To add claudetube as an MCP server for Claude Code:"
+echo "Add claudetube to Claude Code:"
 echo ""
 echo "  claude mcp add claudetube $VENV_DIR/bin/claudetube-mcp"
 echo ""
-echo "Or start it manually:"
+echo "Then restart Claude Code. All 40+ tools will be available."
 echo ""
-echo "  $VENV_DIR/bin/claudetube-mcp"
+echo "Example usage (just talk to Claude):"
+echo "  'Summarize this video: https://youtube.com/watch?v=...'"
+echo "  'What happens at minute 5 in video abc123?'"
 echo ""

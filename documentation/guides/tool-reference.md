@@ -2,52 +2,53 @@
 
 # Tool Reference
 
-claudetube exposes functionality through three interfaces: **MCP tools** (for Claude Code/Desktop), **CLI commands** (terminal), and **slash commands** (Claude Code shortcuts). This guide maps them all.
+claudetube is an **MCP server** that exposes 40+ tools for video understanding. When registered with Claude Code, these tools are automatically available - just describe what you want and Claude will use the appropriate tools.
 
 ## Quick Reference
 
-| Capability | MCP Tool | CLI | Slash Command |
-|---|---|---|---|
-| Download & transcribe | `process_video_tool` | `claudetube <URL>` | `/yt <url>` |
-| Get frames (480p) | `get_frames` | -- | `/yt:see <id> <time>` |
-| Get HQ frames (1280p) | `get_hq_frames` | -- | `/yt:hq <id> <time>` |
-| Transcribe audio | `transcribe_video` | -- | `/yt:transcribe <id>` |
-| Full transcript | `get_transcript` | -- | `/yt:transcript <id>` |
-| List cached videos | `list_cached_videos` | -- | `/yt:list` |
-| Scene structure | `get_scenes` | -- | `/yt:scenes <id>` |
-| Find moments | `find_moments_tool` | -- | `/yt:find <id> <query>` |
-| Active watch | `watch_video_tool` | -- | `/yt:watch <id> <question>` |
-| Extract entities | `extract_entities_tool` | `claudetube extract-entities <id>` | -- |
-| Visual transcripts | `generate_visual_transcripts` | -- | -- |
-| Track people | `track_people_tool` | -- | -- |
-| Deep analysis | `analyze_deep_tool` | -- | `/yt:deep <id>` |
-| Focus analysis | `analyze_focus_tool` | -- | `/yt:focus <id> <start> <end>` |
-| Analysis status | `get_analysis_status_tool` | -- | -- |
-| Record Q&A | `record_qa_tool` | -- | -- |
-| Search Q&A history | `search_qa_history_tool` | -- | -- |
-| Scene context | `get_scene_context_tool` | -- | -- |
-| Enrichment stats | `get_enrichment_stats_tool` | -- | -- |
-| Get playlist | `get_playlist` | -- | -- |
-| List playlists | `list_playlists` | -- | -- |
-| Audio descriptions | `get_descriptions` | -- | -- |
-| Describe moment | `describe_moment` | -- | -- |
-| Accessible transcript | `get_accessible_transcript` | -- | -- |
-| Has audio description | `has_audio_description` | -- | -- |
-| Find related videos | `find_related_videos_tool` | -- | -- |
-| Index to graph | `index_video_to_graph_tool` | -- | -- |
-| Video connections | `get_video_connections_tool` | -- | -- |
-| Knowledge graph stats | `get_knowledge_graph_stats_tool` | -- | -- |
-| List providers | `list_providers_tool` | -- | -- |
-| Narrative structure | `detect_narrative_structure_tool` | -- | -- |
-| Get narrative structure | `get_narrative_structure_tool` | -- | -- |
-| Detect changes | `detect_changes_tool` | -- | -- |
-| Get changes | `get_changes_tool` | -- | -- |
-| Major transitions | `get_major_transitions_tool` | -- | -- |
-| Track code evolution | `track_code_evolution_tool` | -- | -- |
-| Get code evolution | `get_code_evolution_tool` | -- | -- |
-| Query code evolution | `query_code_evolution_tool` | -- | -- |
-| Build knowledge graph | `build_knowledge_graph_tool` | -- | -- |
-| Playlist video context | `get_playlist_video_context_tool` | -- | -- |
+| Capability | MCP Tool |
+|---|---|
+| **Simplest Q&A** | `ask_video` |
+| Download & transcribe | `process_video_tool` |
+| Get frames (480p) | `get_frames` |
+| Get HQ frames (1280p) | `get_hq_frames` |
+| Transcribe audio | `transcribe_video` |
+| Full transcript | `get_transcript` |
+| List cached videos | `list_cached_videos` |
+| Scene structure | `get_scenes` |
+| Find moments | `find_moments_tool` |
+| Active watch | `watch_video_tool` |
+| Extract entities | `extract_entities_tool` |
+| Visual transcripts | `generate_visual_transcripts` |
+| Track people | `track_people_tool` |
+| Deep analysis | `analyze_deep_tool` |
+| Focus analysis | `analyze_focus_tool` |
+| Analysis status | `get_analysis_status_tool` |
+| Record Q&A | `record_qa_tool` |
+| Search Q&A history | `search_qa_history_tool` |
+| Scene context | `get_scene_context_tool` |
+| Enrichment stats | `get_enrichment_stats_tool` |
+| Get playlist | `get_playlist` |
+| List playlists | `list_playlists` |
+| Audio descriptions | `get_descriptions` |
+| Describe moment | `describe_moment` |
+| Accessible transcript | `get_accessible_transcript` |
+| Has audio description | `has_audio_description` |
+| Find related videos | `find_related_videos_tool` |
+| Index to graph | `index_video_to_graph_tool` |
+| Video connections | `get_video_connections_tool` |
+| Knowledge graph stats | `get_knowledge_graph_stats_tool` |
+| List providers | `list_providers_tool` |
+| Narrative structure | `detect_narrative_structure_tool` |
+| Get narrative structure | `get_narrative_structure_tool` |
+| Detect changes | `detect_changes_tool` |
+| Get changes | `get_changes_tool` |
+| Major transitions | `get_major_transitions_tool` |
+| Track code evolution | `track_code_evolution_tool` |
+| Get code evolution | `get_code_evolution_tool` |
+| Query code evolution | `query_code_evolution_tool` |
+| Build knowledge graph | `build_knowledge_graph_tool` |
+| Playlist video context | `get_playlist_video_context_tool` |
 | Validate config | -- | `claudetube validate-config` | -- |
 
 ## MCP Tools (Detail)
