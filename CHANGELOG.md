@@ -2,6 +2,27 @@
 
 All notable changes to claudetube are documented in this file.
 
+## [1.0.0] - 2026-02-04
+
+**The 1.0.0 release** — claudetube is production-ready.
+
+### Features
+
+#### Streamlined Single-Call Video Q&A
+- **`ask_video` MCP tool**: The simplest way to get answers from videos. Pass a URL and question,
+  get an answer. Handles all orchestration automatically (processing, scenes, analysis).
+- **`/yt:ask` skill**: Slash command for the new streamlined workflow.
+
+### Documentation
+
+#### Honest Assessment
+- Added comparison with native video AI (Gemini) in README
+- Updated vision docs with competitive landscape analysis
+- Documented the UX gap and roadmap to close it
+- Updated roadmap with new priority: streamlined single-call Q&A
+
+---
+
 ## [1.0.0rc1] - 2026-02-02
 
 **270+ commits since v0.1.1** — A complete evolution from a video download-and-transcribe

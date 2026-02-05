@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claudetube"
-version = "1.0.0rc1"
+version = "1.0.0"
 description = "Let Claude watch YouTube videos - transcripts + on-demand frame extraction"
 # MCP Registry identifier for server verification
 # mcp-name: io.github.dmarx/claudetube
@@ -16,7 +16,7 @@ authors = [
 ]
 keywords = ["youtube", "video", "summarization", "whisper", "transcription"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
