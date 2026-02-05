@@ -2188,7 +2188,7 @@ async def ask_video(
     Returns:
         JSON with answer, confidence, evidence, and processing status.
     """
-    result = {"steps": [], "video_id": None}
+    result: dict = {"steps": [], "video_id": None}
 
     # Step 1: Extract video ID and check cache
     try:
@@ -2198,7 +2198,7 @@ async def ask_video(
         return json.dumps({"error": f"Invalid URL: {e}", "url": url})
 
     cache = CacheManager(get_cache_dir())
-    cache_dir = cache.get_video_dir(video_id)
+    cache_dir = cache.get_cache_dir(video_id)
 
     # Step 2: Process video if not cached
     if not cache_dir.exists() or not (cache_dir / "state.json").exists():
