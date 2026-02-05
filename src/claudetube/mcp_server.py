@@ -3178,6 +3178,460 @@ async def set_playlist_position(
     )
 
 
+@mcp.tool()
+async def playlist_next_tool(
+    playlist_id: str,
+    watch: bool = False,
+    skip_prerequisites: bool = False,
+) -> str:
+    """Get the next video in a playlist.
+
+    Returns information about the next video in sequence. Optionally starts
+    watching it (marks as current position).
+
+    Args:
+        playlist_id: Playlist ID.
+        watch: If True, also process and start watching the next video.
+        skip_prerequisites: If True, skip prerequisite warnings for courses.
+
+    Returns:
+        JSON with next video info and optional prerequisite warnings.
+    """
+    from claudetube.navigation.context import PlaylistContext
+    from claudetube.navigation.learning import check_prerequisites
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    next_video = context.next_video
+    if next_video is None:
+        return json.dumps(
+            {
+                "status": "end_of_playlist",
+                "message": "You've reached the end of the playlist!",
+                "progress": context.get_progress_summary(),
+            }
+        )
+
+    video_id = next_video.get("video_id")
+    result = {
+        "next_video": {
+            "video_id": video_id,
+            "title": next_video.get("title"),
+            "position": next_video.get("position", 0) + 1,
+        },
+        "progress": context.get_progress_summary(),
+    }
+
+    # Check prerequisites for courses/series
+    if not skip_prerequisites and context.playlist_type in ("course", "series"):
+        warning = await asyncio.to_thread(check_prerequisites, video_id, playlist_id)
+        if warning:
+            result["prerequisite_warning"] = warning.to_dict()
+            result["hint"] = "Consider watching missing prerequisites first."
+
+    if watch:
+        # Delegate to watch_video_in_playlist
+        return await watch_video_in_playlist(
+            playlist_id=playlist_id,
+            video_id=video_id,
+            skip_prerequisites=skip_prerequisites,
+        )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def playlist_goto_tool(
+    playlist_id: str,
+    position: int | None = None,
+    title_search: str | None = None,
+    watch: bool = False,
+) -> str:
+    """Jump to a specific video in a playlist by position or title.
+
+    Args:
+        playlist_id: Playlist ID.
+        position: Video position (1-indexed). Use this OR title_search.
+        title_search: Search string to match video title. Uses fuzzy matching.
+        watch: If True, also process and start watching the video.
+
+    Returns:
+        JSON with video info or error if not found.
+    """
+    from claudetube.navigation.context import PlaylistContext
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    video = None
+
+    # Find by position
+    if position is not None:
+        video = context.get_video_at_position(position - 1)  # Convert to 0-indexed
+        if video is None:
+            return json.dumps(
+                {
+                    "error": f"Position {position} is out of range.",
+                    "total_videos": context.total_videos,
+                    "valid_range": f"1-{context.total_videos}",
+                }
+            )
+
+    # Find by title search
+    elif title_search is not None:
+        search_lower = title_search.lower()
+        matches = []
+        for v in context.videos:
+            title = v.get("title", "").lower()
+            if search_lower in title:
+                matches.append(v)
+
+        if not matches:
+            return json.dumps(
+                {
+                    "error": f"No video found matching '{title_search}'.",
+                    "suggestion": "Try a different search term or use position.",
+                }
+            )
+
+        if len(matches) > 1:
+            return json.dumps(
+                {
+                    "multiple_matches": [
+                        {
+                            "position": m.get("position", 0) + 1,
+                            "video_id": m.get("video_id"),
+                            "title": m.get("title"),
+                        }
+                        for m in matches[:5]
+                    ],
+                    "hint": "Use position to select a specific video.",
+                }
+            )
+
+        video = matches[0]
+
+    else:
+        return json.dumps(
+            {
+                "error": "Provide either position or title_search.",
+                "usage": "goto 3 or goto 'authentication'",
+            }
+        )
+
+    video_id = video.get("video_id")
+    result = {
+        "video": {
+            "video_id": video_id,
+            "title": video.get("title"),
+            "position": video.get("position", 0) + 1,
+        },
+        "progress": context.get_progress_summary(),
+    }
+
+    if watch:
+        return await watch_video_in_playlist(
+            playlist_id=playlist_id,
+            video_id=video_id,
+        )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def playlist_progress_tool(
+    playlist_id: str,
+    include_recommendations: bool = True,
+) -> str:
+    """Show progress through a playlist with visual indicator.
+
+    Displays an ASCII progress bar, completion percentage, and optionally
+    includes learning recommendations.
+
+    Args:
+        playlist_id: Playlist ID.
+        include_recommendations: Include learning recommendations (default: True).
+
+    Returns:
+        JSON with progress info, visual bar, and recommendations.
+    """
+    from claudetube.navigation.context import PlaylistContext
+    from claudetube.navigation.learning import get_learning_recommendations
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    # Build progress bar
+    total = context.total_videos
+    completed = len(context.progress.watched_videos)
+    pct = completed / total * 100 if total else 0
+
+    bar_width = 30
+    filled = int(bar_width * completed / total) if total else 0
+    bar = "█" * filled + "░" * (bar_width - filled)
+
+    # Build video status list
+    video_status = []
+    for v in context.videos:
+        vid = v.get("video_id")
+        pos = v.get("position", 0) + 1
+        is_watched = vid in context.progress.watched_videos
+        is_current = vid == context.progress.current_video
+        status = "✓" if is_watched else ("▶" if is_current else "○")
+        video_status.append(
+            {
+                "position": pos,
+                "status": status,
+                "title": v.get("title", "")[:50],
+                "video_id": vid,
+            }
+        )
+
+    result = {
+        "playlist_id": playlist_id,
+        "title": context.title,
+        "type": context.playlist_type,
+        "progress_bar": f"[{bar}] {pct:.0f}%",
+        "completed": completed,
+        "total": total,
+        "percentage": round(pct, 1),
+        "current_video": context.progress.current_video,
+        "videos": video_status,
+    }
+
+    if include_recommendations:
+        recs = await asyncio.to_thread(get_learning_recommendations, playlist_id)
+        if recs:
+            result["recommendations"] = [r.to_dict() for r in recs[:3]]
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def playlist_resume_tool(
+    playlist_id: str,
+    watch: bool = False,
+) -> str:
+    """Resume watching a playlist from the last position.
+
+    Returns information about where you left off, including the current
+    video and timestamp if available.
+
+    Args:
+        playlist_id: Playlist ID.
+        watch: If True, also start watching/processing the video.
+
+    Returns:
+        JSON with resume position info.
+    """
+    from claudetube.navigation.context import PlaylistContext
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    if context.progress.current_video is None:
+        # No progress yet, suggest starting from the beginning
+        first_video = context.get_video_at_position(0)
+        if first_video:
+            return json.dumps(
+                {
+                    "status": "no_progress",
+                    "message": "No watch history. Starting from the beginning.",
+                    "first_video": {
+                        "video_id": first_video.get("video_id"),
+                        "title": first_video.get("title"),
+                        "position": 1,
+                    },
+                    "hint": "Use watch=True to start watching.",
+                }
+            )
+        return json.dumps({"error": "Playlist is empty."})
+
+    current_video = context.get_video_by_id(context.progress.current_video)
+    pos = context.current_position
+    result = {
+        "status": "resume_available",
+        "current_video": {
+            "video_id": context.progress.current_video,
+            "title": current_video.get("title") if current_video else "",
+            "position": pos + 1 if pos is not None else None,
+        },
+        "timestamp": context.progress.current_timestamp,
+        "progress": context.get_progress_summary(),
+    }
+
+    if context.progress.current_timestamp:
+        minutes = int(context.progress.current_timestamp // 60)
+        seconds = int(context.progress.current_timestamp % 60)
+        result["timestamp_display"] = f"{minutes}:{seconds:02d}"
+
+    if watch:
+        return await watch_video_in_playlist(
+            playlist_id=playlist_id,
+            video_id=context.progress.current_video,
+        )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def playlist_bookmark_tool(
+    playlist_id: str,
+    video_id: str | None = None,
+    timestamp: float | None = None,
+    note: str = "",
+) -> str:
+    """Add a bookmark to the current or specified position.
+
+    Args:
+        playlist_id: Playlist ID.
+        video_id: Video ID to bookmark. If None, uses current video.
+        timestamp: Timestamp in seconds. If None, uses current timestamp.
+        note: Optional note for the bookmark.
+
+    Returns:
+        JSON confirming bookmark creation.
+    """
+    from claudetube.navigation.context import PlaylistContext
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    # Use current video if not specified
+    if video_id is None:
+        video_id = context.progress.current_video
+        if video_id is None:
+            return json.dumps(
+                {
+                    "error": "No current video. Specify video_id.",
+                    "hint": "Watch a video first or provide video_id explicitly.",
+                }
+            )
+
+    # Verify video exists in playlist
+    video = context.get_video_by_id(video_id)
+    if video is None:
+        return json.dumps(
+            {
+                "error": f"Video '{video_id}' not in playlist.",
+                "playlist_id": playlist_id,
+            }
+        )
+
+    # Use current timestamp if not specified
+    if timestamp is None:
+        timestamp = context.progress.current_timestamp or 0
+
+    # Add bookmark
+    context.progress.add_bookmark(video_id, timestamp, note)
+    context.progress.save()
+
+    return json.dumps(
+        {
+            "status": "bookmark_added",
+            "bookmark": {
+                "video_id": video_id,
+                "video_title": video.get("title"),
+                "timestamp": timestamp,
+                "note": note,
+            },
+            "total_bookmarks": len(context.progress.bookmarks),
+        }
+    )
+
+
+@mcp.tool()
+async def playlist_bookmarks_tool(
+    playlist_id: str,
+    video_id: str | None = None,
+) -> str:
+    """List bookmarks for a playlist or specific video.
+
+    Args:
+        playlist_id: Playlist ID.
+        video_id: Optional video ID to filter bookmarks.
+
+    Returns:
+        JSON with list of bookmarks.
+    """
+    from claudetube.navigation.context import PlaylistContext
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    bookmarks = context.progress.bookmarks
+
+    if video_id:
+        bookmarks = [b for b in bookmarks if b.get("video_id") == video_id]
+
+    # Enhance bookmarks with video titles
+    enhanced = []
+    for b in bookmarks:
+        vid = b.get("video_id")
+        video = context.get_video_by_id(vid)
+        timestamp = b.get("timestamp", 0)
+        minutes = int(timestamp // 60)
+        seconds = int(timestamp % 60)
+
+        enhanced.append(
+            {
+                "video_id": vid,
+                "video_title": video.get("title") if video else "",
+                "timestamp": timestamp,
+                "timestamp_display": f"{minutes}:{seconds:02d}",
+                "note": b.get("note", ""),
+                "created_at": b.get("created_at"),
+            }
+        )
+
+    return json.dumps(
+        {
+            "playlist_id": playlist_id,
+            "filter_video": video_id,
+            "bookmarks": enhanced,
+            "total": len(enhanced),
+        },
+        indent=2,
+    )
+
+
 def main():
     """Entry point for the claudetube-mcp command."""
     _log_startup("main() called - about to run mcp.run()")
