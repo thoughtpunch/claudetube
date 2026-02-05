@@ -14,6 +14,18 @@ LLMs process text and images, but video is neither. Video is:
 
 claudetube bridges this gap by decomposing video into LLM-friendly components.
 
+## Why This Exists
+
+**Claude doesn't have native video input.** Some AI systems (like Gemini) can process video URLs directly—pass URL, ask question, get answer. Claude can't do this yet, so claudetube provides the infrastructure to make video accessible.
+
+This means claudetube is a **workaround**, not a feature. The UX involves multiple steps:
+1. Process the video (download, transcribe)
+2. Analyze structure (scenes, visual descriptions)
+3. Extract frames (when visual context is needed)
+4. Synthesize the answer
+
+Native video AI does all of this in a single call. claudetube exposes the primitives explicitly, which gives more control but requires more orchestration.
+
 ## The Decomposition Strategy
 
 ### Audio Stream → Transcript

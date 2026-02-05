@@ -24,13 +24,32 @@ claudetube downloads online videos, transcribes them with [faster-whisper](https
 
 ## Why This Exists
 
+**Claude doesn't have native video input.** When you share a YouTube link with Claude, it sees nothing—just a URL string.
+
+Google's Gemini can process video natively: pass a URL, ask a question, get an answer. One API call. Claude can't do this (yet), so claudetube exists to bridge that gap.
+
 I (Dan) built claudetube because I was using Claude to help me make a game, and I kept finding YouTube tutorials that explained exactly what I needed. The problem? I couldn't just *show* Claude the video.
 
-Every other YouTube MCP tool just dumps the transcript and calls it a day. But when a tutorial says "look at this code here" or "notice how the sprite moves", the transcript alone is useless. I needed Claude to actually *see* what I was seeing -- to look at the code on screen, read the diagrams, understand the visual context.
-
-Unlike other tools, claudetube doesn't just fetch transcripts. It lets AI work with video content the same way modern LLMs can browse the web -- fetching what's needed, when it's needed, with full visual context. The transcript is just the starting point. The real power is on-demand frame extraction that lets Claude read code, analyze diagrams, and understand what the speaker is actually showing.
+Every other YouTube MCP tool just dumps the transcript and calls it a day. But when a tutorial says "look at this code here" or "notice how the sprite moves", the transcript alone is useless. I needed Claude to actually *see* what I was seeing—to look at the code on screen, read the diagrams, understand the visual context.
 
 **[Read more about the vision](documentation/vision/problem-space.md)**
+
+## Honest Assessment: claudetube vs Native Video AI
+
+| Aspect | Gemini (native) | claudetube |
+|--------|-----------------|------------|
+| **UX** | URL + question → answer | process_video → get_frames → synthesize |
+| **Sites** | YouTube only (public) | 1,500+ sites via yt-dlp |
+| **Caching** | Reprocesses each time | Instant on second query |
+| **Cost** | 1fps × full duration | Extract only what you need |
+| **Precision** | 1fps sampling | Exact timestamps, HQ for code |
+| **Offline** | No | Yes (cached content) |
+
+**Where claudetube is worse:** More complex. Requires multi-step orchestration. 40 tools to learn.
+
+**Where claudetube wins:** Works on more sites, cheaper for repeated queries, finer control, works offline.
+
+**The goal:** Close the UX gap with a streamlined single-call interface while preserving the power-user capabilities. See the [roadmap](documentation/vision/roadmap.md).
 
 ## Quick Start
 

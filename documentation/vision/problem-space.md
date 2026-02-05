@@ -10,6 +10,35 @@ Large Language Models can read text, analyze images, and browse the web. But vid
 
 This isn't a limitation of the models themselves. Modern LLMs like Claude are multimodal—they can process images, understand visual content, and reason about what they see. The problem is **access**: there's no standard way to feed video content into an AI conversation.
 
+## The Competitive Landscape
+
+### Native Video AI (Gemini)
+
+Google's Gemini has native video understanding. You can:
+- Pass a YouTube URL directly to the API
+- Ask a question in the same call
+- Get an answer
+
+One API call. No preprocessing. "Just works" for public YouTube videos.
+
+**Limitations:**
+- YouTube only (public videos)
+- Free tier: 8 hours/day upload limit
+- Samples at 1fps (may miss fast-moving content)
+- Reprocesses video on every query (no caching)
+
+### claudetube's Position
+
+claudetube is **infrastructure, not a feature**. It exists because Claude doesn't have native video input.
+
+If Anthropic shipped video understanding tomorrow, claudetube's value proposition would shift to:
+- **Multi-site support**: 1,500+ sites vs YouTube-only
+- **Cost optimization**: Process once, query forever
+- **Precision control**: Exact timestamps, quality tiers
+- **Power-user features**: Granular scene analysis, entity tracking
+
+**The honest truth:** claudetube's UX is worse than native video AI. It requires multi-step orchestration and 40+ tools. The goal is to close this gap while preserving capabilities that native solutions don't offer.
+
 ## Why Transcripts Aren't Enough
 
 The naive solution is "just get the transcript." Every YouTube MCP tool does this. But transcripts alone miss critical information:

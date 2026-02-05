@@ -119,6 +119,20 @@ This mirrors how humans watch educational content—skim, then focus.
 **With claudetube:**
 > "At 3:42, they show the Express middleware configuration. Here's the code from the screen: `app.use(authMiddleware)`. They explain it handles JWT validation before routes."
 
+## The Honest Trade-off
+
+claudetube offers more capability than transcript-only tools, but at the cost of complexity:
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Transcript-only** | Simple, fast | Misses visual content |
+| **Native video AI (Gemini)** | Single call, "just works" | YouTube-only, no caching |
+| **claudetube** | Multi-site, cached, precise | Multi-step orchestration |
+
+claudetube is a **toolkit**, not a feature. You get power and control, but you pay in ceremony. The user (or Claude) must orchestrate multiple tool calls to answer a video question.
+
+We're working to close this gap with a streamlined single-call interface—see the [roadmap](roadmap.md).
+
 ---
 
 **Next**: [Roadmap](roadmap.md) - Where we're going

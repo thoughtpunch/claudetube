@@ -4,6 +4,41 @@
 
 > Where claudetube is going.
 
+## The UX Problem
+
+claudetube currently requires multi-step orchestration:
+
+```
+process_video(url)     # Wait for download/transcription
+get_scenes(video_id)   # Optional: understand structure
+get_frames(...)        # Optional: extract visuals
+# ... synthesize answer
+```
+
+Native video AI (like Gemini) offers: `URL + question → answer`
+
+**The gap is real.** claudetube is a toolkit, not a feature. We're working to close this gap.
+
+## Priority: Streamlined Single-Call Q&A
+
+**Goal:** Match native video AI UX while preserving claudetube's advantages.
+
+```python
+# Future API
+ask_video(url, question) → answer
+```
+
+This should:
+- [ ] Handle all orchestration internally (no explicit `process_video`)
+- [ ] Use query-aware frame sampling (extract frames relevant to the question)
+- [ ] Leverage caching (instant for previously processed videos)
+- [ ] Fall back gracefully (transcript → visuals as needed)
+- [ ] Maintain access to granular tools for power users
+
+**Tracking:** [beads-wdyt](../.beads/issues/claudetube-wdyt.md)
+
+---
+
 ## Current State (v0.4.0)
 
 **What works today:**
@@ -11,8 +46,12 @@
 - [x] Transcription via subtitles or Whisper
 - [x] On-demand frame extraction (480px and 1280px)
 - [x] Intelligent caching
-- [x] MCP server for Claude integration
-- [x] Modular library architecture (refactored)
+- [x] MCP server for Claude integration (40+ tools)
+- [x] Scene segmentation and visual transcripts
+- [x] Entity extraction and people tracking
+- [x] Playlist navigation with learning intelligence
+- [x] Cross-video knowledge graph
+- [x] Accessibility features (audio descriptions)
 
 ## Local File Support (In Progress)
 
