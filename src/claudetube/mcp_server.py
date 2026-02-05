@@ -2160,6 +2160,112 @@ async def watch_video_tool(
 
 
 @mcp.tool()
+async def ask_video(
+    url: str,
+    question: str,
+    whisper_model: str = "tiny",
+    max_iterations: int = 15,
+) -> str:
+    """Ask a question about a video - handles all processing automatically.
+
+    This is the **simplest way to get answers from videos**. Just provide a URL
+    and your question. The tool handles everything else:
+    - Downloads and transcribes the video (if not already cached)
+    - Generates scene structure (if not already cached)
+    - Analyzes relevant scenes to answer your question
+    - Returns a detailed answer with evidence
+
+    Use this when you want a single-call video Q&A experience, similar to
+    native video AI. For more control, use the individual tools
+    (process_video, get_scenes, watch_video).
+
+    Args:
+        url: Video URL or ID. Supports YouTube, Vimeo, and 1500+ sites.
+        question: Natural language question about the video.
+        whisper_model: Whisper model for transcription (tiny/base/small/medium/large).
+        max_iterations: Maximum scene examinations (default: 15).
+
+    Returns:
+        JSON with answer, confidence, evidence, and processing status.
+    """
+    result = {"steps": [], "video_id": None}
+
+    # Step 1: Extract video ID and check cache
+    try:
+        video_id = extract_video_id(url)
+        result["video_id"] = video_id
+    except Exception as e:
+        return json.dumps({"error": f"Invalid URL: {e}", "url": url})
+
+    cache = CacheManager(get_cache_dir())
+    cache_dir = cache.get_video_dir(video_id)
+
+    # Step 2: Process video if not cached
+    if not cache_dir.exists() or not (cache_dir / "state.json").exists():
+        result["steps"].append("processing_video")
+        try:
+            # Detect if input is a local file or URL
+            if is_local_file(url):
+                await asyncio.to_thread(
+                    process_local_video,
+                    url,
+                    output_base=get_cache_dir(),
+                    whisper_model=whisper_model,
+                )
+            else:
+                await asyncio.to_thread(
+                    process_video,
+                    url,
+                    output_base=get_cache_dir(),
+                    whisper_model=whisper_model,
+                )
+        except Exception as e:
+            return json.dumps(
+                {
+                    "error": f"Failed to process video: {e}",
+                    "video_id": video_id,
+                    "steps": result["steps"],
+                }
+            )
+    else:
+        result["steps"].append("video_cached")
+
+    # Step 3: Generate scenes if not cached
+    if not has_scenes(cache_dir):
+        result["steps"].append("generating_scenes")
+        try:
+            _get_scenes_sync(video_id, force=False, enrich=False)
+        except Exception as e:
+            # Scenes are optional - watch_video can work without them
+            result["steps"].append(f"scene_generation_warning: {e}")
+    else:
+        result["steps"].append("scenes_cached")
+
+    # Step 4: Run watch_video to answer the question
+    result["steps"].append("watching_video")
+    try:
+        watch_result = await asyncio.to_thread(
+            watch_video,
+            video_id,
+            question,
+            max_iterations=max_iterations,
+            output_base=cache_dir.parent,
+        )
+        # Merge watch_video result into our result
+        result.update(watch_result)
+    except Exception as e:
+        return json.dumps(
+            {
+                "error": f"Failed to analyze video: {e}",
+                "video_id": video_id,
+                "steps": result["steps"],
+            }
+        )
+
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
 async def youtube_auth_status_tool() -> str:
     """Check YouTube authentication status and configuration.
 

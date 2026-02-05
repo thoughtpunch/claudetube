@@ -150,6 +150,7 @@ Claude will:
 | Command | Purpose |
 |---------|---------|
 | `/yt <url> [question]` | Analyze a video |
+| `/yt:ask <url> <question>` | **Simplest way** - auto-processes and answers |
 | `/yt:see <id> <timestamp>` | Quick frames (general visuals) |
 | `/yt:hq <id> <timestamp>` | HQ frames (code, text, diagrams) |
 | `/yt:transcribe <id> [model]` | Transcribe with Whisper (or return cached) |
