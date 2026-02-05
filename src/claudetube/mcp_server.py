@@ -2811,21 +2811,28 @@ async def watch_video_in_playlist(
     playlist_id: str,
     video_id: str | None = None,
     position: int | None = None,
+    skip_prerequisites: bool = False,
 ) -> str:
     """Navigate to a specific video in a playlist by ID or position.
 
     Jump to any video in the playlist - by video ID or by position number.
     Updates progress tracking to set this as the current video.
 
+    For course/series playlists, warns about missing prerequisites unless
+    skip_prerequisites is set to True.
+
     Args:
         playlist_id: The playlist containing the video.
         video_id: Video ID to navigate to (optional if position provided).
         position: 1-indexed position in playlist (optional if video_id provided).
+        skip_prerequisites: Skip prerequisite warnings (default: False).
 
     Returns:
         JSON with video metadata, transcript, and progress status.
+        May return prerequisite warning if skipping ahead in a course.
     """
     from claudetube.navigation.context import PlaylistContext
+    from claudetube.navigation.learning import check_prerequisites
 
     context = PlaylistContext.load(playlist_id)
     if context is None:
@@ -2853,8 +2860,25 @@ async def watch_video_in_playlist(
             }
         )
 
-    video_id = target_video.get("video_id")
+    target_video_id = target_video.get("video_id")
     video_url = target_video.get("url", "")
+
+    # Check prerequisites unless skipped
+    if not skip_prerequisites:
+        prereq_warning = await asyncio.to_thread(
+            check_prerequisites, target_video_id, playlist_id
+        )
+        if prereq_warning:
+            return json.dumps(
+                {
+                    "status": "prerequisites_warning",
+                    "video_id": target_video_id,
+                    "video_title": target_video.get("title"),
+                    "warning": prereq_warning.to_dict(),
+                    "hint": "Use skip_prerequisites=True to proceed anyway, "
+                    "or watch the prerequisite videos first.",
+                }
+            )
 
     # Process the video
     try:
@@ -2864,13 +2888,13 @@ async def watch_video_in_playlist(
         return json.dumps(
             {
                 "error": f"Failed to process video: {e}",
-                "video_id": video_id,
+                "video_id": target_video_id,
                 "video_title": target_video.get("title"),
             }
         )
 
     # Mark as watched and update context
-    context.mark_watched(video_id)
+    context.mark_watched(target_video_id)
 
     return json.dumps(
         {
@@ -2943,6 +2967,152 @@ async def get_playlist_progress(
             "next_video": next_recommendation,
             "unwatched_count": len(context.get_unwatched_videos()),
             "bookmarks": context.progress.bookmarks,
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def get_learning_recommendations_tool(
+    playlist_id: str,
+    goal: str | None = None,
+) -> str:
+    """Get smart recommendations for what to watch next in a playlist.
+
+    Considers multiple factors to suggest the best next video:
+    - Prerequisites (for courses: watch foundational content first)
+    - Sequential order (for courses/series)
+    - Learning goals (if provided)
+    - Related content (videos sharing topics)
+
+    Args:
+        playlist_id: Playlist to get recommendations for.
+        goal: Optional learning goal (e.g., "learn authentication").
+
+    Returns:
+        JSON with prioritized recommendations and reasoning.
+    """
+    from claudetube.navigation.context import PlaylistContext
+    from claudetube.navigation.learning import get_learning_recommendations
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    recommendations = await asyncio.to_thread(
+        get_learning_recommendations, playlist_id, goal
+    )
+
+    return json.dumps(
+        {
+            "playlist_id": playlist_id,
+            "playlist_title": context.title,
+            "playlist_type": context.playlist_type,
+            "goal": goal,
+            "progress": context.get_progress_summary(),
+            "recommendations": [r.to_dict() for r in recommendations],
+            "top_recommendation": recommendations[0].to_dict()
+            if recommendations
+            else None,
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def analyze_topic_coverage_tool(
+    playlist_id: str,
+    topic: str,
+) -> str:
+    """Analyze how a topic is covered across all videos in a playlist.
+
+    Shows which videos mention the topic and how frequently, plus any
+    chapters that match. Useful for understanding where specific concepts
+    are taught in a course or series.
+
+    Args:
+        playlist_id: Playlist to analyze.
+        topic: Topic to search for (e.g., "authentication", "async/await").
+
+    Returns:
+        JSON with topic coverage analysis across the playlist.
+    """
+    from claudetube.navigation.learning import analyze_topic_coverage
+    from claudetube.operations.playlist import load_playlist_metadata
+
+    playlist = load_playlist_metadata(playlist_id)
+    if playlist is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    coverage = await asyncio.to_thread(analyze_topic_coverage, playlist_id, topic)
+
+    return json.dumps(
+        {
+            "playlist_id": playlist_id,
+            "playlist_title": playlist.get("title", ""),
+            "analysis": coverage.to_dict(),
+            "hint": "Use watch_video_in_playlist to navigate to relevant content.",
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def get_video_context_tool(
+    video_id: str,
+    playlist_id: str,
+) -> str:
+    """Get relevant context from previously watched videos.
+
+    Provides information about what was covered in prior videos that's
+    relevant to the current video. Helps bridge knowledge across videos.
+
+    Args:
+        video_id: Current video ID.
+        playlist_id: Playlist containing the video.
+
+    Returns:
+        JSON with prior video summaries and relevant shared topics.
+    """
+    from claudetube.navigation.context import PlaylistContext
+    from claudetube.navigation.learning import get_video_context
+
+    context = PlaylistContext.load(playlist_id)
+    if context is None:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache.",
+                "hint": "Use get_playlist to fetch the playlist first.",
+            }
+        )
+
+    video = context.get_video_by_id(video_id)
+    if video is None:
+        return json.dumps(
+            {
+                "error": f"Video '{video_id}' not found in playlist.",
+                "playlist_id": playlist_id,
+            }
+        )
+
+    video_context = await asyncio.to_thread(get_video_context, video_id, playlist_id)
+
+    return json.dumps(
+        {
+            "video_id": video_id,
+            "video_title": video.get("title", ""),
+            "playlist_id": playlist_id,
+            "context": video_context.to_dict(),
         },
         indent=2,
     )
