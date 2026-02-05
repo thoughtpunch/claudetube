@@ -136,9 +136,7 @@ def _get_visual_assessment_schema():
         confidence: LiteralType["low", "medium", "high"] = Field(
             description="Confidence in the assessment"
         )
-        reasoning: str = Field(
-            description="1-2 sentences explaining the score"
-        )
+        reasoning: str = Field(description="1-2 sentences explaining the score")
         likely_visual_elements: list[str] = Field(
             default_factory=list,
             description="Expected visual elements in the video",
@@ -262,14 +260,27 @@ def _heuristic_assessment(
 
     # Channel signals (high confidence)
     always_visual_channels = {
-        "3blue1brown", "veritasium", "numberphile", "welch labs",
-        "computerphile", "two minute papers", "kurzgesagt",
-        "cgp grey", "smartereveryday", "primer", "reducible",
-        "the coding train", "sebastian lague",
+        "3blue1brown",
+        "veritasium",
+        "numberphile",
+        "welch labs",
+        "computerphile",
+        "two minute papers",
+        "kurzgesagt",
+        "cgp grey",
+        "smartereveryday",
+        "primer",
+        "reducible",
+        "the coding train",
+        "sebastian lague",
     }
     high_visual_channels = {
-        "fireship", "theo", "theprimeagen", "traversy media",
-        "tech with tim", "web dev simplified",
+        "fireship",
+        "theo",
+        "theprimeagen",
+        "traversy media",
+        "tech with tim",
+        "web dev simplified",
     }
 
     if any(ch in channel_lower for ch in always_visual_channels):
@@ -284,9 +295,18 @@ def _heuristic_assessment(
 
     # Visual reference phrases
     visual_phrases = [
-        "as you can see", "look at this", "notice how", "watch what happens",
-        "in this animation", "the diagram shows", "shown here", "visualize",
-        "on screen", "here we have", "take a look", "you'll see",
+        "as you can see",
+        "look at this",
+        "notice how",
+        "watch what happens",
+        "in this animation",
+        "the diagram shows",
+        "shown here",
+        "visualize",
+        "on screen",
+        "here we have",
+        "take a look",
+        "you'll see",
     ]
     phrase_count = sum(1 for phrase in visual_phrases if phrase in all_text)
 
@@ -302,8 +322,16 @@ def _heuristic_assessment(
 
     # Educational/technical keywords
     educational_keywords = [
-        "explained", "tutorial", "how to", "learn", "introduction",
-        "basics", "understanding", "guide", "course", "lesson",
+        "explained",
+        "tutorial",
+        "how to",
+        "learn",
+        "introduction",
+        "basics",
+        "understanding",
+        "guide",
+        "course",
+        "lesson",
     ]
     if any(kw in all_text for kw in educational_keywords):
         score = max(score, 7)

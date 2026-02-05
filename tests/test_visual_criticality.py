@@ -62,20 +62,32 @@ class TestVisualAssessment:
     def test_visuals_needed_property(self):
         """Test visuals_needed property."""
         required = VisualAssessment(
-            score=10, confidence="high", reasoning="",
-            likely_elements=[], recommended_action="required"
+            score=10,
+            confidence="high",
+            reasoning="",
+            likely_elements=[],
+            recommended_action="required",
         )
         recommended = VisualAssessment(
-            score=7, confidence="medium", reasoning="",
-            likely_elements=[], recommended_action="recommended"
+            score=7,
+            confidence="medium",
+            reasoning="",
+            likely_elements=[],
+            recommended_action="recommended",
         )
         suggested = VisualAssessment(
-            score=5, confidence="medium", reasoning="",
-            likely_elements=[], recommended_action="suggested"
+            score=5,
+            confidence="medium",
+            reasoning="",
+            likely_elements=[],
+            recommended_action="suggested",
         )
         none_needed = VisualAssessment(
-            score=2, confidence="high", reasoning="",
-            likely_elements=[], recommended_action="none"
+            score=2,
+            confidence="high",
+            reasoning="",
+            likely_elements=[],
+            recommended_action="none",
         )
 
         assert required.visuals_needed is True
@@ -86,12 +98,18 @@ class TestVisualAssessment:
     def test_visuals_required_property(self):
         """Test visuals_required property."""
         required = VisualAssessment(
-            score=10, confidence="high", reasoning="",
-            likely_elements=[], recommended_action="required"
+            score=10,
+            confidence="high",
+            reasoning="",
+            likely_elements=[],
+            recommended_action="required",
         )
         recommended = VisualAssessment(
-            score=7, confidence="medium", reasoning="",
-            likely_elements=[], recommended_action="recommended"
+            score=7,
+            confidence="medium",
+            reasoning="",
+            likely_elements=[],
+            recommended_action="recommended",
         )
 
         assert required.visuals_required is True
@@ -170,7 +188,10 @@ class TestHeuristicAssessment:
         )
 
         assert assessment.score >= 8
-        assert "coding" in assessment.reasoning.lower() or "code" in assessment.reasoning.lower()
+        assert (
+            "coding" in assessment.reasoning.lower()
+            or "code" in assessment.reasoning.lower()
+        )
 
     def test_math_content(self):
         """Test detection of mathematical content."""
@@ -231,8 +252,11 @@ class TestHeuristicAssessment:
         """Test that action is correctly assigned based on score."""
         # Score 9-10 -> required
         high = _heuristic_assessment(
-            title="Video", channel="3Blue1Brown",
-            description="", transcript_excerpt="", task=""
+            title="Video",
+            channel="3Blue1Brown",
+            description="",
+            transcript_excerpt="",
+            task="",
         )
         assert high.recommended_action == "required"
 
@@ -268,7 +292,12 @@ class TestAssessVisualCriticality:
         assert isinstance(assessment, VisualAssessment)
         assert 0 <= assessment.score <= 10
         assert assessment.confidence in ("low", "medium", "high")
-        assert assessment.recommended_action in ("none", "suggested", "recommended", "required")
+        assert assessment.recommended_action in (
+            "none",
+            "suggested",
+            "recommended",
+            "required",
+        )
 
     def test_heuristic_assessment_for_visual_channel(self):
         """Test that heuristic assessment handles visual channels correctly."""
