@@ -91,12 +91,12 @@ from claudetube.analysis.visual import (
     detect_visual_boundaries_fast,
     should_use_visual_detection,
 )
-from claudetube.analysis.vocabulary import (
-    detect_vocabulary_shifts,
-)
 from claudetube.analysis.visual_criticality import (
     VisualAssessment,
     assess_visual_criticality,
+)
+from claudetube.analysis.vocabulary import (
+    detect_vocabulary_shifts,
 )
 from claudetube.analysis.watcher import (
     ActiveVideoWatcher,
