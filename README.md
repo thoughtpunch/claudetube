@@ -18,7 +18,9 @@
 
 ---
 
-claudetube downloads online videos, transcribes them with [faster-whisper](https://github.com/SYSTRAN/faster-whisper), and lets AI "see" specific moments by extracting frames on-demand. Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) but works as a standalone Python library with any AI tool.
+> **MCP Server for Video Understanding** — works with any AI that supports [Model Context Protocol](https://modelcontextprotocol.io): Claude Code, Claude Desktop, Cursor, Zed, and more.
+
+claudetube downloads online videos, transcribes them with [faster-whisper](https://github.com/SYSTRAN/faster-whisper), and lets AI "see" specific moments by extracting frames on-demand. It's an **MCP server** exposing 40+ tools that any MCP-compatible client can use.
 
 **Supports 1,500+ video sites** via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) including YouTube, Vimeo, Dailymotion, Twitch, TikTok, Twitter/X, Instagram, Reddit, and many more.
 
