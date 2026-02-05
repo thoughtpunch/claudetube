@@ -466,6 +466,95 @@ def search_transcripts_fts_cross_video(
         return None
 
 
+def search_transcripts_fts_multi_video(
+    video_ids: list[str],
+    query: str,
+    top_k: int = 10,
+) -> list[dict[str, Any]] | None:
+    """Search scene transcripts across a specific set of videos using FTS5.
+
+    Used for playlist-scoped search where we want to search only within
+    videos that belong to a specific playlist.
+
+    Args:
+        video_ids: List of natural video IDs to search within.
+        query: Search query string.
+        top_k: Maximum results (default 10).
+
+    Returns:
+        List of matching scene dicts with video context,
+        or None if database is unavailable.
+    """
+    db = _get_db()
+    if db is None:
+        return None
+
+    if not video_ids:
+        return []
+
+    try:
+        from claudetube.db.repos.scenes import SceneRepository
+
+        scene_repo = SceneRepository(db)
+
+        # Build placeholders for video IDs
+        placeholders = ",".join("?" * len(video_ids))
+
+        # Escape query for FTS5
+        escaped_query = scene_repo._escape_fts_query(query)
+
+        # Search using FTS across specified videos
+        cursor = db.execute(
+            f"""
+            SELECT
+                s.*,
+                v.video_id as video_natural_id,
+                v.title as video_title,
+                rank
+            FROM scenes_fts
+            JOIN scenes s ON scenes_fts.rowid = s.rowid
+            JOIN videos v ON s.video_id = v.id
+            WHERE scenes_fts MATCH ?
+              AND v.video_id IN ({placeholders})
+            ORDER BY rank
+            LIMIT ?
+            """,
+            (escaped_query, *video_ids, top_k),
+        )
+
+        # Convert format
+        matches = []
+        for row in cursor.fetchall():
+            row_dict = dict(row)
+            # Convert FTS5 rank to relevance
+            rank = row_dict.get("rank", 0)
+            relevance = max(0.0, min(1.0, 1.0 + (rank / 20.0)))
+
+            matches.append(
+                {
+                    "video_id": row_dict.get("video_natural_id"),
+                    "video_title": row_dict.get("video_title"),
+                    "scene_id": row_dict["scene_id"],
+                    "start_time": row_dict["start_time"],
+                    "end_time": row_dict["end_time"],
+                    "transcript_text": row_dict.get("transcript_text", ""),
+                    "relevance": relevance,
+                    "match_type": "fts",
+                }
+            )
+
+        logger.debug(
+            "Found %d transcript matches for '%s' in %d videos via FTS",
+            len(matches),
+            query,
+            len(video_ids),
+        )
+        return matches
+    except Exception:
+        logger.debug("Multi-video FTS transcript search failed", exc_info=True)
+        return None
+
+
 # ============================================================
 # PROCESSING STATE (replaces file existence checks)
 # ============================================================

@@ -2578,6 +2578,146 @@ async def get_playlist_video_context_tool(
     return json.dumps(result, indent=2, default=str)
 
 
+@mcp.tool()
+async def search_playlist_tool(
+    playlist_id: str,
+    query: str,
+    top_k: int = 10,
+) -> str:
+    """Search across all transcripts in a playlist.
+
+    Performs full-text search across all videos in a playlist, returning
+    matching scenes with video context and timestamps.
+
+    The playlist must have been fetched with get_playlist first, and
+    videos should have been processed with process_video.
+
+    Args:
+        playlist_id: Playlist ID (from get_playlist results).
+        query: Search query (e.g., "authentication", "how to deploy").
+        top_k: Maximum number of results to return (default: 10).
+    """
+    from claudetube.navigation.cross_video import search_playlist_transcripts
+    from claudetube.operations.playlist import load_playlist_metadata
+
+    # Verify playlist exists
+    playlist_data = load_playlist_metadata(playlist_id)
+    if not playlist_data:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache. "
+                "Run get_playlist first.",
+                "playlist_id": playlist_id,
+            }
+        )
+
+    # Search across playlist
+    results = await asyncio.to_thread(
+        search_playlist_transcripts,
+        playlist_id,
+        query,
+        top_k=top_k,
+    )
+
+    if not results:
+        return json.dumps(
+            {
+                "playlist_id": playlist_id,
+                "query": query,
+                "results": [],
+                "message": "No matching content found. Ensure videos have been "
+                "processed with process_video.",
+            }
+        )
+
+    return json.dumps(
+        {
+            "playlist_id": playlist_id,
+            "playlist_title": playlist_data.get("title", ""),
+            "query": query,
+            "result_count": len(results),
+            "results": [r.to_dict() for r in results],
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def find_chapter_across_playlist_tool(
+    playlist_id: str,
+    topic: str,
+    top_k: int = 10,
+) -> str:
+    """Find chapters matching a topic across all videos in a playlist.
+
+    Searches YouTube chapters (if available) across all videos in a playlist
+    to find sections about a specific topic.
+
+    Useful for navigating directly to relevant content when videos have chapters.
+
+    Args:
+        playlist_id: Playlist ID (from get_playlist results).
+        topic: Topic to search for (e.g., "setup", "authentication", "testing").
+        top_k: Maximum number of results to return (default: 10).
+    """
+    from claudetube.navigation.cross_video import (
+        build_chapter_index,
+        find_chapters_by_topic,
+        load_chapter_index,
+        save_chapter_index,
+    )
+    from claudetube.operations.playlist import load_playlist_metadata
+
+    # Verify playlist exists
+    playlist_data = load_playlist_metadata(playlist_id)
+    if not playlist_data:
+        return json.dumps(
+            {
+                "error": f"Playlist '{playlist_id}' not found in cache. "
+                "Run get_playlist first.",
+                "playlist_id": playlist_id,
+            }
+        )
+
+    # Build or load chapter index
+    index = load_chapter_index(playlist_id)
+    if not index:
+        index = await asyncio.to_thread(build_chapter_index, playlist_id)
+        if index.chapters:
+            await asyncio.to_thread(save_chapter_index, index)
+
+    if not index.chapters:
+        return json.dumps(
+            {
+                "playlist_id": playlist_id,
+                "topic": topic,
+                "results": [],
+                "message": "No chapters found. Videos may not have YouTube chapters, "
+                "or videos haven't been processed yet.",
+            }
+        )
+
+    # Search chapters
+    results = await asyncio.to_thread(
+        find_chapters_by_topic,
+        playlist_id,
+        topic,
+        top_k=top_k,
+    )
+
+    return json.dumps(
+        {
+            "playlist_id": playlist_id,
+            "playlist_title": playlist_data.get("title", ""),
+            "topic": topic,
+            "total_chapters_indexed": len(index.chapters),
+            "result_count": len(results),
+            "results": [r.to_dict() for r in results],
+        },
+        indent=2,
+    )
+
+
 # ============================================================================
 # NAVIGATION TOOLS - Playlist-aware video navigation
 # ============================================================================
